@@ -11,3 +11,9 @@ pronotepy==2.15.6
 ruff==0.14.4
 mypy==1.18.2
 pytest-cov
+
+# `hardened_client.py` subclasses `requests.Session` to inject the HTTP timeout
+# pronotepy never sets. Without the stubs, `mypy --strict` reports the base
+# class as `Any` and refuses the subclass -- which passed locally, where the
+# stubs happened to be installed, and failed in CI, where they were not.
+types-requests
