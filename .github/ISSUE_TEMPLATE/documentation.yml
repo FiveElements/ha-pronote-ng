@@ -1,0 +1,75 @@
+name: 📖 Corriger la documentation
+description: >-
+  Le guide, l'architecture ou la spécification décrivent autre chose que ce que
+  fait le code.
+title: "[doc] "
+labels: ["documentation"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Un écart entre la documentation et le code est un vrai défaut sur ce
+        projet, et pas un détail cosmétique : le §12 de l'architecture recense
+        déjà quinze endroits où la spécification et le code divergent, chacun
+        tranché en faveur du code. Si vous en trouvez un seizième, il a sa
+        place ici.
+
+        **La source de vérité est toujours le code.** Une correction consiste
+        donc à ajuster le document — ou, si le code a tort, à ouvrir plutôt un
+        rapport de bug.
+
+  - type: dropdown
+    id: document
+    attributes:
+      label: Quel document
+      options:
+        - "Guide de l'utilisateur (docs/GUIDE-UTILISATEUR.md)"
+        - "Architecture (docs/ARCHITECTURE.md)"
+        - "Spécification (docs/SPECIFICATION.md)"
+        - "Annexe A — entités et services (docs/annexe-a-entites.md)"
+        - "Annexe B — limiteur de débit (docs/annexe-b-rate-limit.md)"
+        - "Guide de contribution (CONTRIBUTING.md)"
+        - "README"
+        - Un libellé dans Home Assistant lui-même
+    validations:
+      required: true
+
+  - type: input
+    id: where
+    attributes:
+      label: Où précisément
+      description: Le titre de la section, ou `fichier:ligne`.
+      placeholder: "docs/GUIDE-UTILISATEUR.md:148, ou « 4. Catalogue des entités »"
+    validations:
+      required: true
+
+  - type: textarea
+    id: says
+    attributes:
+      label: Ce que le document dit
+    validations:
+      required: true
+
+  - type: textarea
+    id: actually
+    attributes:
+      label: Ce que le code fait
+      description: >-
+        Avec le chemin du fichier si vous l'avez trouvé — c'est ce qui rend la
+        correction vérifiable au lieu d'être une opinion contre une autre.
+      placeholder: >-
+        `custom_components/pronote_ng/sensor.py:333` lit l'option
+        `homework_horizon`, alors que le guide annonce sept jours fixes.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Vérifications
+      options:
+        - label: >-
+            Cette description ne contient aucun identifiant, nom d'élève ni nom
+            d'établissement réels.
+          required: true
