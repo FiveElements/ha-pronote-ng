@@ -1,6 +1,6 @@
 {
   "domain": "pronote_ng",
-  "name": "ha-pronote",
+  "name": "Pronote NG",
   "codeowners": [
     "@jmorille"
   ],
@@ -12,5 +12,5 @@
   "requirements": [
     "pronotepy==2.15.6"
   ],
-  "version": "0.0.1"
+  "version": "0.0.2"
 }
