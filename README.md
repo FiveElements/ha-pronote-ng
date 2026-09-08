@@ -1,8 +1,16 @@
-# ha-pronote
+<p align="center">
+  <img src="docs/assets/logo.png" alt="Pronote NG" width="220">
+</p>
 
-Intégration Home Assistant pour PRONOTE — seconde génération.
+<h1 align="center">Pronote NG</h1>
 
-Domaine Home Assistant : **`pronote_ng`**, choisi pour cohabiter avec
+<p align="center">
+  Intégration Home Assistant pour PRONOTE — seconde génération.
+</p>
+
+Le dépôt s'appelle <code>ha-pronote</code> ; l'intégration s'appelle
+<strong>Pronote NG</strong> et son domaine Home Assistant est
+<strong><code>pronote_ng</code></strong>, choisi pour cohabiter avec
 l'intégration existante sans conflit de domaine.
 
 > **État : implémentée.** 494 tests, `mypy --strict` propre, couverture sous
@@ -67,7 +75,7 @@ contre ≈ 423 dans la première version de la spécification.
 1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
 2. Ajouter `https://github.com/FiveElements/ha-pronote-ng`, catégorie
    *Intégration*.
-3. Installer **ha-pronote**, puis redémarrer Home Assistant.
+3. Installer **Pronote NG**, puis redémarrer Home Assistant.
 4. *Paramètres → Appareils et services → Ajouter une intégration → PRONOTE*.
 
 ### Manuellement
