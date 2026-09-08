@@ -159,6 +159,18 @@ l'hexadécimal de chaque corps de requête, identifiants compris. L'intégration
 ne configure aucun journaliseur et ne déclare aucune clé `loggers` dans son
 manifeste, et un test le vérifie.
 
+## Contribuer
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) : comment monter l'environnement, faire
+tourner la suite sous Windows, les quatre fichiers qui se génèrent et ne
+s'éditent pas, et les deux règles non négociables — jamais un identifiant
+PRONOTE réel dans le dépôt, jamais le journaliseur `pronotepy` en DEBUG.
+
+Pour signaler un problème, utilisez les
+[formulaires d'issue](https://github.com/FiveElements/ha-pronote-ng/issues/new/choose) :
+ils demandent ce qu'il faut, et rappellent surtout ce qu'il ne faut **pas**
+coller dans une issue publique.
+
 ## Licence
 
 [MIT](LICENSE).

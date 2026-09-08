@@ -1,0 +1,119 @@
+name: ✨ Proposer une fonctionnalité
+description: Une entité, un service, un déclencheur ou un blueprint qui manque.
+title: "[idée] "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Ce qui décide, sur ce projet
+
+        Presque toute nouvelle donnée coûte des **requêtes**, et PRONOTE
+        sanctionne une **adresse IP** — pas seulement un compte. Le budget par
+        défaut est d'environ 180 requêtes par jour pour un enfant, et c'est le
+        chiffre contre lequel une proposition est arbitrée.
+
+        Ça ne veut pas dire non. Ça veut dire que la question utile n'est pas
+        « est-ce que ce serait bien ? » mais **« à quelle cadence en avez-vous
+        réellement besoin ? »**. Une donnée relue une fois par jour est presque
+        toujours acceptable ; la même relue toutes les cinq minutes ne l'est
+        presque jamais.
+
+        Le [chapitre sur la
+        cadence](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#8-r%C3%A9glages-et-cadence)
+        et
+        l'[annexe B](https://fiveelements.github.io/ha-pronote-ng/annexe-b-rate-limit/)
+        expliquent l'arithmétique, si vous voulez chiffrer vous-même.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Le problème que vous cherchez à résoudre
+      description: >-
+        Décrivez l'usage, pas la solution. « Je veux que le réveil se déclenche
+        plus tard quand le premier cours est décalé » se conçoit de plusieurs
+        façons ; « ajoutez un capteur `premier_cours_decale` » n'en laisse
+        qu'une, et pas forcément la meilleure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: Comment vous vous en sortez aujourd'hui
+      description: >-
+        Un *template* Jinja, une automatisation qui contourne, ou rien du tout.
+        Si vous y arrivez déjà avec les entités existantes, dites comment : ça
+        aide à juger si le manque est une donnée absente ou seulement une
+        ergonomie perfectible.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Ce que vous imaginez
+      options:
+        - Une entité (capteur, capteur binaire, calendrier, liste, image)
+        - Un service
+        - Un déclencheur, une condition ou une action d'appareil
+        - Un blueprint
+        - Une option de configuration
+        - Autre chose, ou je ne sais pas
+    validations:
+      required: true
+
+  - type: dropdown
+    id: freshness
+    attributes:
+      label: À quelle fraîcheur en avez-vous besoin
+      description: >-
+        La question la plus importante du formulaire. Une donnée quotidienne
+        entre dans le budget sans discussion ; une donnée aux cinq minutes
+        demande à être justifiée par un usage que rien d'autre ne couvre.
+      options:
+        - Une fois par jour suffit
+        - Quelques fois par jour
+        - Toutes les heures environ
+        - Aux quelques minutes — et voici pourquoi (à expliquer ci-dessous)
+        - Aucune requête supplémentaire — c'est déjà collecté, mal exposé
+    validations:
+      required: true
+
+  - type: textarea
+    id: source
+    attributes:
+      label: Savez-vous d'où viendrait la donnée
+      description: >-
+        Optionnel, et très utile si vous le savez. Le champ `pronotepy`
+        correspondant, l'onglet du protocole, ou simplement l'écran de
+        l'application mobile où l'information apparaît. Si elle est déjà dans
+        un attribut d'une entité existante, dites lequel : la proposition
+        devient alors gratuite en requêtes.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Ce que vous avez envisagé d'autre
+      description: >-
+        Y compris les solutions que vous avez écartées, et pourquoi. C'est
+        souvent la partie qui fait avancer la discussion le plus vite.
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Vérifications
+      options:
+        - label: >-
+            J'ai regardé le catalogue des entités et la liste des services du
+            guide de l'utilisateur — ce que je demande n'y est pas déjà.
+          required: true
+        - label: >-
+            J'ai compris que le coût en requêtes fait partie de l'arbitrage, et
+            qu'une fraîcheur élevée peut être refusée pour cette raison.
+          required: true
+        - label: >-
+            Cette description ne contient aucun identifiant, nom d'élève ni nom
+            d'établissement réels.
+          required: true

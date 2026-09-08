@@ -1,0 +1,31 @@
+# Les issues vierges sont désactivées, et c'est délibéré. Un rapport sans
+# version de Home Assistant, sans mode de connexion et sans diagnostic coûte
+# deux allers-retours avant de pouvoir être lu -- et, plus grave sur ce projet,
+# une issue vierge n'affiche aucun avertissement sur ce qu'il ne faut pas
+# coller. Les formulaires, eux, le rappellent avant la première ligne.
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📖 Guide de l'utilisateur
+    url: https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/
+    about: >-
+      Installation, catalogue des entités, services, réglages et un tableau de
+      dépannage symptôme → cause → remède. La réponse y est souvent déjà.
+
+  - name: ⚙️ Réglages et cadence
+    url: https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#8-r%C3%A9glages-et-cadence
+    about: >-
+      « Les données sont figées », « les collectes sont bridées », « le budget
+      est épuisé » -- commencez ici, c'est presque toujours la cadence.
+
+  - name: 🏗️ Architecture
+    url: https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/
+    about: >-
+      Pour comprendre le limiteur, l'ordonnanceur, la session et la frontière
+      pronotepy avant de proposer un changement.
+
+  - name: 🤝 Guide de contribution
+    url: https://github.com/FiveElements/ha-pronote-ng/blob/main/CONTRIBUTING.md
+    about: >-
+      Comment monter l'environnement, faire tourner la suite de tests, et les
+      deux règles non négociables sur les identifiants.

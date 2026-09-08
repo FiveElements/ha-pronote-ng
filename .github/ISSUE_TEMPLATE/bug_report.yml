@@ -1,0 +1,180 @@
+name: 🐞 Signaler un bug
+description: Quelque chose ne fonctionne pas comme le guide le décrit.
+title: "[bug] "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⛔ Avant tout : ce qu'il ne faut jamais coller ici
+
+        Cette issue est **publique et indexée**. Ne collez jamais :
+
+        * un identifiant ou un mot de passe PRONOTE ;
+        * le contenu d'un QR code, ni le code à quatre chiffres ;
+        * un code PIN à deux facteurs ;
+        * une **URL iCal** — elle donne accès à l'emploi du temps complet d'un
+          élève *sans aucun identifiant*, traitez-la comme un mot de passe ;
+        * le nom de votre enfant, celui de l'établissement, ou une capture
+          d'écran où ils apparaissent.
+
+        Le **fichier de diagnostic** est fait pour être joint ici : les
+        identifiants y sont rédigés, l'adresse retaillée, et les identifiants
+        d'élève remplacés par une empreinte tronquée.
+
+        *Paramètres → Appareils et services → Pronote NG → ⋯ → Télécharger les
+        diagnostics*
+
+        Un extrait de journal, lui, ne passe par **aucune** rédaction. Relisez-le.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version de Pronote NG
+      description: HACS, ou le champ `version` de `manifest.json`.
+      placeholder: "0.0.3"
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Version de Home Assistant
+      description: >-
+        *Paramètres → Système → Réparations → ⋯ → Informations système*, ligne
+        « Core ».
+      placeholder: "2026.9.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Mode d'installation
+      options:
+        - HACS (dépôt personnalisé)
+        - Copie manuelle dans custom_components/
+    validations:
+      required: true
+
+  - type: dropdown
+    id: login_mode
+    attributes:
+      label: Mode de connexion
+      description: >-
+        Les trois modes empruntent des chemins de code différents ; c'est
+        souvent l'information qui localise le bug le plus vite.
+      options:
+        - QR code de l'application mobile
+        - Identifiant et mot de passe
+        - Connexion par l'ENT
+        - Je ne suis pas arrivé jusque-là
+    validations:
+      required: true
+
+  - type: dropdown
+    id: account
+    attributes:
+      label: Type de compte
+      description: >-
+        Un compte parent multi-enfants sélectionne l'enfant avant chaque appel,
+        ce qui est le chemin le plus délicat de l'intégration.
+      options:
+        - Compte élève
+        - Compte parent, un seul enfant
+        - Compte parent, plusieurs enfants
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: Ce qui se passe
+      description: >-
+        Le symptôme, tel que vous le voyez. « Le capteur reste indisponible »,
+        « la moyenne est fausse », « Home Assistant redemande une connexion
+        chaque nuit ».
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ce que vous attendiez
+      description: >-
+        Utile plus souvent qu'il n'y paraît : certains comportements sont
+        délibérés — moyennes vides pendant les vacances, collectes suspendues
+        pendant les heures calmes, écritures coupées par défaut — et cette
+        ligne permet de distinguer un bug d'une intention.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Comment le reproduire
+      description: >-
+        Les étapes, ou « je n'ai rien fait, c'est apparu tout seul » — qui est
+        une réponse valable et une information en soi.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: entities
+    attributes:
+      label: Entités ou services concernés
+      description: >-
+        L'identifiant d'entité (avec le nom de l'enfant remplacé) ou le nom du
+        service.
+      placeholder: "sensor.<enfant>_prochain_cours, pronote_ng.refresh"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Journal
+      description: |
+        Activez le journaliseur de l'intégration **seulement** :
+
+        ```yaml
+        logger:
+          logs:
+            custom_components.pronote_ng: debug
+        ```
+
+        ⚠️ N'ajoutez **jamais** `pronotepy` à cette liste : il écrit
+        l'hexadécimal de chaque corps de requête au niveau DEBUG, identifiants
+        compris.
+
+        Puis relisez l'extrait avant de le coller.
+      render: text
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic
+      description: >-
+        Déposez le fichier téléchargé, ou collez-en le contenu. C'est presque
+        toujours la pièce jointe la plus utile.
+      render: json
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Vérifications
+      options:
+        - label: >-
+            J'ai relu ce que je colle : il ne contient aucun identifiant, mot
+            de passe, code PIN, contenu de QR code ni URL iCal réels.
+          required: true
+        - label: >-
+            Je n'ai pas activé le journaliseur `pronotepy`, et je n'ai pas
+            collé de journal produit avec lui.
+          required: true
+        - label: >-
+            J'ai regardé le tableau de dépannage du guide de l'utilisateur.
+          required: true

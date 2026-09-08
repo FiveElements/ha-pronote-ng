@@ -1,0 +1,146 @@
+name: 🧩 PRONOTE a changé quelque chose
+description: >-
+  Un palier échoue, une réparation « Compte illisible » est apparue, ou une
+  donnée a disparu depuis une mise à jour de l'établissement.
+title: "[protocole] "
+labels: ["protocole", "amont"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Pourquoi ce formulaire existe
+
+        L'intégration distingue délibérément **« absent »** de **« vide »**.
+        Une clé de protocole qui disparaît fait *échouer* le palier au lieu de
+        rapporter zéro élément — parce qu'une liste vide est une information
+        plausible et qu'un changement de protocole doit se voir. Si vous êtes
+        ici, ce mécanisme a probablement fonctionné comme prévu.
+
+        Ce que ce rapport doit permettre, c'est d'écrire un test à partir de la
+        **forme** de la réponse, sans jamais manipuler de vraies données
+        scolaires.
+
+  - type: markdown
+    attributes:
+      value: |
+        ## ⛔ Ne collez jamais une charge utile PRONOTE brute
+
+        Elle contient des noms d'élèves, des notes, des appréciations et des
+        identifiants. Cette issue est publique.
+
+        Décrivez la **structure**, pas le contenu : « la liste `listeDevoirs`
+        n'est plus là », « `PagePresence` renvoie maintenant un objet au lieu
+        d'un tableau », « le champ `duree` a disparu de chaque cours ». C'est
+        exactement ce qui permet d'écrire une *fixture* anonymisée.
+
+        Le **fichier de diagnostic** est sûr : il rapporte la *forme* de chaque
+        collecte — quand elle a été faite, ce qu'elle a coûté, combien
+        d'éléments elle contient — et jamais leur contenu.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version de Pronote NG
+      placeholder: "0.0.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: repair
+    attributes:
+      label: Réparation apparue dans Home Assistant
+      description: >-
+        *Paramètres → Système → Réparations*. Chacune correspond à un chemin de
+        code différent.
+      options:
+        - "Compte illisible (account_unreadable)"
+        - "Page de session illisible (bootstrap_failed)"
+        - "Identifiants refusés (invalid_credentials)"
+        - "Code de sécurité demandé (mfa_required)"
+        - "Budget quotidien bientôt atteint (daily_cap_near)"
+        - Aucune réparation, seulement des entités indisponibles
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Palier concerné
+      description: Celui dont les entités ont cessé de se mettre à jour.
+      multiple: true
+      options:
+        - "Emploi du temps (timetable)"
+        - "Devoirs (homework)"
+        - "Actualités (news)"
+        - "Discussions (discussions)"
+        - "Notes (marks)"
+        - "Vie scolaire (attendance)"
+        - "Évaluations (evaluations)"
+        - "Menus (menus)"
+        - "Données stables (static)"
+        - "Périodes closes (history)"
+        - "Session — classe, établissement, périodes (session)"
+        - Je ne sais pas
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Le type et le message de l'erreur
+      description: >-
+        La ligne du journal, **relue**. Le type d'exception est la moitié la
+        plus utile : `ProtocolChanged`, `KeyError`, `ParsingError`,
+        `ValueError`. Remplacez tout nom propre par `<élève>` ou
+        `<établissement>`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: Ce qui a changé dans la forme de la réponse
+      description: >-
+        Si vous avez pu observer la réponse du serveur, décrivez la différence
+        de structure. Sans contenu. Si vous ne l'avez pas observée, dites-le —
+        le type d'erreur ci-dessus suffit souvent.
+      placeholder: >-
+        Exemple : l'onglet 88 ne renvoie plus de clé `listeDevoirs` ; il y a
+        une clé `devoirs` à la place, avec les mêmes champs.
+
+  - type: input
+    id: when
+    attributes:
+      label: Depuis quand
+      description: >-
+        Une date approximative aide beaucoup : les établissements mettent à
+        jour PRONOTE par vagues, et plusieurs rapports datés du même jour
+        confirment une bascule côté serveur.
+      placeholder: "depuis le 2 septembre, après une maintenance de l'établissement"
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic
+      description: >-
+        *Paramètres → Appareils et services → Pronote NG → ⋯ → Télécharger les
+        diagnostics*. Le diagnostic par **appareil** est le plus parlant ici :
+        il donne, palier par palier, l'âge de la dernière collecte, son coût et
+        le nombre d'éléments.
+      render: json
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Vérifications
+      options:
+        - label: >-
+            Je n'ai collé aucune charge utile PRONOTE brute, aucun nom d'élève
+            ou d'établissement, aucune note et aucune appréciation.
+          required: true
+        - label: >-
+            Je n'ai pas activé le journaliseur `pronotepy` pour produire ces
+            informations.
+          required: true
