@@ -1,0 +1,118 @@
+site_name: Pronote NG
+site_description: >-
+  Intégration Home Assistant pour PRONOTE — seconde génération.
+  Ordonnanceur multi-cadence, limiteur de débit débité à l'admission,
+  et aucun secret dans un état d'entité.
+site_url: https://fiveelements.github.io/ha-pronote-ng/
+repo_url: https://github.com/FiveElements/ha-pronote-ng
+repo_name: FiveElements/ha-pronote-ng
+edit_uri: edit/main/docs/
+copyright: MIT — Jérôme Morille
+
+# The site is built from the same `docs/` tree the repository serves on GitHub,
+# with no duplication and no generated copies. That is the whole point of
+# docs-as-code here: a document is reviewed in the pull request that changes
+# the code it describes, and `mkdocs build --strict` fails the build on a link
+# that no longer resolves -- which is what actually keeps the two in step.
+docs_dir: docs
+
+theme:
+  name: material
+  # French, because every document is. This drives the search tokeniser and
+  # every piece of theme furniture ("Table des matières", "Rechercher"...).
+  language: fr
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    # The gold and green of the logo, in both directions. `media` picks the
+    # reader's system preference first; the toggles then override it.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Passer au thème sombre
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Passer au thème clair
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    # The documents here are long -- the specification is 1 500 lines and the
+    # user guide 1 450 -- so the sections are collapsible and the table of
+    # contents follows the reader down the page.
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+nav:
+  - Accueil: index.md
+  - Guide de l'utilisateur: GUIDE-UTILISATEUR.md
+  - Architecture: ARCHITECTURE.md
+  - Spécification:
+      - Spécification v2: SPECIFICATION.md
+      - Annexe A — entités et services: annexe-a-entites.md
+      - Annexe B — limiteur de débit: annexe-b-rate-limit.md
+      - Revue contradictoire de la v1: revue-contradictoire-v1.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Lien vers cette section
+      # GitHub's slugs, not Python-Markdown's. Every document here was written
+      # to be read on GitHub as well as on this site, and links inside them
+      # use GitHub anchors -- `#12-ecarts-avec-la-specification` with the
+      # accents intact. The default slugifier strips accents, so thirteen
+      # cross-references resolved on GitHub and silently went nowhere here.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        # Mermaid is rendered client-side by the theme rather than by a
+        # library declared here. This matters: the architecture document
+        # carries six diagrams and the user guide one, and on GitHub they are
+        # rendered natively from the same ```mermaid fences. One source, two
+        # renderers, no duplicated diagram.
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+# A broken anchor is a warning rather than a note, so `mkdocs build --strict`
+# fails on it. Without this the thirteen dead cross-references above were
+# reported at INFO and the build passed -- a link checker that does not fail
+# the build is a link checker nobody reads.
+validation:
+  anchors: warn
+  links:
+    unrecognized_links: warn
+
+plugins:
+  - search:
+      lang: fr
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/FiveElements/ha-pronote-ng
+      name: Le dépôt

@@ -1,0 +1,66 @@
+name: Docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Split deliberately per job rather than declared once at the top: the build
+# job needs nothing but the checkout, and only the deploy job may write. A
+# workflow that grants `pages: write` to its build step grants it to every
+# dependency that step installs (SPECIFICATION.md §11.1).
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements_docs.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_docs.txt
+
+      - name: mkdocs build --strict
+        # Strict, and with `validation.anchors: warn` in mkdocs.yml, so a
+        # cross-reference that no longer resolves fails the pull request that
+        # broke it. This is the half of docs-as-code that does the work: the
+        # documents live beside the code they describe and are reviewed in the
+        # same change, and this is what notices when they stop agreeing.
+        run: mkdocs build --strict
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Publish to GitHub Pages
+    # Only from main. A pull request builds the site to prove it still builds;
+    # publishing from a branch would let any fork's pull request replace the
+    # published documentation.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

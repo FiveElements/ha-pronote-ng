@@ -1,0 +1,8 @@
+# The documentation site, built by .github/workflows/docs.yml.
+#
+# Pinned, and pinned separately from requirements_test.txt: the docs build
+# shares no dependency with the test stack, and a floating theme version turns
+# an unrelated release into a broken site on the next docs push.
+mkdocs-material==9.7.7
+mkdocs==1.6.1
+pymdown-extensions==11.0.2

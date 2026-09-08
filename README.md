@@ -8,6 +8,14 @@
   Intégration Home Assistant pour PRONOTE — seconde génération.
 </p>
 
+<p align="center">
+  <a href="https://fiveelements.github.io/ha-pronote-ng/"><strong>Documentation</strong></a>
+  ·
+  <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">Guide de l'utilisateur</a>
+  ·
+  <a href="https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/">Architecture</a>
+</p>
+
 Le dépôt s'appelle <code>ha-pronote</code> ; l'intégration s'appelle
 <strong>Pronote NG</strong> et son domaine Home Assistant est
 <strong><code>pronote_ng</code></strong>, choisi pour cohabiter avec
@@ -87,6 +95,11 @@ Home Assistant **2026.2.0** minimum.
 
 ## Documentation
 
+Publiée sur <https://fiveelements.github.io/ha-pronote-ng/>, construite par
+MkDocs Material depuis ce même dossier `docs/` — il n'y a donc pas de copie à
+maintenir, et `mkdocs build --strict` fait échouer la *pull request* qui casse
+un lien interne.
+
 | Document | Contenu |
 | --- | --- |
 | [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) | **v2** — architecture, session, ordonnanceur, configuration, sécurité, i18n, qualité, jalons |
@@ -114,6 +127,14 @@ ruff check . && ruff format --check .
 mypy --strict custom_components/ scripts/
 pytest tests --cov=custom_components/pronote_ng --cov-branch
 python scripts/check_coverage.py coverage.xml
+```
+
+Pour la documentation :
+
+```bash
+pip install -r requirements_docs.txt
+mkdocs serve           # aperçu local, rechargement à chaud
+mkdocs build --strict  # ce que la CI exige
 ```
 
 Sous Windows, la moitié de la suite sans dépendance à Home Assistant — le
