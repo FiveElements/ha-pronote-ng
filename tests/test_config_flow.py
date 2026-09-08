@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator  # noqa: TC003 -- a pytest fixture annotation
 import json
+import pathlib
+from string import Formatter
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -613,3 +615,39 @@ async def test_a_qr_payload_that_is_json_but_not_an_object_is_refused(
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_QR_PAYLOAD: "invalid_qr_payload"}
     assert probe.call_count == 0, "nothing may reach the school for a bad payload"
+
+
+async def test_the_first_screen_supplies_every_placeholder_its_text_uses(
+    hass: HomeAssistant,
+) -> None:
+    """A placeholder nobody fills is rendered literally, braces and all.
+
+    The login-mode screen carries the integration's logo as a markdown image,
+    and the address is passed as a description placeholder rather than written
+    into the translation string -- hassfest rejects a URL inside one and names
+    this as the mechanism to use instead. The cost of that indirection is that
+    the string and the code that feeds it can drift apart, and the failure is
+    cosmetic-but-glaring: the very first screen of the flow greets a parent
+    with `![Pronote Next Generation]({logo})`.
+
+    So this reads the placeholders the catalogue actually asks for and checks
+    the flow supplies each one, rather than asserting a hard-coded name.
+    """
+    strings = json.loads(
+        (pathlib.Path("custom_components/pronote_ng/strings.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    description = strings["config"]["step"]["user"]["description"]
+    wanted = {name for _, name, _, _ in Formatter().parse(description) if name}
+    assert wanted, "the step's text uses no placeholder; this test is now moot"
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    assert result["type"] is FlowResultType.MENU
+    supplied = result.get("description_placeholders") or {}
+    missing = wanted - set(supplied)
+    assert not missing, f"the flow does not supply {sorted(missing)}"
+    assert supplied["logo"].startswith("https://")

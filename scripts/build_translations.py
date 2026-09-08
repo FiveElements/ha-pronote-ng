@@ -23,24 +23,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = ROOT / "custom_components" / "pronote_ng"
 
-#: The mark shown at the top of the first screen of the configuration flow.
-#:
-#: Referenced by URL and not by path, because `custom_components/pronote_ng/
-#: brand/` is read by the HACS validation and by nothing else: the Home
-#: Assistant frontend fetches an integration's icon from
-#: brands.home-assistant.io keyed by domain, and a custom integration reaches
-#: that host only once it is listed in `home-assistant/brands` under
-#: `custom_integrations/`. Until it is, a markdown image inside the step's own
-#: description is what puts the mark on the screen.
-#:
-#: Two consequences worth being explicit about: rendering that dialog performs
-#: one outbound request to raw.githubusercontent.com, and an instance with no
-#: route to GitHub shows the alt text instead of a picture. Neither blocks the
-#: flow, and no request is made to PRONOTE by this screen at all.
-LOGO_URL = (
-    "https://raw.githubusercontent.com/FiveElements/ha-pronote-ng/"
-    "main/custom_components/pronote_ng/brand/logo.png"
-)
 
 # ---------------------------------------------------------------------------
 # Entities. `(key, english, french)` per platform.
@@ -197,7 +179,7 @@ CONFIG_EN: dict[str, Any] = {
         "user": {
             "title": "Pronote Next Generation",
             "description": (
-                f"![Pronote Next Generation]({LOGO_URL})\n\n"
+                "![Pronote Next Generation]({logo})\n\n"
                 "Choose how to connect. The QR code from the PRONOTE mobile "
                 "app is the most reliable method: it enrols this Home "
                 "Assistant as a device and avoids storing your password."
@@ -327,7 +309,7 @@ CONFIG_FR: dict[str, Any] = {
         "user": {
             "title": "Pronote Next Generation",
             "description": (
-                f"![Pronote Next Generation]({LOGO_URL})\n\n"
+                "![Pronote Next Generation]({logo})\n\n"
                 "Choisissez le mode de connexion. Le QR code de l'application "
                 "mobile PRONOTE est le plus fiable : il enrôle ce Home "
                 "Assistant comme appareil et évite de conserver votre mot de "

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Pronote Next Generation",
-        "description": "![Pronote Next Generation](https://raw.githubusercontent.com/FiveElements/ha-pronote-ng/main/custom_components/pronote_ng/brand/logo.png)\n\nChoisissez le mode de connexion. Le QR code de l'application mobile PRONOTE est le plus fiable : il enrôle ce Home Assistant comme appareil et évite de conserver votre mot de passe.",
+        "description": "![Pronote Next Generation]({logo})\n\nChoisissez le mode de connexion. Le QR code de l'application mobile PRONOTE est le plus fiable : il enrôle ce Home Assistant comme appareil et évite de conserver votre mot de passe.",
         "menu_options": {
           "qr_code": "QR code de l'application mobile (recommandé)",
           "credentials": "Identifiant et mot de passe",
