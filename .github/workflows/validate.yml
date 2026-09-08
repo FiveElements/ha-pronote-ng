@@ -55,6 +55,12 @@ jobs:
           - ha-version: "latest"
             pytest-hacc: ""
             gate: false
+            # `fail-fast: false` only stops the other rows being cancelled; it
+            # does not stop this one failing the workflow. Without this the
+            # floating row gated every branch on upstream's next release,
+            # which is the opposite of what the comment above promises.
+            tolerate-failure: true
+    continue-on-error: ${{ matrix.tolerate-failure || false }}
     steps:
       - uses: actions/checkout@v5
 

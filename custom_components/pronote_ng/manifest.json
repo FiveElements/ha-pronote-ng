@@ -1,16 +1,16 @@
 {
   "domain": "pronote_ng",
   "name": "ha-pronote",
-  "version": "0.1.0",
-  "documentation": "https://github.com/FiveElements/ha-pronote-ng",
-  "issue_tracker": "https://github.com/FiveElements/ha-pronote-ng/issues",
   "codeowners": [
     "@jmorille"
   ],
   "config_flow": true,
+  "documentation": "https://github.com/FiveElements/ha-pronote-ng",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/FiveElements/ha-pronote-ng/issues",
   "requirements": [
     "pronotepy==2.15.6"
-  ]
+  ],
+  "version": "0.0.1"
 }

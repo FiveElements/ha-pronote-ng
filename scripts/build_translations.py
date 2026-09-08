@@ -1320,8 +1320,7 @@ def _services_yaml() -> str:
             # and `hassfest` failed on the same file. This is the whole defect,
             # and it is two spaces.
             lines.extend(
-                f"  {line}" if line else line
-                for line in selectors[key].splitlines()
+                f"  {line}" if line else line for line in selectors[key].splitlines()
             )
         lines.append("")
     return "\n".join(lines)
