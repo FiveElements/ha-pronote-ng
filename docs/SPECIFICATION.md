@@ -564,31 +564,38 @@ six requêtes réseau. Trois aggravations :
   `__init__`. Après un rafraîchissement automatique, `post()` estampille encore
   le bon `membre` mais `lessons()` envoie la ressource du parent.
 
-**Exigence.** La passerelle emploie une sous-classe dont `post()` ne se
-réauthentifie jamais :
-
-```python
-class _NoRefreshParentClient(pronotepy.ParentClient):
-    def post(self, function_name, onglet=None, data=None):
-        post_data: dict = {}
-        if onglet:
-            post_data["Signature"] = {
-                "onglet": onglet,
-                "membre": {"N": self._selected_child.id, "G": 4},
-            }
-        if data:
-            post_data["data"] = data
-        return self.communication.post(function_name, post_data)
-```
-
-La reconnexion redevient une décision du `SessionManager`, comptée par le
+**Exigence.** La passerelle emploie un client dont `post()` ne se réauthentifie
+jamais. La reconnexion redevient une décision du `SessionManager`, comptée par le
 limiteur. Bénéfice de bord indispensable au §6.5 : `Erreur.G = 10` devient un
 évènement explicite et **mesurable**.
 
-**Exigence.** La même sous-classe confine `Period.instances` : après chaque
-connexion, la passerelle retient les `Period` de sa propre session et retire du
-registre global celles qui appartiennent à une session close — jamais en le
-vidant (§3.3.2), toujours par différence.
+**Exigence — ne pas hériter de `ParentClient`.** La forme évidente serait une
+sous-classe `_NoRefreshParentClient(pronotepy.ParentClient)` surchargeant
+`post()`. C'est ce que proposait la revue de la v1, et **c'est la moins bonne des
+deux formes** : elle hérite d'une classe dont deux des trois défauts ci-dessus
+sont les siens, et elle les neutralise par surcharge — donc une méthode d'amont
+ajoutée demain les réintroduit sans que rien ne le signale.
+
+La forme retenue est un `HardenedClient(pronotepy.Client)` qui **réimplémente**
+la surface parent — liste des enfants, `set_child()`, signature `membre` — sur
+`Client`. Les deux défauts propres à `ParentClient` deviennent alors
+structurellement inatteignables plutôt que corrigés, et le §7.1 n'a plus de
+chemin fragile à surveiller. Un seul client couvre les deux types de compte,
+avec `is_parent_account` pour la seule chose qui diffère vraiment.
+
+**Exigence.** `refresh()` et `keep_alive()` **refusent** au lieu de se taire.
+Les rendre inopérants sans le dire laisserait croire à un appelant qu'une
+reconnexion a eu lieu ; refuser force le `SessionManager` à assumer la décision.
+
+**Exigence.** Le même client confine `Period.instances` : après chaque
+connexion, il retient les `Period` de sa propre session et retire du registre
+global celles qui appartiennent à une session close — jamais en le vidant
+(§3.3.2), toujours par différence.
+
+**Exigence.** Le module porte en tête la description des trois défauts d'amont
+qu'il existe pour contenir, avec leurs références. C'est la seule documentation
+qui a une chance d'être lue par la personne qui se demandera, dans deux ans,
+pourquoi ce client ne se contente pas d'hériter de `pronotepy`.
 
 ---
 
