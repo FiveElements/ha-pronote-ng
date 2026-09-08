@@ -23,6 +23,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = ROOT / "custom_components" / "pronote_ng"
 
+
 # ---------------------------------------------------------------------------
 # Entities. `(key, english, french)` per platform.
 #
@@ -176,8 +177,9 @@ TIERS: list[tuple[str, str, str]] = [
 CONFIG_EN: dict[str, Any] = {
     "step": {
         "user": {
-            "title": "PRONOTE",
+            "title": "Pronote Next Generation",
             "description": (
+                "![Pronote Next Generation]({logo})\n\n"
                 "Choose how to connect. The QR code from the PRONOTE mobile "
                 "app is the most reliable method: it enrols this Home "
                 "Assistant as a device and avoids storing your password."
@@ -192,8 +194,14 @@ CONFIG_EN: dict[str, Any] = {
             "title": "Enrol with a QR code",
             "description": (
                 "In the PRONOTE mobile app, open the account menu and generate "
-                "a QR code, then paste its content below along with the "
-                "four-digit code you chose. The QR code can only be used once."
+                "a QR code, choosing a four-digit code when asked.\n\n"
+                "The app draws the QR code as a picture, and the field below "
+                "wants the JSON it encodes. So scan it with a QR code reader "
+                "— your phone's camera or any scanner app — and share or copy "
+                "the text it gives you, then paste that text below with the "
+                "same four-digit code.\n\n"
+                "The QR code can only be used once: generate a new one if this "
+                "attempt fails."
             ),
             "data": {
                 "qr_payload": "QR code content (JSON)",
@@ -299,8 +307,9 @@ CONFIG_EN: dict[str, Any] = {
 CONFIG_FR: dict[str, Any] = {
     "step": {
         "user": {
-            "title": "PRONOTE",
+            "title": "Pronote Next Generation",
             "description": (
+                "![Pronote Next Generation]({logo})\n\n"
                 "Choisissez le mode de connexion. Le QR code de l'application "
                 "mobile PRONOTE est le plus fiable : il enrôle ce Home "
                 "Assistant comme appareil et évite de conserver votre mot de "
@@ -316,9 +325,17 @@ CONFIG_FR: dict[str, Any] = {
             "title": "Enrôler avec un QR code",
             "description": (
                 "Dans l'application mobile PRONOTE, ouvrez le menu du compte "
-                "et générez un QR code, puis collez son contenu ci-dessous "
-                "avec le code à quatre chiffres que vous avez choisi. Le QR "
-                "code n'est utilisable qu'une seule fois."
+                "et générez un QR code, en choisissant un code à quatre "
+                "chiffres lorsqu'il vous est demandé.\n\n"
+                "L'application affiche le QR code sous forme d'image, alors "
+                "que le champ ci-dessous attend le JSON qu'elle encode. "
+                "Utilisez donc un lecteur de QR code — l'appareil photo de "
+                "votre téléphone ou n'importe quelle application de scan — "
+                "pour le lire, puis partagez ou copiez le texte obtenu et "
+                "collez-le ci-dessous avec le même code à quatre "
+                "chiffres.\n\n"
+                "Le QR code n'est utilisable qu'une seule fois : regénérez-en "
+                "un si cette tentative échoue."
             ),
             "data": {
                 "qr_payload": "Contenu du QR code (JSON)",

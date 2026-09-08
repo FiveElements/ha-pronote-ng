@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "PRONOTE",
-        "description": "Choose how to connect. The QR code from the PRONOTE mobile app is the most reliable method: it enrols this Home Assistant as a device and avoids storing your password.",
+        "title": "Pronote Next Generation",
+        "description": "![Pronote Next Generation]({logo})\n\nChoose how to connect. The QR code from the PRONOTE mobile app is the most reliable method: it enrols this Home Assistant as a device and avoids storing your password.",
         "menu_options": {
           "qr_code": "QR code from the mobile app (recommended)",
           "credentials": "Username and password",
@@ -12,7 +12,7 @@
       },
       "qr_code": {
         "title": "Enrol with a QR code",
-        "description": "In the PRONOTE mobile app, open the account menu and generate a QR code, then paste its content below along with the four-digit code you chose. The QR code can only be used once.",
+        "description": "In the PRONOTE mobile app, open the account menu and generate a QR code, choosing a four-digit code when asked.\n\nThe app draws the QR code as a picture, and the field below wants the JSON it encodes. So scan it with a QR code reader — your phone's camera or any scanner app — and share or copy the text it gives you, then paste that text below with the same four-digit code.\n\nThe QR code can only be used once: generate a new one if this attempt fails.",
         "data": {
           "qr_payload": "QR code content (JSON)",
           "qr_pin": "Four-digit code",

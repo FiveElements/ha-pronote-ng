@@ -235,6 +235,30 @@ OPTION_RANGES: Final[dict[str, tuple[float, float]]] = {
     OPT_READ_TIMEOUT: (10, 300),
 }
 
+#: The mark shown at the top of the first screen of the configuration flow.
+#:
+#: A URL and not a path, because ``custom_components/pronote_ng/brand/`` is
+#: read by the HACS validation and by nothing else: the Home Assistant frontend
+#: fetches an integration's icon from brands.home-assistant.io keyed by domain,
+#: and a custom integration reaches that host only once it is listed in
+#: ``home-assistant/brands`` under ``custom_integrations/``. Until it is, a
+#: markdown image in the step's own description is what puts the mark on the
+#: screen.
+#:
+#: Passed as a description placeholder rather than written into the translation
+#: string, because hassfest rejects a URL inside one and names this as the
+#: mechanism to use instead -- which is also the better shape: the address
+#: lives here, in code, rather than duplicated across three catalogues.
+#:
+#: Two consequences worth stating rather than discovering: rendering that
+#: dialog performs one outbound request to raw.githubusercontent.com, and an
+#: instance with no route to GitHub shows the alt text instead of a picture.
+#: Neither blocks the flow, and this screen sends nothing to PRONOTE.
+BRAND_LOGO_URL: Final = (
+    "https://raw.githubusercontent.com/FiveElements/ha-pronote-ng/"
+    "main/custom_components/pronote_ng/brand/logo.png"
+)
+
 #: The range shared by every per-tier interval. It cannot live in
 #: :data:`OPTION_RANGES`, which is keyed by option name, because there are ten
 #: of these keys and they are produced by formatting
