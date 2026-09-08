@@ -1,0 +1,29 @@
+/* Feuille de style complémentaire du thème Material.
+   Une seule chose ici : la taille du logo dans la barre de titre. */
+
+/* Material contraint le logo d'en-tête à 1.2rem (24 px), ce qui écrase les
+   détails du papillon. On l'agrandit à 1.8rem (36 px) en reprenant le
+   rembourrage du bouton, parce que la hauteur de l'en-tête est dictée par
+   `.md-header__title` (2.4rem, soit 48 px) : sans cette compensation,
+   l'en-tête grandit et le titre se décale d'autant.
+
+   L'arithmétique, avec un `rem` à 20 px dans Material :
+     avant   24 px + 2 × 8 px (padding) + 2 × 4 px (margin) = 48 px
+     après   36 px + 2 × 2 px (padding) + 2 × 4 px (margin) = 48 px
+   La place occupée, en hauteur comme en largeur, est donc exactement la
+   même qu'avant : rien n'est repoussé. Aucune media query n'est nécessaire
+   par ailleurs, le thème masquant lui-même ce logo en dessous de 76.25em
+   (il réapparaît dans le tiroir de navigation, à une autre taille, réglée
+   par un autre sélecteur que ceux d'ici).
+
+   `width: auto` est déjà la valeur du thème ; on la répète pour que la
+   règle reste correcte si un jour la hauteur seule est modifiée. */
+.md-header__button.md-logo {
+  padding: 0.1rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 1.8rem;
+  width: auto;
+}

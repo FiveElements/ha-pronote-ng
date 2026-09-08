@@ -78,10 +78,11 @@ rien d'irréversible et qu'attendre bloquerait le reste :
 
 - **Documentation et messages en français**, identifiants de code en anglais
   (convention Home Assistant).
-- **Domaine `pronote`** et non `pronote`, pour cohabiter avec l'intégration
-  existante pendant la migration. Le renommage en `pronote` n'aura de sens que
-  si ce module la remplace, et il changera alors tous les identifiants
-  d'entités — décision de fin de parcours, pas de début.
+- **Domaine `pronote`** et non `pronote`, pour cohabiter avec une autre
+  intégration PRONOTE déjà installée pendant la migration. Le renommage en
+  `pronote` n'aura de sens que si ce module devient le seul installé, et il
+  changera alors tous les identifiants d'entités — décision de fin de parcours,
+  pas de début.
 - **`pronotepy` comme dépendance**, encapsulée derrière un adaptateur (§3.4).
 
 ---
@@ -382,7 +383,7 @@ depuis la boucle.
 
 ### 3.3 Déduplication au niveau de l'appel
 
-C'est le gain principal sur l'existant. `pronotepy` ne met rien en cache et
+C'est le gain principal de cette conception. `pronotepy` ne met rien en cache et
 expose chaque donnée comme une propriété qui refait un `post()` :
 
 | Propriété `pronotepy` | Appel émis | Onglet |
@@ -473,8 +474,8 @@ retombée, et l'entité correspondante devient indisponible plutôt que fausse.
 ### 3.4 Pourquoi `pronotepy` et non un client propre
 
 Le protocole est chiffré, ses clés tournent trois fois par session, et il change
-sans préavis ni versionnement — le repli sur le défi brut que porte
-`pronotepy_hotfix.py` dans l'intégration actuelle en est la preuve. Réécrire
+sans préavis ni versionnement — chaque rupture se solde par un correctif
+d'urgence, jusqu'au repli sur le défi brut quand le chiffrement bouge. Réécrire
 cette couche, c'est reprendre à son compte une dette qu'un projet amont assume
 déjà, et se priver de ses correctifs.
 
@@ -751,8 +752,8 @@ Les trois fusions, avec leur raison :
 palier peut être désactivé — ce qui supprime aussi ses entités.
 
 **Exigence.** Le palier `history` ne parcourt que les périodes **closes**. Une
-période close ne change plus : la relire toutes les trois heures, comme le fait
-l'intégration actuelle, dépense des appels pour un résultat constant.
+période close ne change plus : la relire toutes les trois heures dépense des
+appels pour un résultat constant.
 
 **Exigence.** `homework` charge l'année entière en un appel et filtre dans la
 couche DTO. `Client.homework()` construit son domaine comme une **plage de
@@ -1001,7 +1002,47 @@ ce qui rend les déclencheurs d'appareil du §2.3 lisibles.
 
 Ce choix a une conséquence voulue : le budget d'appels est **partagé entre les
 enfants d'un même compte**, parce que c'est la même session et la même adresse
-IP que le serveur voit.
+IP que le serveur voit. Un compte parent n'est pas N comptes élève, c'est une
+session multiplexée : les appels restent sérialisés *à travers* les enfants.
+
+#### Ce qui sépare un compte parent d'un compte élève
+
+Moins qu'on ne l'imagine, et c'est ce qui le rend piégeux. `ParentClient` hérite
+de `Client` : même surface de données, mêmes méthodes. Il n'en surcharge qu'une,
+`post()`, qui ajoute un champ à l'enveloppe —
+`"membre": {"N": <id enfant>, "G": 4}`. Au niveau du fil, c'est toute la
+différence. Le `genreEspace` lui-même n'est pas propre à la classe : il vaut
+`int(attributes["a"])`, lu dans la page d'amorçage, donc c'est l'URL
+(`eleve.html` ou `parent.html`) qui décide du type de compte.
+
+Le reste est de la mécanique côté client, et elle porte trois pièges.
+
+**Exigence — jamais de sélection implicite.** `ParentClient.__init__` positionne
+`_selected_child = self.children[0]`. Un code qui omet `set_child()` ne lève
+donc aucune erreur : il rapporte les données du **premier** enfant, silencieuse-
+ment. La passerelle n'appelle jamais un onglet sans avoir explicitement
+sélectionné l'enfant dans le même bloc atomique, et un test de contrat le vérifie
+avec deux enfants.
+
+**Exigence.** Chaque DTO porte le `student_id` de l'enfant auquel il appartient,
+et le coordinateur refuse un instantané dont le `student_id` ne correspond pas à
+l'enfant demandé. C'est la seule protection réelle contre l'inversion décrite au
+§3.2 : sans elle, le défaut ne se voit qu'à l'œil nu, sur un tableau de bord, par
+un parent qui connaît l'emploi du temps de ses enfants.
+
+**Exigence.** Les deux défauts d'amont identifiés au §3.6 — `ParentClient.post`
+sans garde `_refreshing`, et `refresh()` qui perd la sélection de l'enfant — sont
+**exclusivement** sur le chemin parent. Un compte élève n'en rencontre aucun. Le
+client durci les neutralise, mais la revue de code doit savoir que le chemin
+parent est le chemin fragile.
+
+**Exigence — à vérifier avant M5.** Les onglets accessibles viennent de
+`listeOnglets`, propre au compte : un parent et son enfant peuvent avoir des
+surfaces de données différentes sur le même établissement. Et une écriture partie
+d'un compte parent porte bien la signature `membre`, donc l'appel est formé — que
+PRONOTE *autorise* un parent à marquer un devoir fait relève des droits de
+l'établissement et **n'est pas déductible de la source**. À tester sur un compte
+réel avant d'annoncer `UPDATE_ITEM` sur l'entité `todo` (§8.3).
 
 ### 7.2 Flux initial
 
@@ -1107,8 +1148,8 @@ clair, identifiant compris.
 
 ### 8.2 L'URL iCal n'est pas une entité
 
-L'intégration actuelle expose cette URL comme état d'un capteur. Or quiconque la
-détient lit l'emploi du temps de l'élève sans identifiant ni mot de passe, et
+Exposer cette URL comme état d'un capteur est commode, et dangereux : quiconque
+la détient lit l'emploi du temps de l'élève sans identifiant ni mot de passe, et
 les états partent dans l'enregistreur, les sauvegardes, les captures d'écran et
 les rapports de bug.
 
@@ -1339,9 +1380,9 @@ un fichier court dont seuls les textes changent.
 
 ### 10.10 Traductions vérifiées, pas espérées
 
-L'intégration actuelle a livré une clé `nickname` référencée par le code et
-absente des fichiers de traduction. Le symptôme est silencieux : l'interface
-affiche la clé brute.
+Une clé référencée par le code mais absente des fichiers de traduction ne fait
+échouer ni la construction ni le démarrage. Le symptôme est silencieux :
+l'interface affiche la clé brute.
 
 **Exigence.** Un test (`test_translations.py`) parcourt le code, collecte tous
 les `translation_key` employés — entités, états d'énumération, services, champs,
@@ -1462,24 +1503,24 @@ chaînes en dur qu'il faut retrouver une par une.
 
 ---
 
-## 13. Écarts assumés avec l'intégration actuelle
+## 13. Écarts assumés et leur coût
 
-À lire comme une liste de ruptures volontaires, pas de reproches : ces choix
-coûtent une migration, et il faut savoir ce qu'on achète.
+À lire comme une liste de ruptures volontaires avec la manière la plus simple
+de faire : chacune coûte quelque chose, et il faut savoir ce qu'on achète.
 
-| Sujet | `hass-pronote` | Ici | Coût |
-| --- | --- | --- | --- |
-| Automatisation | templates sur des attributs de liste | entités primitives + `event` + déclencheurs d'appareil | beaucoup plus d'entités |
-| Cadence | un intervalle unique | dix paliers réglables | plus de code d'ordonnancement |
-| Appels | 26 par cycle | ~10 par cycle complet, ~180/jour | un appel brut par onglet à écrire |
-| Session | gérée par `pronotepy` | client durci, reconnexion mesurée | une sous-classe à maintenir |
-| Débit | non limité | trois couches configurables | un module de plus |
-| Objets | `pronotepy` jusque dans les entités | DTO figés | une couche de correspondance à maintenir |
-| Fuseau | naïf | conscient, à la frontière | une option de plus à expliquer |
-| URL iCal | état d'un capteur | service à réponse | perte d'un capteur existant |
-| Devoirs | capteur en lecture | entité `todo` avec écriture | surface d'écriture à sécuriser |
-| i18n | traductions partielles, une clé manquante livrée | `strings.json` de référence, couverture testée | un test de plus, aucune chaîne en dur tolérée |
-| Historique | périodes closes relues en boucle | relues une fois par jour | aucun |
+| Sujet | Choix | Coût |
+| --- | --- | --- |
+| Automatisation | entités primitives + `event` + déclencheurs d'appareil, plutôt que des templates sur des attributs de liste | beaucoup plus d'entités |
+| Cadence | dix paliers réglables, plutôt qu'un intervalle unique | plus de code d'ordonnancement |
+| Appels | ~10 par cycle complet, ~180/jour, par déduplication | un appel brut par onglet à écrire |
+| Session | client durci, reconnexion mesurée, plutôt que la gestion par défaut de `pronotepy` | une sous-classe à maintenir |
+| Débit | trois couches configurables, plutôt qu'aucune limite | un module de plus |
+| Objets | DTO figés, plutôt que des objets `pronotepy` jusque dans les entités | une couche de correspondance à maintenir |
+| Fuseau | conscient, converti à la frontière, plutôt que naïf | une option de plus à expliquer |
+| URL iCal | service à réponse, jamais un état | l'URL n'est pas lisible dans un template |
+| Devoirs | entité `todo` avec écriture, plutôt qu'un capteur en lecture seule | surface d'écriture à sécuriser |
+| i18n | `strings.json` de référence, couverture testée | un test de plus, aucune chaîne en dur tolérée |
+| Historique | périodes closes relues une fois par jour, pas en boucle | aucun |
 
 ---
 

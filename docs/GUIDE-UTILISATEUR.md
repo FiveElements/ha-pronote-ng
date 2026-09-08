@@ -1,10 +1,10 @@
-# Guide de l'utilisateur — ha-pronote
+# Guide de l'utilisateur — Pronote NG
 
 Ce guide est destiné aux parents et aux élèves qui veulent voir leurs données
 PRONOTE dans Home Assistant et écrire quelques automatisations autour. Il ne
 suppose aucune connaissance de Python ni du fonctionnement interne de PRONOTE.
 
-`ha-pronote` est une intégration personnalisée qui lit un compte PRONOTE —
+**Pronote NG** est une intégration personnalisée qui lit un compte PRONOTE —
 compte parent ou compte élève — et en publie le contenu sous forme d'entités
 Home Assistant : emploi du temps, devoirs, notes, absences, menus de la cantine,
 messagerie. Elle ne modifie rien dans PRONOTE, sauf si vous l'autorisez
@@ -33,6 +33,7 @@ section de ce guide, lisez celle-là.
 9. [Automatisations](#9-automatisations)
 10. [Dépannage](#10-dépannage)
 11. [Vie privée](#11-vie-privée)
+12. [Désinstaller](#12-désinstaller)
 
 ---
 
@@ -42,16 +43,16 @@ section de ce guide, lisez celle-là.
 
 | À préparer | Pourquoi |
 | --- | --- |
-| Home Assistant **2026.2.0** ou plus récent | L'intégration utilise des mécanismes qui n'existent pas avant cette version. |
+| Home Assistant **2026.8.0** ou plus récent | L'intégration utilise des mécanismes qui n'existent pas avant cette version. |
 | L'adresse de l'espace PRONOTE de l'établissement | Une adresse terminée par `eleve.html` ou `parent.html`. Nécessaire pour les modes « identifiants » et « ENT ». |
 | L'application mobile PRONOTE, installée et connectée | Nécessaire pour le mode QR code, qui est le mode recommandé. |
 | Le code PIN à deux facteurs du compte, s'il en a un | Il est demandé au moment de la connexion et **n'est jamais conservé**. Gardez-le accessible : il sera redemandé si PRONOTE l'exige de nouveau. |
 
-L'intégration cohabite sans conflit avec l'intégration PRONOTE communautaire
-déjà installée chez beaucoup d'utilisateurs : elle occupe un domaine différent,
-`pronote_ng`, précisément pour que l'on puisse l'essayer sans rien désinstaller.
+L'intégration cohabite sans conflit avec une autre intégration PRONOTE déjà
+installée : elle occupe un domaine différent, `pronote_ng`, précisément pour
+que l'on puisse l'essayer sans rien désinstaller.
 Vous verrez donc ce nom apparaître dans les identifiants d'entités et dans les
-appels de service. Le nom du projet, lui, est **`ha-pronote`**.
+appels de service. Le dépôt, lui, s'appelle **`ha-pronote-ng`**.
 
 ### 1.2 Par HACS, en dépôt personnalisé
 
@@ -63,7 +64,7 @@ l'ajouter comme dépôt personnalisé une fois.
 2. Dans le champ d'adresse, collez
    `https://github.com/FiveElements/ha-pronote-ng`, choisissez la catégorie
    **Intégration**, puis validez.
-3. Recherchez **ha-pronote** dans HACS et installez-la.
+3. Recherchez **Pronote NG** dans HACS et installez-la.
 4. **Redémarrez Home Assistant.** L'intégration n'apparaît pas avant le
    redémarrage.
 5. Allez dans **Paramètres → Appareils et services → Ajouter une intégration**,
@@ -1438,6 +1439,295 @@ Et pensez à le remettre à `warning` une fois le problème signalé.
 - **Les données d'autres élèves ne sont jamais lues.** Les élèves de la classe,
   la corbeille et les brouillons de la messagerie, les contenus de cours détaillés
   sont délibérément hors périmètre.
+
+---
+
+## 12. Désinstaller
+
+Une intégration se juge aussi à la propreté de son retrait. Celui-ci se fait en
+quatre temps, dont trois que Home Assistant ne fait **pas** pour vous : supprimer
+l'entrée, nettoyer ce qui la référençait ailleurs, retirer le code, et — si vous
+avez enrôlé Home Assistant par QR code — révoquer l'appareil côté PRONOTE.
+
+### 12.1 Supprimer l'entrée de configuration
+
+**Paramètres → Appareils et services → Pronote NG**, l'entrée du compte, menu
+**⋮**, **Supprimer**.
+
+Ce que cela fait, tout seul et immédiatement :
+
+- **la collecte s'arrête.** Le déchargement de l'entrée annule le tic de
+  l'ordonnanceur et ferme le transport HTTP : plus une seule requête ne part vers
+  PRONOTE. C'est le point qui compte si votre but était de soulager le budget
+  d'appels ou de lever un doute sur un blocage d'adresse ;
+- **les entités et les appareils disparaissent** : l'appareil du compte, un
+  appareil par enfant suivi, et toutes leurs entités ;
+- **les données de l'entrée sont effacées** : l'adresse de l'espace, le mode de
+  connexion, l'identifiant, le mot de passe ou le jeton d'appareil, la liste des
+  enfants suivis. C'est tout ce que l'intégration écrivait sur le disque — elle ne
+  tient aucun fichier à elle, ni cache, ni base annexe. Le calendrier des
+  collectes et l'état du limiteur ne vivaient qu'en mémoire.
+
+Deux précisions que l'on ne devine pas :
+
+- **la session côté serveur n'est pas fermée.** Le protocole PRONOTE, tel que la
+  bibliothèque l'expose, n'offre aucune déconnexion : la suppression jette le
+  transport et les cookies de notre côté, et la session côté serveur expire
+  d'elle-même par inactivité. Vous n'avez rien à faire, et il n'existe rien de
+  plus à faire ;
+- **un signalement de réparation encore ouvert** (identifiants refusés, PIN
+  demandé, plafond bientôt atteint) peut rester affiché après la suppression :
+  l'intégration ne le referme pas en partant. Il devient inactif au redémarrage
+  suivant et quitte alors la page **Réparations** ; vous pouvez aussi l'ignorer
+  d'un clic sans attendre.
+
+Si vous avez configuré **plusieurs comptes** — celui de chaque parent, ou un
+compte parent à côté du compte de l'élève —, chacun est une entrée distincte et
+se supprime séparément.
+
+### 12.2 Ce qui ne part pas tout seul
+
+C'est la partie qu'il faut lire. Supprimer l'entrée ne touche à rien de ce qui
+*référençait* l'intégration : ni l'historique, ni vos automatisations, ni les
+lignes que vous aviez ajoutées à `configuration.yaml`.
+
+#### L'historique dans la base de données
+
+Les entités disparaissent, **leur historique reste**. Le `recorder` conserve les
+états passés dans sa base, et ces lignes ne sont pas supprimées avec l'entrée :
+elles vivent jusqu'à l'expiration de `purge_keep_days` (dix jours par défaut).
+Les notes, les absences et les décomptes de devoirs des derniers jours sont donc
+encore lisibles dans la base après la désinstallation, et dans chaque sauvegarde
+qui la contient.
+
+**Relevez les identifiants d'entités *avant* de supprimer l'entrée.** C'est le
+seul moment où la liste est encore sous vos yeux — la page de l'intégration, puis
+son compteur d'entités. Vous en aurez besoin pour la purge, car les identifiants
+sont construits sur le **nom de l'enfant** et non sur le domaine `pronote_ng`
+(§ [4](#4-catalogue-des-entités)) : il n'existe aucun motif générique qui les
+attrape tous.
+
+Une fois les identifiants en main, **Outils de développement → Actions**, action
+`recorder.purge_entities` :
+
+```yaml
+action: recorder.purge_entities
+data:
+  keep_days: 0
+  entity_globs:
+    - sensor.enfant_un_*
+    - binary_sensor.enfant_un_*
+    - calendar.enfant_un_*
+    - todo.enfant_un_*
+    - event.enfant_un_*
+    - image.enfant_un_*
+```
+
+Un motif aussi large attrape aussi ce qui ne venait pas de l'intégration mais
+porte le même préfixe : relisez-le avant de valider, une purge ne se défait pas.
+
+Deux limites de cette action, qu'il vaut mieux connaître :
+
+- elle purge les **états et les évènements**, **pas les statistiques de longue
+  durée**. Vingt-cinq capteurs *par enfant* déclarent une classe de mesure et
+  alimentent donc des statistiques horaires : celles-là se suppriment à part, par
+  **Outils de développement → Statistiques**, qui liste les entités devenues
+  introuvables et propose d'effacer leurs statistiques ;
+- **exclure les entités dans `configuration.yaml` ne purge pas le passé.** Un
+  bloc `recorder:` avec `exclude:` empêche d'écrire de *nouvelles* lignes, il n'en
+  efface aucune. Pour appliquer les exclusions rétroactivement, c'est l'action
+  `recorder.purge` avec `apply_filter: true`.
+
+#### Les automatisations, les scripts, les scènes et les cartes
+
+Rien de tout cela n'est supprimé, et rien ne vous avertit. Une automatisation qui
+écoutait un appareil enfant, un script qui appelait `pronote_ng.mark_homework_done`,
+une carte de tableau de bord qui affichait `sensor.enfant_un_prochain_cours` :
+tout reste en place et **casse en silence**. Une automatisation dont le
+déclencheur pointe un appareil qui n'existe plus ne se déclenche jamais — sans
+erreur, sans trace, sans rien.
+
+Pour les retrouver — et le meilleur moment est **avant** de supprimer l'entrée,
+tant que les appareils existent encore :
+
+- ouvrez la **fiche de l'appareil** de chaque enfant : Home Assistant y liste les
+  automatisations, les scripts et les scènes qui le référencent. La fiche d'une
+  entité en fait autant, dans son onglet des éléments liés. C'est la seule
+  méthode exhaustive, et elle cesse de fonctionner une fois l'entrée supprimée ;
+- après coup, il reste la recherche : dans **Paramètres → Automatisations et
+  scènes**, cherchez `pronote`, puis le nom de l'enfant tel qu'il apparaissait
+  dans les identifiants d'entités ;
+- les cartes se repèrent à l'œil : une entité inconnue s'affiche en « Entité non
+  disponible » sur le tableau de bord ;
+- si vos automatisations sont en YAML, un `grep -rn "pronote_ng\|enfant_un"` sur
+  votre dossier de configuration est plus rapide que l'interface.
+
+#### Les blueprints importés
+
+Les sept blueprints livrés (§ [9.1](#91-les-sept-blueprints-livrés)) ne sont pas
+installés par l'intégration : vous les avez importés vous-même, et ils ne partent
+donc pas avec elle. **Deux choses distinctes sont à retirer**, dans cet ordre :
+
+1. **les automatisations créées à partir d'un blueprint** — ce sont des
+   automatisations ordinaires, listées dans **Paramètres → Automatisations et
+   scènes** ; supprimez-les une par une ;
+2. **le blueprint lui-même** — **Paramètres → Automatisations et scènes → onglet
+   Blueprints**, puis le menu du blueprint, **Supprimer**. Home Assistant refuse
+   de supprimer un blueprint encore utilisé par une automatisation et vous montre
+   lesquelles : c'est le moyen le plus commode de finir l'étape 1.
+
+Le fichier importé vit dans un sous-dossier de `config/blueprints/automation/` ;
+si vous préférez le retirer à la main, c'est là qu'il faut regarder, et un
+rechargement des automatisations suffit ensuite.
+
+#### Les lignes `logger:` ajoutées pour le dépannage
+
+Si vous avez suivi le § [11.3](#113-nactivez-jamais-le-mode-debug-du-journaliseur-pronotepy)
+pour préparer un rapport de bug, votre `configuration.yaml` contient encore :
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.pronote_ng: debug
+```
+
+Ce bloc **survit à la désinstallation** et sera relu au démarrage suivant : il ne
+fera plus rien d'utile, mais il restera là. Retirez la ligne
+`custom_components.pronote_ng: debug` — et le bloc `logs:` entier s'il ne
+contenait que celle-là. Un `logger.set_level` passé à chaud, lui, ne survit pas
+au redémarrage : il n'y a rien à défaire.
+
+#### Les sauvegardes
+
+Une sauvegarde prise **avant** la suppression contient encore l'entrée de
+configuration, donc le mot de passe ou le jeton d'appareil, et la base
+d'historique avec les données PRONOTE. C'est normal et ce n'est pas un défaut,
+mais deux conséquences valent d'être dites : restaurer une telle sauvegarde
+ressuscite l'intégration, identifiants compris ; et si vous désinstallez
+*précisément* pour ne plus avoir ces données chez vous, il faut aussi retirer les
+sauvegardes concernées.
+
+### 12.3 Retirer le code
+
+**Supprimez l'entrée avant les fichiers**, pas l'inverse : sans son code, une
+entrée devient un résidu que Home Assistant signale comme non chargeable à chaque
+démarrage.
+
+**Si vous avez installé par HACS** (§ [1.2](#12-par-hacs-en-dépôt-personnalisé)),
+il y a deux gestes, et le second est celui que tout le monde oublie :
+
+1. dans **HACS**, ouvrez **Pronote NG**, puis son menu **⋮**, et choisissez
+   **Supprimer** (« Désinstaller » selon la version de HACS). Les fichiers de
+   `custom_components/pronote_ng/` sont effacés ;
+2. retirez le **dépôt personnalisé** : menu **⋮** de HACS →
+   **Dépôts personnalisés** → l'entrée `FiveElements/ha-pronote-ng` → supprimer.
+   Sans cela HACS continue d'interroger le dépôt et de vous proposer ses mises à
+   jour d'une intégration que vous n'avez plus.
+
+**Si vous avez installé à la main** (§ [1.3](#13-manuellement)), supprimez le
+dossier `config/custom_components/pronote_ng/` en entier.
+
+Dans les deux cas, **redémarrez Home Assistant** pour finir. Python garde les
+modules déjà importés en mémoire : jusqu'au redémarrage, l'intégration est encore
+chargée même si son dossier a disparu.
+
+### 12.4 Côté PRONOTE : révoquer l'appareil enrôlé
+
+Ce point ne concerne que le **mode QR code**, et il n'est écrit presque nulle
+part. En mode QR code, l'intégration se connecte en mode `token` : elle s'est
+donc **enrôlée comme un appareil** auprès de PRONOTE, exactement comme un
+téléphone de plus, avec un identifiant d'appareil tiré une fois pour toutes et un
+nom — `Home Assistant` par défaut, ou celui que vous avez saisi dans le
+formulaire, et c'est ce nom que l'établissement voit.
+
+Supprimer l'entrée **ne dit rien à PRONOTE**. Il n'y a pas de déconnexion dans le
+protocole, donc :
+
+- l'appareil reste **inscrit** côté PRONOTE, sous le nom que vous avez donné.
+  L'intégration n'a aucun moyen de l'en retirer : le geste, s'il est possible, est
+  à faire depuis l'application mobile ;
+- le dernier jeton connu reste techniquement valable jusqu'à ce que PRONOTE le
+  périme de son côté. Le jeton, lui, a bien disparu de chez vous : il vivait dans
+  l'entrée de configuration et il est parti avec elle.
+
+**Ce que vous pouvez faire.** Dans l'application mobile PRONOTE, dans l'espace de
+gestion des appareils du compte — *si votre établissement l'expose* : les menus de
+l'application varient d'une version et d'un établissement à l'autre, et ce guide
+ne prétend pas décrire un chemin qu'il ne peut pas vérifier —, retirez l'appareil
+portant le nom que vous avez donné à Home Assistant. À défaut, l'administrateur
+PRONOTE de l'établissement peut le faire.
+
+**Un ré-ajout par QR code enrôle un appareil de plus.** L'identifiant d'appareil
+est tiré au hasard à chaque nouvelle installation : si vous supprimez et
+recréez l'entrée plusieurs fois — pour changer la sélection des enfants, par
+exemple (§ 12.5) —, la liste des appareils du compte s'allonge d'autant. Faites
+le ménage de temps en temps.
+
+En **mode identifiants** ou **mode ENT**, il n'y a aucun appareil à révoquer :
+l'intégration se connecte comme un navigateur, avec votre identifiant et votre mot
+de passe. Ces deux valeurs étaient stockées dans l'entrée et sont parties avec
+elle. Si vous voulez malgré tout couper tout accès résiduel, changez le mot de
+passe du compte dans PRONOTE.
+
+### 12.5 Retirer un seul enfant, sans tout désinstaller
+
+Disons-le franchement : **l'intégration ne sait pas encore le faire proprement.**
+La sélection des enfants se fait à l'installation, il n'y a pas d'étape de
+reconfiguration, et la fiche d'un appareil enfant n'offre aucun bouton
+« Supprimer l'appareil » qui fonctionne — l'intégration ne déclare pas le point
+d'entrée que Home Assistant exigerait pour cela. Supprimer un appareil enfant du
+registre, si vous y parvenez par un autre moyen, le verrait recréé au prochain
+chargement.
+
+La seule manœuvre qui marche aujourd'hui, celle qu'annonce déjà le
+§ [3](#3-comptes-parents-et-plusieurs-enfants) :
+
+1. supprimez l'entrée ;
+2. ré-ajoutez le compte en ne cochant, dans « Enfants à suivre », que les enfants
+   que vous voulez garder.
+
+Trois choses à savoir avant de vous lancer :
+
+- **en mode QR code, il faut un QR code neuf.** L'ancien a été invalidé à
+  l'enrôlement, et le contenu du QR n'est pas conservé : générez-en un nouveau
+  dans l'application mobile juste avant de recommencer (§
+  [2.2](#22-qr-code-de-lapplication-mobile-recommandé)) ;
+- **n'enchaînez pas les tentatives.** Le garde-fou qui compte les échecs de
+  connexion est unique pour toute l'installation et **survit à la suppression de
+  l'entrée** : il protège l'adresse IP, pas une entrée. Supprimer et recréer ne
+  remet pas les compteurs à zéro ; une connexion réussie, elle, les efface ;
+- **vos personnalisations d'entités sont perdues.** Les identifiants d'entités
+  sont reconstruits à partir des noms et reviennent en général à l'identique, donc
+  vos automatisations retombent sur leurs pieds. Mais l'identifiant *interne* de
+  chaque entité contient celui de l'entrée de configuration, qui change : tout ce
+  que vous aviez réglé dans le registre — renommage, icône, pièce, entités
+  désactivées, unités — est à refaire.
+
+### 12.6 Ce qu'il n'y a pas à nettoyer
+
+Pour finir sur une bonne nouvelle, et parce que c'est la question que l'on se
+pose : **aucun mot de passe, aucun jeton, aucun code ne subsiste sur le disque
+après la suppression de l'entrée.**
+
+- Le **code PIN à deux facteurs** n'est jamais écrit nulle part : le flux de
+  configuration le retire explicitement des données conservées avant de créer
+  l'entrée. Il n'a donc rien laissé à effacer, et c'est bien pourquoi un
+  formulaire de reconnexion existe.
+- Le **contenu du QR code** et son **code à quatre chiffres** subissent le même
+  sort, pour la même raison. Le QR code, de toute façon, est à usage unique.
+- Le **jeton d'appareil** et, en mode identifiants, le **mot de passe** vivaient
+  dans l'entrée de configuration. Ils partent avec elle.
+- L'**URL iCal**, le **bloc d'identité** et le **lien du PDF d'emploi du temps**
+  ne sont stockés nulle part, jamais (§ [11.1](#111-quelles-données-sortent-et-où-elles-vont)) :
+  ce sont des réponses de service, vivantes le temps d'un script.
+- L'intégration **n'écrit aucun fichier à elle** : pas de cache, pas de base
+  annexe, rien sous `config/` en dehors de son propre dossier de code et de
+  l'entrée de configuration. Le calendrier des collectes et les compteurs du
+  limiteur ne sont volontairement gardés qu'en mémoire.
+
+Le seul résidu en mémoire est le garde-fou de connexion du § 12.5, et il
+disparaît au redémarrage.
 
 ---
 

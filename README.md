@@ -1,48 +1,92 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Pronote NG" width="220">
+  <img src="docs/assets/logo.png" alt="Pronote NG" width="180">
 </p>
 
 <h1 align="center">Pronote NG</h1>
 
 <p align="center">
-  Intégration Home Assistant pour PRONOTE — seconde génération.
+  <strong>Intégration Home Assistant pour PRONOTE — seconde génération.</strong>
 </p>
 
 <p align="center">
-  <a href="https://fiveelements.github.io/ha-pronote-ng/"><strong>Documentation</strong></a>
+  <a href="https://fiveelements.github.io/ha-pronote-ng/">Documentation</a>
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">Guide de l'utilisateur</a>
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/">Architecture</a>
 </p>
 
-Le dépôt s'appelle <code>ha-pronote</code> ; l'intégration s'appelle
-<strong>Pronote NG</strong> et son domaine Home Assistant est
-<strong><code>pronote_ng</code></strong>, choisi pour cohabiter avec
-l'intégration existante sans conflit de domaine.
+<p align="center">
+  <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&label=validate&logo=github" alt="Validate"></a>
+  <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white" alt="Hassfest"></a>
+  <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&label=HACS" alt="HACS"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2026.8.0%2B-41BDF5?logo=homeassistant&logoColor=white" alt="Home Assistant 2026.8.0 minimum">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-green" alt="Licence MIT"></a>
+</p>
 
-> **État : implémentée.** 494 tests, `mypy --strict` propre, couverture sous
-> portail (80 % global, 100 % sur le limiteur, l'ordonnanceur, la passerelle et
-> le détecteur de changements).
+## Les points forts
 
-## Pourquoi un nouveau module
+**Le coût est affiché avant d'être dépensé.** Chaque page de réglages montre
+l'estimation du nombre de requêtes quotidiennes que les valeurs saisies vont
+coûter, calculée par la fonction même qui produit les chiffres de
+[l'annexe B](docs/annexe-b-rate-limit.md) — la page et le document ne peuvent
+donc pas diverger. Un réglage dont on ne voit pas la conséquence se règle au
+hasard, et la conséquence se mesure ici en requêtes sur le compte scolaire d'un
+enfant. En dessous, l'appareillage qui rend ce chiffre vrai : un limiteur à
+trois étages (espacement minimal, seau à jetons horaire, plafond quotidien),
+deux compteurs de connexion tenus à part, dix paliers de collecte ayant chacun
+sa cadence, et **un seul battement maître**, parce que des minuteries
+indépendantes finissent par coïncider et produire des rafales.
 
-L'intégration existante (`delphiki/hass-pronote`) fonctionne, mais sa forme
-plafonne sur trois points structurels qu'on ne corrige pas par retouches :
+**Les données sensibles ne deviennent jamais un état.** L'URL iCal (qui donne
+accès à l'emploi du temps complet d'un élève sans aucun identifiant), le bloc
+d'identité et le lien du PDF d'emploi du temps sont des réponses de service
+(`SupportsResponse.ONLY`) : rien ne les retient, ni un état, ni un attribut, ni
+le fichier de diagnostic. Le code PIN à deux facteurs n'est pas persisté, ce
+qui est d'ailleurs la raison pour laquelle l'intégration sait le redemander. Et
+le diagnostic rapporte la *forme* de chaque collecte — quand elle date, ce
+qu'elle a coûté, combien d'éléments elle contient — jamais son contenu : une
+note ou le corps d'un message n'ont rien à faire dans un fichier que l'on colle
+dans une issue publique. C'est de la conception, pas du filtrage en sortie.
 
-1. **Un seul coordinateur, un seul intervalle.** Tout est rafraîchi au même
-   rythme — l'emploi du temps comme les bulletins du trimestre passé.
-2. **Aucune mutualisation des appels.** `pronotepy` ne met rien en cache : lire
-   `period.grades` puis `period.averages` déclenche deux fois le même appel
-   `DernieresNotes`. Le coordinateur actuel émet **26 appels par
-   rafraîchissement** là où une dizaine suffirait.
-3. **Pas de garde-fou côté serveur.** Rien ne limite la cadence, alors que le
-   protocole PRONOTE punit l'excès (erreur `G=25`, suspension d'adresse IP).
+**L'enrôlement par QR code évite de conserver un mot de passe.** C'est le mode
+recommandé : Home Assistant s'inscrit auprès de PRONOTE comme un appareil, et
+le jeton obtenu tourne à chaque authentification — il est donc réécrit dans
+l'entrée de configuration après chaque connexion, sans quoi l'accès serait
+perdu au démarrage suivant. Deux autres modes restent disponibles là où
+celui-ci ne s'applique pas : identifiant et mot de passe, ou ENT.
 
-Cette seconde génération part de ces trois contraintes plutôt que de les
-subir : ordonnanceur multi-cadence à dix paliers, déduplication au niveau de
-l'appel, et un limiteur de débit configurable dont l'état est lui-même
-observable dans Home Assistant.
+**« Absent » n'est pas « vide ».** Quand une clé que le protocole garantit
+disparaît de la réponse, le palier **échoue** au lieu de rapporter zéro
+élément : il garde son instantané précédent, se marque périmé, puis ouvre un
+signalement de réparation. Une liste vide est une information plausible (une
+semaine sans devoirs existe), donc la confondre avec une rupture de protocole
+publierait un mensonge crédible : les capteurs se videraient, la péremption ne
+se déclencherait jamais puisque la collecte a « réussi », et l'automatisation du
+matin cesserait simplement de partir, sans une ligne dans le journal.
+
+**Un appareil par enfant, une seule session pour tous.** Sur un compte parent,
+chaque enfant est un appareil distinct avec ses propres entités, tandis que la
+session et le budget de requêtes sont partagés : un second enfant coûte ses
+données, pas une seconde connexion. La sélection de l'enfant et l'appel forment
+une fermeture indivisible tenue sous verrou, parce que l'unité de travail
+atomique est le couple *(enfant, palier)* — sans quoi un compte parent publie
+silencieusement l'emploi du temps d'un enfant sous les entités de l'autre.
+
+**De quoi automatiser sans écrire de template.** Des entités `event` disent *ce
+qui vient de changer* (quelle note, dans quelle matière, avec quel coefficient)
+là où un déclencheur d'état ne sait dire que « le compteur a bougé » ; elles
+sont émises après la publication des instantanés, de sorte qu'une automatisation
+réagissant à l'arrivée d'une note trouve le capteur déjà à jour. S'y ajoutent
+des déclencheurs, conditions et actions d'appareil, des blueprints prêts à
+importer, et des services d'écriture — cocher un devoir, envoyer un message —
+**désactivés par défaut**.
+
+Ces choix sont tenus par la chaîne d'intégration continue : `ruff`,
+`mypy --strict`, quelques centaines de tests, et un portail de couverture qui
+exige **100 %** sur les quatre modules où une erreur ne produit aucun symptôme
+visible — le limiteur, l'ordonnanceur, la passerelle et le détecteur de
+changements.
 
 ## Ce que ça fait
 
@@ -78,6 +122,10 @@ contre ≈ 423 dans la première version de la spécification.
 
 ## Installation
 
+L'intégration s'appelle **Pronote NG** et son domaine Home Assistant est
+**`pronote_ng`** : c'est le nom du dossier sous `custom_components/`, et le
+préfixe de toutes ses entités et de tous ses services.
+
 ### HACS (dépôt personnalisé)
 
 1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
@@ -91,7 +139,7 @@ contre ≈ 423 dans la première version de la spécification.
 Copier `custom_components/pronote_ng/` dans le dossier `custom_components/` de
 votre configuration, puis redémarrer.
 
-Home Assistant **2026.2.0** minimum.
+Home Assistant **2026.8.0** minimum.
 
 ## Documentation
 

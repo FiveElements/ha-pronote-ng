@@ -5,15 +5,40 @@ hide:
 
 # Pronote NG
 
-<p align="center">
-  <img src="assets/logo.png" alt="Pronote NG" width="220">
-</p>
+**Intégration Home Assistant pour PRONOTE — seconde génération.**
 
-Intégration Home Assistant pour PRONOTE — seconde génération.
+[![Validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&label=validate&logo=github)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml)
+[![Hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml)
+[![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&label=HACS)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml)
+![Home Assistant 2026.8.0 minimum](https://img.shields.io/badge/Home%20Assistant-2026.8.0%2B-41BDF5?logo=homeassistant&logoColor=white)
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](https://github.com/FiveElements/ha-pronote-ng/blob/main/LICENSE)
 
-Le dépôt s'appelle `ha-pronote`, l'intégration s'appelle **Pronote NG**, et son
-domaine Home Assistant est **`pronote_ng`** — choisi pour cohabiter avec
-l'intégration existante sans conflit de domaine.
+Ce qui la caractérise, en quatre points :
+
+- **Le coût est affiché avant d'être dépensé.** Chaque page de réglages montre
+  l'estimation du nombre de requêtes quotidiennes que les valeurs saisies vont
+  coûter, calculée par la fonction même qui produit les chiffres de
+  [l'annexe B](annexe-b-rate-limit.md) — un réglage dont on ne voit pas la
+  conséquence se règle au hasard. En dessous : un limiteur à trois étages, deux
+  compteurs de connexion tenus à part, dix paliers de collecte ayant chacun sa
+  cadence, et un seul battement maître.
+- **Aucun secret ne devient un état.** L'URL iCal, le bloc d'identité et le
+  lien du PDF d'emploi du temps sont des réponses de service, que rien ne
+  retient. Le code PIN à deux facteurs n'est pas persisté, et le fichier de
+  diagnostic rapporte la *forme* de chaque collecte — son âge, son coût, son
+  nombre d'éléments — jamais son contenu.
+- **« Absent » n'est pas « vide ».** Quand une clé que le protocole garantit
+  disparaît de la réponse, le palier échoue et garde son instantané précédent,
+  au lieu de publier une collecte réussie et vide : une liste vide est une
+  information plausible, une rupture de protocole doit se voir.
+- **Un appareil par enfant, une seule session pour tous.** Sur un compte
+  parent, la session et le budget de requêtes sont partagés, et la sélection de
+  l'enfant est indissociable de l'appel qui suit — l'unité de travail atomique
+  est le couple *(enfant, palier)*, jamais le palier seul.
+
+L'enrôlement recommandé se fait par **QR code** : Home Assistant s'inscrit
+auprès de PRONOTE comme un appareil, le jeton obtenu tourne à chaque
+authentification, et aucun mot de passe n'est conservé.
 
 !!! tip "Par où commencer"
 
@@ -67,6 +92,10 @@ sont des réponses de service, et rien ne les stocke.
 
 ## Installation
 
+L'intégration s'appelle **Pronote NG** et son domaine Home Assistant est
+**`pronote_ng`** : c'est le nom du dossier sous `custom_components/`, et le
+préfixe de toutes ses entités et de tous ses services.
+
 === "HACS (dépôt personnalisé)"
 
     1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
@@ -81,7 +110,7 @@ sont des réponses de service, et rien ne les stocke.
     Copier `custom_components/pronote_ng/` dans le dossier
     `custom_components/` de votre configuration, puis redémarrer.
 
-Home Assistant **2026.2.0** minimum.
+Home Assistant **2026.8.0** minimum.
 
 Le [guide de l'utilisateur](GUIDE-UTILISATEUR.md) reprend chaque étape, y
 compris les trois modes de connexion et ce qu'il faut avoir sous la main avant
@@ -89,9 +118,9 @@ de commencer.
 
 ## Qualité
 
-494 tests, `mypy --strict` propre, et un portail de couverture qui exige 80 %
-globalement et **100 %** sur le limiteur, l'ordonnanceur, la passerelle et le
-détecteur de changements — en prenant pour chacun le minimum de la couverture
+`ruff`, `mypy --strict`, quelques centaines de tests, et un portail de
+couverture qui exige 80 % globalement et **100 %** sur le limiteur,
+l'ordonnanceur, la passerelle et le détecteur de changements — en prenant pour chacun le minimum de la couverture
 de lignes et de branches.
 
 La suite ne tourne pas sous Windows : `pytest-homeassistant-custom-component`

@@ -5,10 +5,18 @@ surtout **pourquoi** certaines règles sont plus strictes qu'ailleurs : cette
 intégration manipule les identifiants scolaires d'enfants et parle à un serveur
 qui sanctionne une adresse IP. Deux contraintes qui façonnent tout le reste.
 
-Le dépôt s'appelle `ha-pronote`, l'intégration s'appelle **Pronote NG**, et son
-domaine Home Assistant est `pronote_ng`.
+Le dépôt s'appelle `ha-pronote-ng`, l'intégration s'appelle **Pronote NG**, et
+son domaine Home Assistant est `pronote_ng`.
 
 ---
+
+> **Un `.venv` local ne suffit plus pour les portails.** Home Assistant 2026.8
+> exige Python **3.14.2**, et `pytest-homeassistant-custom-component` refuse de
+> s'installer sous 3.13 à partir de `0.13.317`. Un environnement local en 3.13
+> installe donc l'ancienne pile, et `mypy --strict` y vérifie le code contre une
+> version de Home Assistant **antérieure au plancher déclaré** — ce qui a déjà
+> laissé passer une clé d'API supprimée depuis. Lancez `ruff`, `mypy` et
+> `pytest` dans le conteneur ou sous Python 3.14, comme la CI.
 
 ## 1. Les deux règles non négociables
 
@@ -86,7 +94,7 @@ changements avec la suite complète avant d'ouvrir une PR.
 Pour la suite complète, passez par Docker :
 
 ```bash
-docker run --rm -v "$PWD:/work" -w /work python:3.13 bash -c \
+docker run --rm -v "$PWD:/work" -w /work python:3.14 bash -c \
   "pip install -q -r requirements_test.txt && python -m pytest tests"
 ```
 
@@ -94,8 +102,8 @@ Sous Git Bash pour Windows, préfixez par `MSYS_NO_PATHCONV=1` et donnez le
 chemin en absolu, sinon MSYS réécrit `/work` :
 
 ```bash
-MSYS_NO_PATHCONV=1 docker run --rm -v "C:/chemin/vers/ha-pronote:/work" -w /work \
-  python:3.13 bash -c "pip install -q -r requirements_test.txt && python -m pytest tests"
+MSYS_NO_PATHCONV=1 docker run --rm -v "C:/chemin/vers/ha-pronote-ng:/work" -w /work \
+  python:3.14 bash -c "pip install -q -r requirements_test.txt && python -m pytest tests"
 ```
 
 Construire une image une fois pour toutes évite de réinstaller les dépendances

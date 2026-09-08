@@ -1,6 +1,6 @@
-# Architecture de `ha-pronote`
+# Architecture de `ha-pronote-ng`
 
-Ce document décrit l'architecture réelle de `ha-pronote`, telle qu'elle est
+Ce document décrit l'architecture réelle de `ha-pronote-ng`, telle qu'elle est
 implémentée dans `custom_components/pronote_ng/`. Il est écrit pour un lecteur
 qui n'a jamais ouvert ce dépôt et qui doit pouvoir, à la fin, expliquer non
 seulement *où* les choses se trouvent mais *pourquoi* elles sont arrangées
@@ -15,14 +15,15 @@ qui suivent, mais l'implémentation les a corrigés en plusieurs endroits. Les
 divergences relevées sont rassemblées à la fin, dans
 « [Écarts avec la spécification](#12-écarts-avec-la-spécification) ».
 
-Un mot de vocabulaire, parce que la confusion coûte cher : le projet et le
-dépôt s'appellent **`ha-pronote`**. Le domaine Home Assistant s'appelle
+Un mot de vocabulaire, parce que la confusion coûte cher : le dépôt s'appelle
+**`ha-pronote-ng`** et l'intégration s'affiche sous le nom **Pronote NG**. Le
+domaine Home Assistant s'appelle
 **`pronote_ng`**, et seulement lui. Ce choix est délibéré
-(`custom_components/pronote_ng/const.py:14-20`) : l'intégration communautaire
-`delphiki/hass-pronote` possède déjà le domaine `pronote`, et deux composants
+(`custom_components/pronote_ng/const.py:14-20`) : une autre intégration PRONOTE
+déjà installée peut occuper le domaine `pronote`, et deux composants
 personnalisés qui réclament le même domaine ne cohabitent pas — Home Assistant
 en charge un et ignore l'autre. Garder un domaine distinct permet d'essayer
-`ha-pronote` sans désinstaller d'abord ce dont on dépend.
+cette intégration sans désinstaller d'abord ce dont on dépend.
 
 ---
 
@@ -45,7 +46,7 @@ en charge un et ignore l'autre. Garder un domaine distinct permet d'essayer
 
 ## 1. Objet de l'intégration
 
-`ha-pronote` expose dans Home Assistant les données PRONOTE d'un compte parent
+`ha-pronote-ng` expose dans Home Assistant les données PRONOTE d'un compte parent
 ou élève : emploi du temps, devoirs, notes, absences, évaluations, actualités,
 messagerie, menus de cantine, équipe pédagogique et bulletins des périodes
 closes.
@@ -1887,9 +1888,16 @@ exactement la version du tag — une intégration HACS dont le manifest diverge 
 tag s'installe une fois et ne se met plus jamais à jour.
 
 La matrice de test comporte deux lignes : la référence épinglée
-(`pytest-homeassistant-custom-component==0.13.316`, qui porte Home Assistant
-2026.2.3) qui **porte le portail de couverture**, et une ligne flottante
+(`pytest-homeassistant-custom-component==0.13.354`, qui porte Home Assistant
+**2026.8.0**) qui **porte le portail de couverture**, et une ligne flottante
 `latest` qui attrape une rupture amont tôt **sans bloquer** dessus.
+
+Le choix de l'épingle n'est pas « une version récente » mais **exactement le
+plancher déclaré dans `hacs.json`**. C'est la seule façon de tester ce que l'on
+annonce : épingler plus récent laisserait le plancher lui-même inexercé, et un
+plancher qu'on n'exécute jamais est une affirmation invérifiable adressée à
+l'utilisateur au moment de l'installation. La ligne `latest` couvre l'autre
+bout de l'intervalle.
 
 ### 11.2 Pourquoi la suite tourne sous Linux, WSL ou Docker
 
@@ -2004,16 +2012,16 @@ Le code a tranché dans l'autre sens et l'a motivé
 (`const.py:14-20`) : le domaine est **`pronote_ng`**, les services sont
 `pronote_ng.*`, et les blueprints vivent sous
 `blueprints/automation/pronote_ng/` et non `blueprints/automation/pronote/`.
-Le renommage n'a pas eu lieu, délibérément : `delphiki/hass-pronote` possède
-déjà `pronote`, et deux composants personnalisés réclamant le même domaine ne
-cohabitent pas. Garder `pronote_ng` permet d'essayer cette intégration sans
-d'abord désinstaller celle dont on dépend — ce qui est précisément l'objectif
-de cohabitation que la spécification énonçait, atteint par le moyen inverse de
-celui qu'elle prescrivait.
+Le renommage n'a pas eu lieu, délibérément : une autre intégration PRONOTE déjà
+installée peut occuper `pronote`, et deux composants personnalisés réclamant le
+même domaine ne cohabitent pas. Garder `pronote_ng` permet d'essayer cette
+intégration sans d'abord désinstaller celle dont on dépend — ce qui est
+précisément l'objectif de cohabitation que la spécification énonçait, atteint
+par le moyen inverse de celui qu'elle prescrivait.
 
-Le projet et le dépôt, eux, s'appellent `ha-pronote` : c'est ce que déclarent
-`pyproject.toml`, `hacs.json` et le champ `name` du manifest. Seul le domaine
-diffère.
+Le dépôt, lui, s'appelle `ha-pronote-ng`, et c'est sous le nom **Pronote NG**
+que `hacs.json` et le champ `name` du manifest présentent l'intégration. Le
+domaine est le seul endroit où la forme soulignée apparaît.
 
 ### 12.2 Le confinement de `pronotepy` n'est pas total
 
@@ -2264,17 +2272,26 @@ ne touche le réseau, ce que le dépôt respecte.
 ### 12.13 La version de Home Assistant visée n'est pas celle qui est testée
 
 `SPECIFICATION.md` déclare en en-tête viser **Home Assistant 2026.9 ou
-supérieur**. Le dépôt déclare un plancher de **2026.2.0** dans `hacs.json`, et
-`requirements_test.txt` explique pourquoi : `pytest-homeassistant-custom-component==0.13.316`
-embarque Home Assistant 2026.2.3, qui est la version la plus récente contre
-laquelle épingler, et rien dans l'intégration n'utilise une API postérieure à
-2026.2.
+supérieur**. Le dépôt déclare un plancher de **2026.8.0** dans `hacs.json`, et
+`requirements_test.txt` l'épingle exactement :
+`pytest-homeassistant-custom-component==0.13.354` embarque Home Assistant
+2026.8.0.
 
-L'écart est donc résolu de façon défendable — annoncer un plancher qu'on teste
-réellement plutôt qu'un plancher qu'on ne peut pas exécuter — et la ligne
-flottante `latest` de la matrice CI couvre la dérive amont. Mais le chiffre
-annoncé dans la spécification et le chiffre publié aux utilisateurs par HACS ne
-sont pas le même, et c'est le second qui compte.
+L'écart s'est donc réduit à une version mineure, et il est délibéré : le
+plancher est ce que l'on **exécute** à chaque exécution de la CI, tandis que le
+chiffre de la spécification est la cible de conception. Un plancher plus haut
+que ce que la matrice teste serait une affirmation invérifiable ; un plancher
+plus bas ferait croire à une compatibilité que rien ne prouve.
+
+Ce plancher n'est pas gratuit : à **2026.8**, le dossier `brand/` local est
+servi par le *frontend* — le mécanisme est apparu en 2026.3 (voir le
+commentaire de `BRAND_LOGO_URL` dans `const.py`) — donc toute instance
+supportée affiche la marque nativement. C'est ce qui rend envisageable le
+retrait de l'image markdown de la description de la première étape du flux, sous
+réserve d'une vérification visuelle.
+
+Reste que le chiffre annoncé dans la spécification et le chiffre publié aux
+utilisateurs par HACS ne sont pas le même, et c'est le second qui compte.
 
 ### 12.14 Sept blueprints, pas six
 
