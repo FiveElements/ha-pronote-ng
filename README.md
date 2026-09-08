@@ -35,12 +35,14 @@ observable dans Home Assistant.
   moyennes, absences et retards, punitions, évaluations par compétences,
   actualités, discussions, menus, personnel, bulletins.
 - **Huit services**, dont l'URL iCal, l'identité, le PDF d'emploi du temps et
-  l'état du limiteur. Les trois premiers sont des réponses de service
-  (`SupportsResponse.ONLY`) et ne transitent par aucun état d'entité.
+  l'état du limiteur. Ces quatre-là sont des réponses de service
+  (`SupportsResponse.ONLY`) et ne transitent par aucun état d'entité — les
+  trois premiers parce qu'ils sont sensibles, le quatrième parce qu'un état de
+  limiteur n'a pas d'utilisateur en dehors du moment où on le demande.
 - **Écritures optionnelles**, coupées par défaut : cocher un devoir, marquer
   une actualité comme lue, envoyer un message.
 - **Automatisations d'appareil** : 14 déclencheurs, 10 conditions, 4 actions,
-  plus **14 blueprints** livrés en français et en anglais.
+  plus **sept blueprints**, livrés chacun en français et en anglais.
 - **Trois modes de connexion** : QR code (recommandé), identifiants directs,
   ENT.
 - **Comptes parents multi-enfants**, chaque enfant étant un appareil distinct.
@@ -83,6 +85,8 @@ Home Assistant **2026.2.0** minimum.
 | [`docs/annexe-a-entites.md`](docs/annexe-a-entites.md) | Catalogue complet des entités et services, avec l'origine de chaque champ |
 | [`docs/annexe-b-rate-limit.md`](docs/annexe-b-rate-limit.md) | Le limiteur de débit : couches, options, arithmétique du budget, repli |
 | [`docs/revue-contradictoire-v1.md`](docs/revue-contradictoire-v1.md) | La revue qui a produit la v2 — conservée, parce que ses raisons valent mieux que ses conclusions seules |
+| [`docs/GUIDE-UTILISATEUR.md`](docs/GUIDE-UTILISATEUR.md) | **Guide utilisateur** — installation, entités, services, réglages, dépannage |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture interne, pour qui veut contribuer |
 
 La v1 a été révisée après une revue contradictoire dont **quatorze affirmations
 porteuses sur quatorze** se sont vérifiées dans la source. Les changements :
