@@ -1,0 +1,146 @@
+# Nouveau message ou information -- pronote_ng
+#
+# Ce qu'elle fait : notifie l'arrivée d'un message de la messagerie PRONOTE ou
+# d'une information (actualité) publiée par l'établissement.
+#
+# Sur quoi elle s'appuie : les déclencheurs d'appareil `message_received` et
+# `information_added` (device_trigger.py:58, const.py:341 et :345). Le choix
+# entre les deux sources est une condition `trigger` native alimentée par le
+# sélecteur.
+#
+# Le piège évité : ce sont deux paliers de collecte différents,
+# `discussions` et `news` (event.py:100 et :81), tous deux désactivables et
+# ralentissables dans les options. Si rien n'arrive jamais, ce n'est pas
+# l'automatisation qu'il faut déboguer, c'est le palier correspondant qu'il
+# faut réactiver. Par ailleurs, quand la passerelle n'a pas pu déplier le fil
+# de discussion, l'auteur du message vaut `null` : le texte ci-dessous le
+# prévoit au lieu d'afficher « None ».
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/new_message.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Nouveau message ou information
+  description: >-
+    Notifie quand un message arrive dans la messagerie PRONOTE de l'élève, ou
+    quand l'établissement publie une information. Les deux sources sont
+    activables séparément : la messagerie est souvent bavarde, les actualités
+    beaucoup moins.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/new_message.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Appareil de l'élève
+          description: >-
+            L'appareil PRONOTE de l'enfant. La liste exclut l'appareil du
+            compte, qui ne porte aucune entité `event`.
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: Que faut-il notifier ?
+      icon: mdi:filter-variant
+      input:
+        sources:
+          name: Sources retenues
+          description: >-
+            Les valeurs sont les types réellement déclarés par l'intégration.
+            La messagerie dépend du palier `discussions`, les actualités du
+            palier `news` : l'un ou l'autre peut être désactivé dans les
+            options de l'intégration.
+          default:
+            - message_received
+            - information_added
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Message de la messagerie
+                  value: message_received
+                - label: Information / actualité de l'établissement
+                  value: information_added
+        surveys_only:
+          name: Seulement les informations qui contiennent un sondage
+          description: >-
+            Ne s'applique qu'aux informations. Utile si vous ne voulez être
+            alerté que des actualités qui attendent une réponse de votre part.
+          default: false
+          selector:
+            boolean:
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Action de notification
+          description: >-
+            Les variables `title` et `message` sont disponibles. `message`
+            contient l'auteur et le sujet.
+          selector:
+            action:
+
+# `queued` et non `single` : l'intégration émet un évènement par message non
+# lu (delta.py:_message_events), et une matinée de messagerie peut en produire
+# plusieurs d'affilée.
+mode: queued
+max: 15
+
+triggers:
+  - alias: Message reçu dans la messagerie
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: message_received
+    id: message_received
+  - alias: Information publiée par l'établissement
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: information_added
+    id: information_added
+
+conditions:
+  - alias: Cette source fait partie de celles qui intéressent l'utilisateur
+    # Native : la liste d'identifiants est exactement la liste cochée.
+    condition: trigger
+    id: !input sources
+  - alias: L'information porte un sondage, si l'option est active
+    # Template inévitable : `survey` est un champ du payload de l'évènement
+    # (delta.py:_information_context), pas un état. Une ligne, et elle laisse
+    # passer sans condition tout ce qui n'est pas une information.
+    condition: template
+    value_template: >-
+      {{ trigger.id != 'information_added' or not surveys
+         or trigger.event.data.attributes.survey }}
+
+variables:
+  surveys: !input surveys_only
+  # Composition de texte uniquement : les deux payloads n'ont pas les mêmes
+  # champs -- `discussion`/`author` d'un côté, `title`/`category`/`author` de
+  # l'autre.
+  author: >-
+    {{ trigger.event.data.attributes.author or 'Établissement' }}
+  subject: >-
+    {% set a = trigger.event.data.attributes %}
+    {{ a.discussion if trigger.id == 'message_received' else a.title }}
+  title: >-
+    {{ 'Nouveau message PRONOTE' if trigger.id == 'message_received'
+       else "Information de l'établissement" }}
+  message: "{{ author }} : {{ subject }}"
+
+actions:
+  - alias: Exécuter l'action de notification choisie
+    sequence: !input notify_action

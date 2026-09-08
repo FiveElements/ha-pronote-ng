@@ -1,0 +1,170 @@
+"""The diagnostics download, and what is absent from it by construction.
+
+Redaction is a safety net here, not the mechanism. The mechanism is that the
+secrets never enter a snapshot in the first place: the iCal URL, the identity
+block and the timetable PDF link are ``SupportsResponse.ONLY`` service results
+(§8.2), so there is no state, no attribute and no runtime field holding them
+for this file to find.
+
+What *is* in the config entry -- the token, the username, the UUID, the client
+identifier -- is redacted explicitly, and the child identifiers are replaced by
+a truncated fingerprint rather than removed. A fingerprint is still useful in a
+bug report ("both children show the same tier failing") while handing nobody
+the material to replay a session (annexe A §7).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Final
+
+from homeassistant.components.diagnostics import async_redact_data
+
+from .const import (
+    CONF_ACCOUNT_PIN,
+    CONF_CLIENT_IDENTIFIER,
+    CONF_PRONOTE_URL,
+    CONF_QR_PAYLOAD,
+    CONF_QR_PIN,
+    CONF_UUID,
+)
+from .urls import public_url, url_host
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+    from . import PronoteConfigEntry
+
+#: Keys stripped from the config entry. ``pronote_url`` stays: it identifies the
+#: establishment, which is exactly what a bug report needs, and it grants
+#: nothing on its own -- unlike the iCal URL, which grants read access to a
+#: child's timetable and is therefore never stored anywhere (§8.2, §8.4).
+TO_REDACT: Final = {
+    "username",
+    "password",
+    CONF_UUID,
+    CONF_CLIENT_IDENTIFIER,
+    CONF_ACCOUNT_PIN,
+    CONF_QR_PAYLOAD,
+    CONF_QR_PIN,
+    # Belt and braces: the PIN is never persisted (§8.1), so this entry should
+    # never match anything. If it ever does, that is the bug.
+    "account_pin",
+}
+
+
+async def async_get_config_entry_diagnostics(
+    hass: HomeAssistant,  # noqa: ARG001 -- required by the diagnostics contract
+    entry: PronoteConfigEntry,
+) -> dict[str, Any]:
+    """Everything useful for a bug report, and nothing that grants access."""
+    account = entry.runtime_data
+
+    # The address is re-trimmed here rather than trusted. It is stored trimmed
+    # since the config flow started doing that, but an entry created before then
+    # -- or restored from a backup, or edited by hand in `.storage` -- can still
+    # hold the deep link a school mailed out, complete with its ticket. This
+    # file exists so nobody has to notice that before attaching it to a public
+    # issue (§8.2).
+    data = dict(entry.data)
+    if CONF_PRONOTE_URL in data:
+        data[CONF_PRONOTE_URL] = public_url(str(data[CONF_PRONOTE_URL]))
+
+    return {
+        "entry": {
+            "data": async_redact_data(data, TO_REDACT),
+            "options": dict(entry.options),
+            "version": entry.version,
+            "minor_version": entry.minor_version,
+            # Kept unredacted on purpose, see TO_REDACT.
+            "url_host": url_host(str(entry.data.get(CONF_PRONOTE_URL, ""))) or None,
+        },
+        # Assembled by the account itself, which is the only object that knows
+        # what is safe to expose -- and which builds it out of counters and
+        # scheduler state, never out of PRONOTE payloads.
+        "account": account.diagnostics(),
+    }
+
+
+async def async_get_device_diagnostics(
+    hass: HomeAssistant,  # noqa: ARG001 -- required by the diagnostics contract
+    entry: PronoteConfigEntry,
+    device: Any,
+) -> dict[str, Any]:
+    """Per-device diagnostics: the tier state, not the data.
+
+    Deliberately reports the *shape* of each snapshot -- when it was fetched,
+    how many requests it cost, how many items it holds -- and not its content.
+    A grade, a teacher's comment on a report card or a message body has no
+    business in a file people paste into a public issue.
+    """
+    account = entry.runtime_data
+    student_id = _student_id(device, entry.entry_id)
+
+    tiers: dict[str, Any] = {}
+    for tier, coordinator in account.coordinators.items():
+        snapshot = coordinator.snapshot_for(student_id) if student_id else None
+        tiers[str(tier)] = {
+            "has_data": snapshot is not None,
+            "fetched_at": (snapshot.fetched_at.isoformat() if snapshot else None),
+            "calls": snapshot.calls if snapshot else None,
+            "stale": account.is_stale(tier),
+            "last_update_success": coordinator.last_update_success,
+            "item_counts": _counts(snapshot.data) if snapshot else None,
+        }
+
+    return {
+        "student_id_hash": _short_hash(student_id) if student_id else None,
+        "is_account_device": student_id is None,
+        "tiers": tiers,
+    }
+
+
+def _counts(facts: Any) -> dict[str, int]:
+    """How many items each collection of a snapshot holds.
+
+    A count answers almost every real question -- "did the timetable come back
+    empty?", "are there really no grades?" -- without exposing one word of the
+    content.
+    """
+    counts: dict[str, int] = {}
+    for name in (
+        "lessons",
+        "homework",
+        "grades",
+        "averages",
+        "absences",
+        "delays",
+        "punishments",
+        "evaluations",
+        "information",
+        "discussions",
+        "menus",
+        "teaching_staff",
+        "periods",
+    ):
+        value = getattr(facts, name, None)
+        if isinstance(value, (list, tuple)):
+            counts[name] = len(value)
+    return counts
+
+
+def _student_id(device: Any, entry_id: str) -> str | None:
+    """The child a device belongs to, or ``None`` for the account device."""
+    for domain_identifier in getattr(device, "identifiers", ()):
+        try:
+            _domain, identifier = domain_identifier
+        except (TypeError, ValueError):
+            continue
+        if not identifier.startswith(entry_id):
+            continue
+        suffix = str(identifier)[len(entry_id) :]
+        if suffix.startswith("_"):
+            return suffix[1:]
+    return None
+
+
+def _short_hash(value: str) -> str:
+    """A truncated fingerprint, never the identifier itself."""
+    from hashlib import blake2s  # noqa: PLC0415 -- only needed here
+
+    return blake2s(value.encode(), digest_size=4).hexdigest()

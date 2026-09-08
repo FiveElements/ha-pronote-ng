@@ -1,0 +1,372 @@
+"""The scheduler: one master tick, tiers that carry deadlines rather than timers.
+
+Independent timers eventually coincide and produce bursts, so there is exactly
+one heartbeat. It asks which tiers are due, and the batch runs them in one
+session, spaced by the rate limiter (§5.1).
+
+A deferred tier is never abandoned: its deadline moves and it keeps its previous
+snapshot, so its entities keep their value (annexe B §2.4). And reducing an
+interval does not trigger an immediate collection -- the next deadline is
+recomputed from the last collection, not from the moment the option changed
+(§7.3), because otherwise saving the options page would fire a full batch.
+
+Like the limiter, this module knows neither PRONOTE nor Home Assistant: it takes
+an injectable clock and answers questions.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from datetime import datetime
+import logging
+from typing import TYPE_CHECKING, Any, Final
+
+from .const import (
+    DEFAULT_TIER_INTERVALS,
+    PRIORITY_RANK,
+    TIER_PRIORITY,
+    Priority,
+    Tier,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Mapping
+
+_LOGGER: Final = logging.getLogger(__name__)
+
+SECONDS_PER_MINUTE: Final = 60.0
+
+
+@dataclass(frozen=True, slots=True)
+class TierPlan:
+    """How often a tier should run, and how readily it may be sacrificed."""
+
+    tier: Tier
+    interval_minutes: int
+    priority: Priority
+    enabled: bool = True
+
+    @property
+    def interval_seconds(self) -> float:
+        """The interval, in seconds."""
+        return self.interval_minutes * SECONDS_PER_MINUTE
+
+
+@dataclass(slots=True)
+class TierState:
+    """Mutable bookkeeping for one tier."""
+
+    #: Monotonic instant of the last *successful* collection. ``None`` until the
+    #: first one, which is what makes a tier due immediately after start-up.
+    last_collected: float | None = None
+    #: Monotonic instant before which the tier must not run. Set when a tier is
+    #: deferred, so a throttled tier does not spin on every tick.
+    not_before: float = 0.0
+    #: Raised for exactly one tick by the refresh button. A button asks for a
+    #: priority pass; it does not get a dispensation from the limiter (§6.2).
+    boosted: bool = False
+    #: Consecutive deferrals, for the diagnostic attribute only.
+    deferrals: int = 0
+    #: Wall-clock instant of the last successful collection. Kept alongside the
+    #: monotonic one because staleness has to exclude quiet hours, and only a
+    #: wall clock can say whether the night intervened.
+    last_collected_at: datetime | None = None
+
+
+def default_plans(
+    intervals: Mapping[Tier, int] | None = None,
+    enabled: Mapping[Tier, bool] | None = None,
+) -> dict[Tier, TierPlan]:
+    """Build a plan per data tier from options, falling back to the defaults."""
+    chosen_intervals = intervals or {}
+    chosen_enabled = enabled or {}
+    plans: dict[Tier, TierPlan] = {}
+    for tier, default_interval in DEFAULT_TIER_INTERVALS.items():
+        plans[tier] = TierPlan(
+            tier=tier,
+            interval_minutes=chosen_intervals.get(tier, default_interval),
+            priority=TIER_PRIORITY[tier],
+            enabled=chosen_enabled.get(tier, True),
+        )
+    return plans
+
+
+class FetchScheduler:
+    """Answers "what is due now?", in the order things should be sacrificed."""
+
+    def __init__(
+        self,
+        plans: Mapping[Tier, TierPlan],
+        clock: Callable[[], float],
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._plans: dict[Tier, TierPlan] = dict(plans)
+        self._clock = clock
+        # Two clocks, for the same reason the limiter has two: the monotonic one
+        # measures intervals and cannot jump, the wall clock knows whether the
+        # night has passed. Staleness needs both.
+        self._now = now
+        self._states: dict[Tier, TierState] = {
+            tier: TierState() for tier in self._plans
+        }
+
+    # -- surviving a reload ------------------------------------------------
+
+    def export_state(self) -> dict[str, float]:
+        """Last-collection instants, keyed by tier name.
+
+        Exists because an options save reloads the config entry, and a reload
+        builds a brand-new scheduler whose every ``last_collected`` is ``None``
+        -- which makes all ten tiers immediately due. Preserving
+        ``last_collected`` inside :meth:`reconfigure` was the right idea aimed
+        at the wrong seam: nothing ever called it, because Home Assistant
+        reloads rather than reconfigures. So the state is handed across the
+        reload instead, and nudging one interval no longer costs a login plus a
+        full batch every time the options page is saved (§7.3).
+
+        Monotonic values are used as-is because a reload happens inside the same
+        process, so the same monotonic origin still applies.
+        """
+        return {
+            str(tier): state.last_collected
+            for tier, state in self._states.items()
+            if state.last_collected is not None
+        }
+
+    def import_state(self, saved: Mapping[str, float]) -> None:
+        """Restore last-collection instants from :meth:`export_state`."""
+        now = self._clock()
+        for tier, state in self._states.items():
+            value = saved.get(str(tier))
+            if value is None:
+                continue
+            # A value from the future means the monotonic origin moved after
+            # all -- a restart rather than a reload -- so it is discarded
+            # rather than trusted.
+            if value <= now:
+                state.last_collected = value
+
+    # -- configuration -----------------------------------------------------
+
+    @property
+    def plans(self) -> Mapping[Tier, TierPlan]:
+        """The plans in force."""
+        return dict(self._plans)
+
+    def reconfigure(self, plans: Mapping[Tier, TierPlan]) -> None:
+        """Apply new intervals without disturbing the schedule.
+
+        ``last_collected`` is preserved, so the next deadline is computed from
+        the last collection rather than from this call. That is weaker than
+        "shortening an interval never fires an immediate batch", which is
+        simply false: a tier collected forty minutes ago on a sixty-minute
+        interval *is* due the moment the interval becomes fifteen, and it
+        should be. What preservation buys is that the change is measured from
+        real history rather than from the save (§7.3).
+
+        The reload path is handled by :meth:`export_state` / :meth:`import_state`
+        instead, because Home Assistant reloads a config entry rather than
+        reconfiguring it in place.
+        """
+        self._plans = dict(plans)
+        for tier in self._plans:
+            self._states.setdefault(tier, TierState())
+        for tier in list(self._states):
+            if tier not in self._plans:
+                del self._states[tier]
+
+    def set_interval(self, tier: Tier, minutes: int) -> None:
+        """Change one tier's interval, keeping its history."""
+        plan = self._plans.get(tier)
+        if plan is None:
+            return
+        self._plans[tier] = replace(plan, interval_minutes=minutes)
+
+    def set_enabled(self, tier: Tier, *, enabled: bool) -> None:
+        """Switch one tier on or off."""
+        plan = self._plans.get(tier)
+        if plan is None:
+            return
+        self._plans[tier] = replace(plan, enabled=enabled)
+
+    # -- the question the master tick asks --------------------------------
+
+    def due(self) -> list[Tier]:
+        """Tiers that should run now, highest priority first.
+
+        Ordering matters when the budget tightens: the limiter sheds by
+        priority, so serving in priority order means the tiers that get dropped
+        are the ones the sacrifice table already nominated (annexe B §2.4).
+        """
+        now = self._clock()
+        candidates: list[tuple[int, float, Tier]] = []
+
+        for tier, plan in self._plans.items():
+            if not plan.enabled:
+                continue
+            state = self._states[tier]
+            if now < state.not_before:
+                continue
+            if state.last_collected is None:
+                overdue = float("inf")
+            else:
+                overdue = (now - state.last_collected) - plan.interval_seconds
+                if overdue < 0 and not state.boosted:
+                    continue
+            # A boost raises the tier by one rank, floored at the rank just
+            # below CRITICAL. Giving it -1 outranked the session tier, so a
+            # refresh button on `history` (6 requests, LOW) was served first,
+            # drained the bucket and the `max_wait` allowance, and `timetable`
+            # -- HIGH -- was then deferred: the exact inverse of the sacrifice
+            # order annexe B §2.4 lays down. The button asks for a priority
+            # pass, not for supremacy.
+            rank = PRIORITY_RANK[plan.priority]
+            if state.boosted:
+                rank = max(PRIORITY_RANK[Priority.CRITICAL] + 1, rank - 1)
+            candidates.append((rank, -overdue, tier))
+
+        candidates.sort(key=lambda item: (item[0], item[1], item[2].value))
+        return [tier for _, _, tier in candidates]
+
+    def next_due_in(self) -> float | None:
+        """Seconds until the earliest deadline; ``0.0`` when something is due.
+
+        ``None`` means there is no enabled tier at all -- not "nothing is due",
+        which is what the previous wording claimed. Feeds
+        ``sensor.<account>_prochaine_collecte``, which therefore reads *now*
+        whenever a tier is overdue, and that is the honest answer.
+
+        Note the master tick's granularity bounds how closely execution follows
+        the deadline: raising the tick rate costs nothing, because deadlines and
+        not the heartbeat fix the budget (annexe B §5.6).
+        """
+        now = self._clock()
+        best: float | None = None
+        for tier, plan in self._plans.items():
+            if not plan.enabled:
+                continue
+            state = self._states[tier]
+            if state.last_collected is None:
+                due_at = max(now, state.not_before)
+            else:
+                due_at = max(
+                    state.last_collected + plan.interval_seconds, state.not_before
+                )
+            remaining = max(0.0, due_at - now)
+            if best is None or remaining < best:
+                best = remaining
+        return best
+
+    def tiers_due_names(self) -> tuple[str, ...]:
+        """Tier names currently due, for a diagnostic attribute."""
+        return tuple(str(tier) for tier in self.due())
+
+    # -- outcomes ----------------------------------------------------------
+
+    def mark_collected(self, tier: Tier) -> None:
+        """Record a successful collection and clear any boost or deferral."""
+        state = self._states.get(tier)
+        if state is None:
+            return
+        state.last_collected = self._clock()
+        state.last_collected_at = self._now() if self._now is not None else None
+        state.not_before = 0.0
+        state.boosted = False
+        state.deferrals = 0
+
+    def defer(self, tier: Tier, retry_after: float) -> None:
+        """Push a tier's earliest run forward, without cancelling it.
+
+        Bounded by the tier's own interval: a limiter reporting "retry at
+        midnight" must not silence a fifteen-minute tier for eleven hours if the
+        budget frees up sooner. The deadline moves; it is never dropped.
+        """
+        state = self._states.get(tier)
+        plan = self._plans.get(tier)
+        if state is None or plan is None:
+            return
+        wait = max(0.0, min(retry_after, plan.interval_seconds))
+        state.not_before = self._clock() + wait
+        state.boosted = False
+        state.deferrals += 1
+        _LOGGER.debug(
+            "tier %s deferred for %.0fs (deferral #%d)", tier, wait, state.deferrals
+        )
+
+    def mark_failed(self, tier: Tier, retry_after: float) -> None:
+        """Treat a failure like a deferral: retry later, keep the snapshot."""
+        self.defer(tier, retry_after)
+
+    def request(self, tiers: Iterable[Tier] | None = None) -> None:
+        """Ask for a priority pass on the next tick (the refresh button).
+
+        Deliberately not a call: the button raises priority for the next
+        heartbeat, it does not bypass the limiter and it does not short-circuit
+        the minimum spacing (annexe B §6).
+        """
+        targets = list(tiers) if tiers is not None else list(self._plans)
+        for tier in targets:
+            state = self._states.get(tier)
+            plan = self._plans.get(tier)
+            if state is None or plan is None or not plan.enabled:
+                continue
+            state.boosted = True
+            state.not_before = 0.0
+
+    # -- introspection -----------------------------------------------------
+
+    def last_collected(self, tier: Tier) -> float | None:
+        """Monotonic instant of the last successful collection."""
+        state = self._states.get(tier)
+        return state.last_collected if state else None
+
+    def age(self, tier: Tier) -> float | None:
+        """Seconds since the last successful collection of ``tier``."""
+        last = self.last_collected(tier)
+        if last is None:
+            return None
+        return self._clock() - last
+
+    def is_stale(self, tier: Tier, stale_after: int, *, excused: float = 0.0) -> bool:
+        """Whether a tier's data has aged past ``stale_after`` intervals.
+
+        This is the boundary of §5.4: below it an entity keeps its value and
+        flags its age; above it -- or with no data at all -- it becomes
+        unavailable. Keeping the last known value and marking it dated is safer
+        than admitting ignorance every ten minutes, because a
+        ``numeric_state`` trigger on an entity that goes unavailable and comes
+        back fires spuriously.
+
+        ``excused`` is time that must not count against the age -- in practice
+        the quiet hours the account deliberately did not collect during. It is
+        not a nicety: with quiet hours on, which is the default, an eight-hour
+        night is longer than ``stale_after`` times the interval of every fast
+        tier, so without it the timetable, homework, news and discussion
+        entities of every installation went ``unavailable`` at 06:00 each
+        morning. Reporting "I no longer know" because the integration was
+        asleep on purpose is the one answer §2.5 rules out.
+        """
+        plan = self._plans.get(tier)
+        age = self.age(tier)
+        if plan is None or age is None:
+            return True
+        return (age - max(0.0, excused)) > stale_after * plan.interval_seconds
+
+    def last_collected_at(self, tier: Tier) -> datetime | None:
+        """Wall-clock instant of the last successful collection."""
+        state = self._states.get(tier)
+        return state.last_collected_at if state else None
+
+    def diagnostics(self) -> dict[str, dict[str, Any]]:
+        """Per-tier state for the diagnostic download, and for the service."""
+        return {
+            str(tier): {
+                "interval_minutes": plan.interval_minutes,
+                "priority": str(plan.priority),
+                "enabled": plan.enabled,
+                "age_seconds": self.age(tier),
+                "deferrals": self._states[tier].deferrals,
+                "boosted": self._states[tier].boosted,
+            }
+            for tier, plan in self._plans.items()
+        }

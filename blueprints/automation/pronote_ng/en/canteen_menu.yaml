@@ -1,0 +1,122 @@
+# Canteen menu -- pronote_ng
+#
+# What it does: announces the day's canteen menu in the morning, at a time of
+# your choosing.
+#
+# What it leans on: a core `time` trigger and the `menu_today` sensor
+# (sensor.py:1136), whose state is the NUMBER of dishes in the day's meal -- so
+# `numeric_state above: 0` is enough to say "there is a menu", with no
+# template. The dishes sit in its `first_meal`, `main_meal`, `side_meal`,
+# `cheese` and `dessert` attributes (sensor.py:_menu_attributes_for).
+#
+# The trap it avoids: the `menus` tier is collected once a day and is switched
+# off in many schools that publish nothing. The sensor then reads `unknown`,
+# `numeric_state` does not pass, and the automation stays quiet -- instead of
+# announcing an empty menu every morning.
+#
+# This blueprint is the one docs/SPECIFICATION.md §2.3 asks for ("morning
+# announcement of the canteen menu").
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/canteen_menu.yaml. The duplication is
+# deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Canteen menu
+  description: >-
+    Announces the day's canteen menu, in the morning at a fixed time. Says
+    nothing on days with no published menu, no lessons, or during holidays. The
+    text is composed from the attributes of the "Menu today" sensor.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/canteen_menu.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        menu_sensor:
+          name: "\"Menu today\" sensor"
+          description: >-
+            The student's `menu_today` entity. Its state is the number of
+            dishes in the day's meal. The entity id depends on the installation
+            language, which is why it is picked here instead of hard-coded
+            (docs/SPECIFICATION.md §10.8).
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+        school_day_sensor:
+          name: "\"School day\" sensor (optional)"
+          description: >-
+            The student's `school_day` entity. Filled in, it suppresses the
+            announcement on days the child does not go to school even though a
+            menu was published. Leave empty to announce whenever a menu exists.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: pronote_ng
+                domain: binary_sensor
+    reglages:
+      name: Settings
+      icon: mdi:tune
+      input:
+        announce_time:
+          name: Announcement time
+          default: "07:15:00"
+          selector:
+            time:
+    notification:
+      name: Announcement
+      icon: mdi:bullhorn
+      input:
+        announce_action:
+          name: Announcement action
+          description: >-
+            Notification, text-to-speech, display... The variables `title` and
+            `message` are available; `message` holds the menu.
+          selector:
+            action:
+
+# `single`: one announcement per morning.
+mode: single
+
+triggers:
+  - alias: At the announcement time
+    trigger: time
+    at: !input announce_time
+
+conditions:
+  - alias: A menu is published for today
+    # Native: the sensor's state IS the number of dishes. A day with no menu
+    # reads `unknown` and does not pass.
+    condition: numeric_state
+    entity_id: !input menu_sensor
+    above: 0
+  - alias: There are lessons today (if a sensor was provided)
+    condition: state
+    entity_id: !input school_day_sensor
+    state: "on"
+
+variables:
+  menu_entity: !input menu_sensor
+  # Text composition only: joining five list-valued attributes into one
+  # sentence is not something a native condition can do.
+  menu_text: >-
+    {{ ((state_attr(menu_entity, 'first_meal') or [])
+      + (state_attr(menu_entity, 'main_meal') or [])
+      + (state_attr(menu_entity, 'side_meal') or [])
+      + (state_attr(menu_entity, 'other_meal') or [])
+      + (state_attr(menu_entity, 'cheese') or [])
+      + (state_attr(menu_entity, 'dessert') or [])) | join(', ') }}
+  title: Canteen menu
+  message: "On the menu today: {{ menu_text }}."
+
+actions:
+  - alias: Run the chosen announcement action
+    sequence: !input announce_action

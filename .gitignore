@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.idea/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
+
+# Never commit real PRONOTE payloads. Fixtures under tests/fixtures/ are
+# anonymised by hand and reviewed; anything captured live goes here.
+tests/fixtures/_raw/
+*.raw.json

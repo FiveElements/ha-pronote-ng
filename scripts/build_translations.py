@@ -1,0 +1,1354 @@
+"""Generate ``strings.json`` and the translation catalogues from one table.
+
+Written as a generator rather than three hand-maintained JSON files because
+§10.5 requires a test asserting that every key present in one language exists
+in the others, with the same placeholders. Hand-editing three files keeps that
+test permanently red for uninteresting reasons; generating them from a single
+table makes the test a real check on the *table* instead.
+
+``strings.json`` is the English source of truth (§10.1), ``translations/en.json``
+is its copy, and ``translations/fr.json`` carries the French. Nothing
+user-visible is hard-coded anywhere in ``custom_components/`` -- that is what
+the accompanying test verifies.
+
+Run: ``python scripts/build_translations.py``
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent.parent
+COMPONENT = ROOT / "custom_components" / "pronote_ng"
+
+# ---------------------------------------------------------------------------
+# Entities. `(key, english, french)` per platform.
+#
+# Names are what a user reads in a picker, so they are nouns describing the
+# fact, not the mechanism: "Next lesson", not "Timetable tier next item".
+# ---------------------------------------------------------------------------
+
+SENSORS: list[tuple[str, str, str]] = [
+    ("next_lesson", "Next lesson", "Prochain cours"),
+    ("end_of_lessons", "End of lessons", "Fin des cours"),
+    ("next_wake_up", "Wake-up time", "Prochain réveil"),
+    ("next_test", "Next test", "Prochain contrôle"),
+    ("lessons_today", "Lessons today", "Cours du jour"),
+    ("homework_todo", "Homework to do", "Devoirs à faire"),
+    ("homework_tomorrow", "Homework for tomorrow", "Devoirs pour demain"),
+    ("latest_grade", "Latest grade", "Dernière note"),
+    ("overall_average", "Overall average", "Moyenne générale"),
+    ("class_average", "Class average", "Moyenne de la classe"),
+    ("next_punishment", "Next detention", "Prochaine punition"),
+    ("unjustified_absences", "Unjustified absences", "Absences non justifiées"),
+    ("unread_information", "Unread news", "Actualités non lues"),
+    ("unread_messages", "Unread messages", "Messages non lus"),
+    ("current_period", "Current period", "Période en cours"),
+    ("timetable_tomorrow", "Timetable tomorrow", "Emploi du temps de demain"),
+    ("timetable_week", "Timetable this week", "Emploi du temps de la semaine"),
+    ("homework", "Homework", "Devoirs"),
+    ("grades", "Grades", "Notes"),
+    ("averages", "Subject averages", "Moyennes par matière"),
+    ("report_card", "Report card", "Bulletin"),
+    ("absences", "Absences", "Absences"),
+    ("delays", "Late arrivals", "Retards"),
+    ("punishments", "Punishments", "Punitions"),
+    ("evaluations", "Skill assessments", "Évaluations"),
+    ("information", "News", "Actualités"),
+    ("discussions", "Discussions", "Discussions"),
+    ("menu_today", "Menu today", "Menu du jour"),
+    ("menu_tomorrow", "Menu tomorrow", "Menu de demain"),
+    ("teaching_staff", "Teaching staff", "Équipe pédagogique"),
+    ("class_name", "Class", "Classe"),
+    ("periods", "Periods", "Périodes"),
+]
+
+# One set per closed period. The period's own label is a placeholder because it
+# comes from PRONOTE and is not ours to translate (§10.2, §10.6).
+HISTORY_SENSORS: list[tuple[str, str, str]] = [
+    ("grades_period", "Grades ({period})", "Notes ({period})"),
+    (
+        "averages_period",
+        "Subject averages ({period})",
+        "Moyennes par matière ({period})",
+    ),
+    (
+        "overall_average_period",
+        "Overall average ({period})",
+        "Moyenne générale ({period})",
+    ),
+    ("report_card_period", "Report card ({period})", "Bulletin ({period})"),
+    ("absences_period", "Absences ({period})", "Absences ({period})"),
+    ("delays_period", "Late arrivals ({period})", "Retards ({period})"),
+    ("punishments_period", "Punishments ({period})", "Punitions ({period})"),
+    (
+        "evaluations_period",
+        "Skill assessments ({period})",
+        "Évaluations ({period})",
+    ),
+]
+
+DIAGNOSTIC_SENSORS: list[tuple[str, str, str]] = [
+    ("calls_today", "Requests today", "Appels du jour"),
+    ("remaining_budget", "Remaining budget", "Budget restant"),
+    ("last_collection", "Last collection", "Dernière collecte"),
+    ("next_collection", "Next collection", "Prochaine collecte"),
+    ("session_age", "Session age", "Âge de la session"),
+    ("session_lifetime", "Measured session lifetime", "Durée de vie de la session"),
+    ("logins_today", "Logins today", "Connexions du jour"),
+    ("limiter_state", "Rate limiter state", "État du limiteur"),
+]
+
+# The closed value set of `sensor.<account>_etat_limiteur`. An automation
+# compares the raw state; only the label is translated (§10.3).
+LIMITER_STATES: list[tuple[str, str, str]] = [
+    ("nominal", "Nominal", "Nominal"),
+    ("throttled", "Throttled", "Bridé"),
+    ("backoff", "Backing off", "Temporisation"),
+    ("quiet_hours", "Quiet hours", "Heures calmes"),
+    ("credentials_hold", "Login attempts paused", "Connexions suspendues"),
+    ("bootstrap_failed", "Cannot reach the session page", "Page de session illisible"),
+]
+
+BINARY_SENSORS: list[tuple[str, str, str]] = [
+    ("school_day", "School day", "Jour de classe"),
+    ("in_class", "In class", "En cours"),
+    ("lessons_canceled", "Lessons cancelled", "Cours annulés"),
+    ("outing_today", "Educational outing", "Sortie pédagogique"),
+    ("test_today", "Test today", "Contrôle prévu"),
+    ("holidays", "Holidays", "Vacances"),
+    ("homework_overdue", "Homework overdue", "Devoirs en retard"),
+    ("absence_in_progress", "Absence in progress", "Absence en cours"),
+    ("punishment_upcoming", "Detention scheduled", "Punition à venir"),
+    ("throttled", "Collections throttled", "Collectes bridées"),
+]
+
+CALENDARS: list[tuple[str, str, str]] = [
+    ("timetable", "Timetable", "Emploi du temps"),
+    ("homework", "Homework", "Devoirs"),
+    ("punishments", "Detentions", "Punitions"),
+]
+
+TODOS: list[tuple[str, str, str]] = [("homework", "Homework", "Devoirs")]
+
+BUTTONS: list[tuple[str, str, str]] = [
+    ("refresh", "Refresh", "Rafraîchir"),
+    ("refresh_marks", "Refresh grades", "Rafraîchir les notes"),
+]
+
+EVENTS: list[tuple[str, str, str]] = [
+    ("new_grade", "New grade", "Nouvelle note"),
+    ("new_homework", "New homework", "Nouveau devoir"),
+    ("lesson_changed", "Lesson changed", "Cours modifié"),
+    ("new_information", "New news item", "Nouvelle actualité"),
+    ("new_absence", "New absence", "Nouvelle absence"),
+    ("new_delay", "New late arrival", "Nouveau retard"),
+    ("new_punishment", "New punishment", "Nouvelle punition"),
+    ("new_message", "New message", "Nouveau message"),
+    ("new_evaluation", "New skill assessment", "Nouvelle évaluation"),
+]
+
+IMAGES: list[tuple[str, str, str]] = [("photo", "Photo", "Photo")]
+
+# ---------------------------------------------------------------------------
+# Tier labels, reused by the options page and the refresh service.
+# ---------------------------------------------------------------------------
+
+TIERS: list[tuple[str, str, str]] = [
+    ("timetable", "Timetable", "Emploi du temps"),
+    ("homework", "Homework", "Devoirs"),
+    ("news", "News", "Actualités"),
+    ("discussions", "Discussions", "Discussions"),
+    ("marks", "Grades", "Notes"),
+    ("attendance", "Attendance", "Vie scolaire"),
+    ("evaluations", "Skill assessments", "Évaluations"),
+    ("menus", "Canteen menus", "Menus"),
+    ("static", "Rarely-changing data", "Données stables"),
+    ("history", "Closed periods", "Périodes closes"),
+]
+
+# ---------------------------------------------------------------------------
+# Config and options flow
+# ---------------------------------------------------------------------------
+
+CONFIG_EN: dict[str, Any] = {
+    "step": {
+        "user": {
+            "title": "PRONOTE",
+            "description": (
+                "Choose how to connect. The QR code from the PRONOTE mobile "
+                "app is the most reliable method: it enrols this Home "
+                "Assistant as a device and avoids storing your password."
+            ),
+            "menu_options": {
+                "qr_code": "QR code from the mobile app (recommended)",
+                "credentials": "Username and password",
+                "ent": "Federated login (ENT)",
+            },
+        },
+        "qr_code": {
+            "title": "Enrol with a QR code",
+            "description": (
+                "In the PRONOTE mobile app, open the account menu and generate "
+                "a QR code, then paste its content below along with the "
+                "four-digit code you chose. The QR code can only be used once."
+            ),
+            "data": {
+                "qr_payload": "QR code content (JSON)",
+                "qr_pin": "Four-digit code",
+                "device_name": "Device name",
+                "account_pin": "Two-factor PIN (if your account uses one)",
+            },
+            "data_description": {
+                "account_pin": (
+                    "Used for this login only and never stored. You will be "
+                    "asked for it again if PRONOTE requires it."
+                ),
+            },
+        },
+        "credentials": {
+            "title": "Username and password",
+            "description": (
+                "Enter the address of your establishment's PRONOTE space, "
+                "ending in eleve.html or parent.html."
+            ),
+            "data": {
+                "pronote_url": "PRONOTE address",
+                "username": "Username",
+                "password": "Password",
+                "account_pin": "Two-factor PIN (if your account uses one)",
+            },
+            "data_description": {
+                "account_pin": (
+                    "Used for this login only and never stored. You will be "
+                    "asked for it again if PRONOTE requires it."
+                ),
+            },
+        },
+        "ent": {
+            "title": "Federated login",
+            "description": (
+                "Select your regional education portal. Your credentials are "
+                "the ones for that portal, not for PRONOTE itself."
+            ),
+            "data": {
+                "pronote_url": "PRONOTE address",
+                "username": "Username",
+                "password": "Password",
+                "ent": "Portal",
+            },
+        },
+        "children": {
+            "title": "Which children to follow",
+            "description": (
+                "Each child you follow multiplies the number of daily requests "
+                "to the server, so select only the ones you want."
+            ),
+            "data": {"children": "Children"},
+        },
+        "reauth_confirm": {
+            "title": "Reconnect to PRONOTE",
+            "description": (
+                "The connection to {url} was refused. Enter a corrected "
+                "password, or the two-factor PIN PRONOTE is asking for. The "
+                "PIN is used once and never stored."
+            ),
+            "data": {
+                "password": "Password",
+                "account_pin": "Two-factor PIN",
+            },
+        },
+    },
+    "error": {
+        "invalid_auth": (
+            "PRONOTE refused these credentials. Repeatedly retrying a wrong "
+            "password is what gets an address blocked, so check them before "
+            "trying again."
+        ),
+        "mfa_required": (
+            "PRONOTE is asking for the two-factor PIN of this account. Enter it above."
+        ),
+        "bootstrap_failed": (
+            "The address answered, but did not return a PRONOTE session page. "
+            "Check the address, and that the space is open right now."
+        ),
+        "invalid_qr": (
+            "The QR code or its four-digit code was refused. A QR code can "
+            "only be used once, so generate a new one in the app."
+        ),
+        "invalid_qr_payload": (
+            "That does not look like the content of a PRONOTE QR code. It "
+            "should be a JSON object with login, jeton and url."
+        ),
+        "cannot_connect": "Could not reach the server.",
+        "rate_limited": (
+            "Too many login attempts in the last hour, so this one was not "
+            "sent. Wait a little before trying again: repeatedly retrying a "
+            "login is what gets an address blocked by PRONOTE."
+        ),
+        "unknown": "Unexpected error. Check the Home Assistant log.",
+    },
+    "abort": {
+        "already_configured": "This account is already configured.",
+        "reauth_successful": "Reconnected.",
+    },
+}
+
+CONFIG_FR: dict[str, Any] = {
+    "step": {
+        "user": {
+            "title": "PRONOTE",
+            "description": (
+                "Choisissez le mode de connexion. Le QR code de l'application "
+                "mobile PRONOTE est le plus fiable : il enrôle ce Home "
+                "Assistant comme appareil et évite de conserver votre mot de "
+                "passe."
+            ),
+            "menu_options": {
+                "qr_code": "QR code de l'application mobile (recommandé)",
+                "credentials": "Identifiant et mot de passe",
+                "ent": "Connexion par l'ENT",
+            },
+        },
+        "qr_code": {
+            "title": "Enrôler avec un QR code",
+            "description": (
+                "Dans l'application mobile PRONOTE, ouvrez le menu du compte "
+                "et générez un QR code, puis collez son contenu ci-dessous "
+                "avec le code à quatre chiffres que vous avez choisi. Le QR "
+                "code n'est utilisable qu'une seule fois."
+            ),
+            "data": {
+                "qr_payload": "Contenu du QR code (JSON)",
+                "qr_pin": "Code à quatre chiffres",
+                "device_name": "Nom de l'appareil",
+                "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
+            },
+            "data_description": {
+                "account_pin": (
+                    "Utilisé pour cette connexion uniquement et jamais "
+                    "conservé. Il vous sera redemandé si PRONOTE l'exige."
+                ),
+            },
+        },
+        "credentials": {
+            "title": "Identifiant et mot de passe",
+            "description": (
+                "Saisissez l'adresse de l'espace PRONOTE de l'établissement, "
+                "terminée par eleve.html ou parent.html."
+            ),
+            "data": {
+                "pronote_url": "Adresse PRONOTE",
+                "username": "Identifiant",
+                "password": "Mot de passe",
+                "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
+            },
+            "data_description": {
+                "account_pin": (
+                    "Utilisé pour cette connexion uniquement et jamais "
+                    "conservé. Il vous sera redemandé si PRONOTE l'exige."
+                ),
+            },
+        },
+        "ent": {
+            "title": "Connexion par l'ENT",
+            "description": (
+                "Sélectionnez votre portail académique. Les identifiants sont "
+                "ceux du portail, pas ceux de PRONOTE."
+            ),
+            "data": {
+                "pronote_url": "Adresse PRONOTE",
+                "username": "Identifiant",
+                "password": "Mot de passe",
+                "ent": "Portail",
+            },
+        },
+        "children": {
+            "title": "Enfants à suivre",
+            "description": (
+                "Chaque enfant suivi multiplie le nombre d'appels quotidiens "
+                "au serveur : ne sélectionnez que ceux qui vous intéressent."
+            ),
+            "data": {"children": "Enfants"},
+        },
+        "reauth_confirm": {
+            "title": "Se reconnecter à PRONOTE",
+            "description": (
+                "La connexion à {url} a été refusée. Saisissez un mot de passe "
+                "corrigé, ou le code PIN à deux facteurs demandé par PRONOTE. "
+                "Ce code est utilisé une fois et jamais conservé."
+            ),
+            "data": {
+                "password": "Mot de passe",
+                "account_pin": "Code PIN à deux facteurs",
+            },
+        },
+    },
+    "error": {
+        "invalid_auth": (
+            "PRONOTE a refusé ces identifiants. Réessayer en boucle un mot de "
+            "passe erroné est précisément ce qui fait bloquer une adresse : "
+            "vérifiez-les avant de recommencer."
+        ),
+        "mfa_required": (
+            "PRONOTE demande le code PIN à deux facteurs de ce compte. "
+            "Saisissez-le ci-dessus."
+        ),
+        "bootstrap_failed": (
+            "L'adresse a répondu, mais sans page de session PRONOTE. Vérifiez "
+            "l'adresse, et que l'espace est bien ouvert en ce moment."
+        ),
+        "invalid_qr": (
+            "Le QR code ou son code à quatre chiffres a été refusé. Un QR code "
+            "n'est utilisable qu'une fois : générez-en un nouveau dans "
+            "l'application."
+        ),
+        "invalid_qr_payload": (
+            "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit "
+            "s'agir d'un objet JSON avec login, jeton et url."
+        ),
+        "cannot_connect": "Impossible de joindre le serveur.",
+        "rate_limited": (
+            "Trop de tentatives de connexion dans la dernière heure : celle-ci "
+            "n'a pas été envoyée. Attendez un peu avant de réessayer, car "
+            "réessayer une connexion en boucle est précisément ce qui fait "
+            "bloquer une adresse par PRONOTE."
+        ),
+        "unknown": "Erreur inattendue. Consultez le journal de Home Assistant.",
+    },
+    "abort": {
+        "already_configured": "Ce compte est déjà configuré.",
+        "reauth_successful": "Reconnexion réussie.",
+    },
+}
+
+# `(option key, english label, french label, english help, french help)`.
+# Every tunable of annexe B §7 appears here, and every one carries a help line:
+# a range without an explanation gets set at random.
+GENERAL_OPTIONS: list[tuple[str, str, str, str, str]] = [
+    (
+        "master_tick",
+        "Heartbeat interval",
+        "Intervalle du battement",
+        "How often the integration checks which tiers are due. Not how often "
+        "it calls PRONOTE.",
+        "Fréquence à laquelle l'intégration regarde quels paliers sont dus. "
+        "Ce n'est pas la fréquence des appels à PRONOTE.",
+    ),
+    (
+        "homework_horizon",
+        "Homework horizon",
+        "Horizon des devoirs",
+        "How many days of homework to display. This does not change the "
+        "number of requests: PRONOTE returns a week range either way.",
+        "Nombre de jours de devoirs affichés. Cela ne change pas le nombre "
+        "d'appels : PRONOTE renvoie une plage de semaines dans tous les cas.",
+    ),
+    (
+        "wake_margin",
+        "Wake-up margin",
+        "Marge de réveil",
+        "Minutes subtracted from the first lesson of the day to produce the "
+        "wake-up sensor.",
+        "Minutes retirées au premier cours de la journée pour calculer le "
+        "capteur de réveil.",
+    ),
+    (
+        "stale_after",
+        "Mark data stale after",
+        "Marquer périmé après",
+        "Multiples of a tier's interval after which its entities are marked "
+        "stale. They keep their last value rather than going unavailable, "
+        "because an entity that flickers unavailable fires automations "
+        "spuriously.",
+        "Multiples de l'intervalle d'un palier au-delà desquels ses entités "
+        "sont marquées périmées. Elles conservent leur dernière valeur au "
+        "lieu de devenir indisponibles : une entité qui clignote en "
+        "indisponible déclenche des automatisations à tort.",
+    ),
+    (
+        "establishment_timezone",
+        "Establishment timezone",
+        "Fuseau de l'établissement",
+        "PRONOTE returns local times with no timezone. This is the timezone "
+        "they are interpreted in.",
+        "PRONOTE renvoie des heures locales sans fuseau. C'est le fuseau dans "
+        "lequel elles sont interprétées.",
+    ),
+    (
+        "session_strategy",
+        "Session strategy",
+        "Stratégie de session",
+        "Whether to keep one session alive between collections (lazy) or open "
+        "a new one for each batch. Lazy starts cautious and switches by "
+        "itself if the server turns out to expire sessions quickly, so it is "
+        "never worse than the alternative.",
+        "Conserver une session entre les collectes (lazy) ou en ouvrir une "
+        "par lot. Le mode lazy démarre prudemment et basculera de lui-même si "
+        "le serveur expire vite les sessions : il n'est jamais moins bon que "
+        "l'autre.",
+    ),
+    (
+        "write_operations_enabled",
+        "Allow writing to PRONOTE",
+        "Autoriser l'écriture dans PRONOTE",
+        "Off by default. When on, ticking a homework item, marking news read "
+        "and sending messages become possible, and the establishment sees "
+        "those actions.",
+        "Désactivé par défaut. Une fois activé, cocher un devoir, marquer une "
+        "actualité comme lue et envoyer des messages deviennent possibles, et "
+        "l'établissement voit ces actions.",
+    ),
+]
+
+RATE_LIMIT_OPTIONS: list[tuple[str, str, str, str, str]] = [
+    (
+        "min_request_interval",
+        "Minimum interval between requests",
+        "Intervalle minimum entre appels",
+        "Spacing applied to every request, so a batch never arrives as a burst.",
+        "Espacement appliqué à chaque appel, pour qu'un lot n'arrive jamais en rafale.",
+    ),
+    (
+        "max_requests_per_hour",
+        "Requests per hour",
+        "Appels par heure",
+        "The sustained rate the token bucket refills at.",
+        "Le débit soutenu auquel le seau à jetons se remplit.",
+    ),
+    (
+        "burst_size",
+        "Burst size",
+        "Taille de la rafale",
+        "How many requests may go out back to back before the hourly rate applies.",
+        "Nombre d'appels pouvant partir d'affilée avant que le débit horaire "
+        "s'applique.",
+    ),
+    (
+        "max_requests_per_day",
+        "Requests per day",
+        "Appels par jour",
+        "Hard ceiling. Low-priority tiers stop being served well before it is "
+        "reached, so the cap protects the account rather than surprising you.",
+        "Plafond absolu. Les paliers de faible priorité cessent d'être servis "
+        "bien avant qu'il soit atteint : le plafond protège le compte au lieu "
+        "de vous surprendre.",
+    ),
+    (
+        "max_wait",
+        "Maximum wait before postponing",
+        "Attente maximale avant report",
+        "If a tier would have to wait longer than this for its budget, it is "
+        "postponed instead. Its entities keep their values.",
+        "Si un palier devait attendre plus longtemps que cela pour son budget, "
+        "il est reporté. Ses entités conservent leurs valeurs.",
+    ),
+    (
+        "max_logins_per_day",
+        "Logins per day",
+        "Connexions par jour",
+        "A login costs about five requests, so this is counted separately.",
+        "Une connexion coûte environ cinq appels : elle est donc comptée à part.",
+    ),
+    (
+        "max_failed_logins_per_hour",
+        "Failed logins before pausing",
+        "Échecs de connexion avant pause",
+        "The single most important setting here. PRONOTE sanctions repeated "
+        "failed logins by blocking the address, and that sanction is "
+        "undocumented and costly. Keep this low.",
+        "Le réglage le plus important de cette page. PRONOTE sanctionne les "
+        "échecs de connexion répétés en bloquant l'adresse, et cette sanction "
+        "n'est pas documentée et coûte cher. Gardez une valeur basse.",
+    ),
+    (
+        "credentials_hold",
+        "Pause after too many failures",
+        "Pause après trop d'échecs",
+        "How long to stop trying once the failed-login limit is reached. A "
+        "manual reconnection clears it immediately.",
+        "Durée pendant laquelle on arrête d'essayer une fois la limite "
+        "atteinte. Une reconnexion manuelle la lève immédiatement.",
+    ),
+    (
+        "bootstrap_hold",
+        "Pause when the session page is unreadable",
+        "Pause si la page de session est illisible",
+        "Applied when the address answers without a PRONOTE session page. The "
+        "cause is not knowable from the response, so no cause is claimed.",
+        "Appliquée quand l'adresse répond sans page de session PRONOTE. La "
+        "cause n'est pas déductible de la réponse : aucune cause n'est donc "
+        "affirmée.",
+    ),
+    (
+        "backoff_base",
+        "Backoff base",
+        "Base de la temporisation",
+        "First wait after a server error. It doubles at each consecutive "
+        "failure, with jitter.",
+        "Première attente après une erreur serveur. Elle double à chaque échec "
+        "consécutif, avec une part d'aléatoire.",
+    ),
+    (
+        "backoff_max",
+        "Backoff maximum",
+        "Temporisation maximale",
+        "Ceiling on that doubling.",
+        "Plafond de ce doublement.",
+    ),
+    (
+        "connect_timeout",
+        "Connection timeout",
+        "Délai de connexion",
+        "The upstream library sets no timeout at all, so this is applied by "
+        "this integration.",
+        "La bibliothèque amont ne fixe aucun délai : celui-ci est appliqué par "
+        "cette intégration.",
+    ),
+    (
+        "read_timeout",
+        "Read timeout",
+        "Délai de lecture",
+        "How long to wait for a response before abandoning a request.",
+        "Durée d'attente d'une réponse avant d'abandonner un appel.",
+    ),
+    (
+        "quiet_hours_enabled",
+        "Quiet hours",
+        "Heures calmes",
+        "Stop collecting overnight. Roughly a third of the daily budget, spent "
+        "on data nobody reads while asleep.",
+        "Arrêter de collecter la nuit. C'est environ un tiers du budget "
+        "quotidien, dépensé sur des données que personne ne lit en dormant.",
+    ),
+    (
+        "quiet_start",
+        "Quiet hours start",
+        "Début des heures calmes",
+        "",
+        "",
+    ),
+    ("quiet_end", "Quiet hours end", "Fin des heures calmes", "", ""),
+]
+
+OPTIONS_INIT_DESCRIPTION_EN = (
+    "Currently about **{estimate} requests a day** for {students} child(ren). "
+    "Measured session lifetime: {measured} min."
+)
+OPTIONS_INIT_DESCRIPTION_FR = (
+    "Actuellement environ **{estimate} appels par jour** pour {students} "
+    "enfant(s). Durée de vie mesurée de la session : {measured} min."
+)
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+
+SERVICES: list[dict[str, Any]] = [
+    {
+        "key": "refresh",
+        "name_en": "Refresh",
+        "name_fr": "Rafraîchir",
+        "description_en": (
+            "Asks the scheduler for a priority pass. Does not bypass the rate "
+            "limiter, so pressing it repeatedly costs one batch, not several."
+        ),
+        "description_fr": (
+            "Demande un passage prioritaire à l'ordonnanceur. Ne contourne pas "
+            "le limiteur : l'appeler plusieurs fois coûte un lot, pas "
+            "plusieurs."
+        ),
+        "fields": [
+            ("device_id", "Child", "Enfant", "", ""),
+            (
+                "tiers",
+                "Tiers",
+                "Paliers",
+                "Which categories to refresh. All of them if left empty.",
+                "Catégories à rafraîchir. Toutes si le champ est vide.",
+            ),
+        ],
+    },
+    {
+        "key": "get_ical_url",
+        "name_en": "Get the iCal URL",
+        "name_fr": "Obtenir l'URL iCal",
+        "description_en": (
+            "Returns the timetable subscription URL in the response. It is "
+            "never stored in a state or an attribute: anyone holding this URL "
+            "can read the child's timetable without a password."
+        ),
+        "description_fr": (
+            "Renvoie l'URL d'abonnement à l'emploi du temps dans la réponse. "
+            "Elle n'est jamais stockée dans un état ni un attribut : quiconque "
+            "détient cette URL lit l'emploi du temps de l'enfant sans mot de "
+            "passe."
+        ),
+        "fields": [("device_id", "Child", "Enfant", "", "")],
+    },
+    {
+        "key": "get_identity",
+        "name_en": "Get the identity",
+        "name_fr": "Obtenir l'identité",
+        "description_en": (
+            "Returns the personal details and legal guardians in the response. "
+            "Never stored in a state."
+        ),
+        "description_fr": (
+            "Renvoie l'état civil et les responsables légaux dans la réponse. "
+            "Jamais stocké dans un état."
+        ),
+        "fields": [("device_id", "Child", "Enfant", "", "")],
+    },
+    {
+        "key": "mark_homework_done",
+        "name_en": "Tick a homework item",
+        "name_fr": "Cocher un devoir",
+        "description_en": (
+            "Marks one homework item done or not done. The establishment sees "
+            "this. Requires writing to be enabled in the options."
+        ),
+        "description_fr": (
+            "Marque un devoir comme fait ou non fait. L'établissement le voit. "
+            "Nécessite l'activation de l'écriture dans les options."
+        ),
+        "fields": [
+            ("device_id", "Child", "Enfant", "", ""),
+            (
+                "homework_id",
+                "Homework identifier",
+                "Identifiant du devoir",
+                "Taken from the id field of the homework sensor's items.",
+                "Repris du champ id des items du capteur de devoirs.",
+            ),
+            ("done", "Done", "Fait", "", ""),
+        ],
+    },
+    {
+        "key": "mark_information_read",
+        "name_en": "Mark a news item read",
+        "name_fr": "Marquer une actualité comme lue",
+        "description_en": (
+            "Marks one news item as read. Requires writing to be enabled."
+        ),
+        "description_fr": (
+            "Marque une actualité comme lue. Nécessite l'activation de l'écriture."
+        ),
+        "fields": [
+            ("device_id", "Child", "Enfant", "", ""),
+            (
+                "information_id",
+                "News identifier",
+                "Identifiant de l'actualité",
+                "Taken from the id field of the news sensor's items.",
+                "Repris du champ id des items du capteur d'actualités.",
+            ),
+        ],
+    },
+    {
+        "key": "send_message",
+        "name_en": "Send a message",
+        "name_fr": "Envoyer un message",
+        "description_en": (
+            "Replies to an existing discussion, or starts a new one with named "
+            "recipients. Give either a discussion identifier or a list of "
+            "recipients, not both. Requires writing to be enabled."
+        ),
+        "description_fr": (
+            "Répond à une discussion existante, ou en ouvre une nouvelle avec "
+            "des destinataires nommés. Fournissez soit un identifiant de "
+            "discussion, soit une liste de destinataires, pas les deux. "
+            "Nécessite l'activation de l'écriture."
+        ),
+        "fields": [
+            ("device_id", "Child", "Enfant", "", ""),
+            ("message", "Message", "Message", "", ""),
+            (
+                "discussion_id",
+                "Discussion identifier",
+                "Identifiant de discussion",
+                "To reply to an existing thread.",
+                "Pour répondre à un fil existant.",
+            ),
+            (
+                "subject",
+                "Subject",
+                "Objet",
+                "Required when starting a new discussion.",
+                "Obligatoire pour ouvrir une nouvelle discussion.",
+            ),
+            (
+                "recipients",
+                "Recipients",
+                "Destinataires",
+                "Names as PRONOTE publishes them. An unmatched name is "
+                "refused rather than silently dropped.",
+                "Noms tels que PRONOTE les publie. Un nom non trouvé est "
+                "refusé plutôt qu'ignoré silencieusement.",
+            ),
+        ],
+    },
+    {
+        "key": "generate_timetable_pdf",
+        "name_en": "Generate a timetable PDF",
+        "name_fr": "Générer un PDF de l'emploi du temps",
+        "description_en": (
+            "Asks PRONOTE to render a PDF and returns its URL in the response."
+        ),
+        "description_fr": (
+            "Demande à PRONOTE de produire un PDF et renvoie son URL dans la réponse."
+        ),
+        "fields": [
+            ("device_id", "Child", "Enfant", "", ""),
+            ("day", "Day", "Jour", "Defaults to today.", "Aujourd'hui par défaut."),
+            ("orientation", "Orientation", "Orientation", "", ""),
+        ],
+    },
+    {
+        "key": "get_rate_limit_status",
+        "name_en": "Get the rate limiter status",
+        "name_fr": "Obtenir l'état du limiteur",
+        "description_en": (
+            "Returns the full budget and scheduler state in the response. "
+            "Costs no request: it reads counters already in memory."
+        ),
+        "description_fr": (
+            "Renvoie l'état complet du budget et de l'ordonnanceur dans la "
+            "réponse. Ne coûte aucun appel : il lit des compteurs déjà en "
+            "mémoire."
+        ),
+        "fields": [("device_id", "Account or child", "Compte ou enfant", "", "")],
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Exceptions, issues, device automation
+# ---------------------------------------------------------------------------
+
+EXCEPTIONS: list[tuple[str, str, str]] = [
+    (
+        "writes_disabled",
+        "Writing to PRONOTE is disabled. Turn on “Allow writing to "
+        "PRONOTE” in the integration options first.",
+        "L'écriture dans PRONOTE est désactivée. Activez d'abord "
+        "« Autoriser l'écriture dans PRONOTE » dans les options de "
+        "l'intégration.",
+    ),
+    (
+        "service_deferred",
+        "Postponed by the rate limiter ({reason}). Try again in about "
+        "{seconds} seconds.",
+        "Reporté par le limiteur ({reason}). Réessayez dans environ {seconds} "
+        "secondes.",
+    ),
+    (
+        "unknown_device",
+        "No such device: {device_id}.",
+        "Appareil inconnu : {device_id}.",
+    ),
+    (
+        "device_not_pronote",
+        "Device {device_id} does not belong to a PRONOTE account.",
+        "L'appareil {device_id} n'appartient pas à un compte PRONOTE.",
+    ),
+    (
+        "student_required",
+        "This account follows several children ({children}). Target the "
+        "child's device rather than the account.",
+        "Ce compte suit plusieurs enfants ({children}). Ciblez l'appareil de "
+        "l'enfant plutôt que celui du compte.",
+    ),
+    (
+        "subject_required",
+        "A subject is required to start a new discussion.",
+        "Un objet est obligatoire pour ouvrir une nouvelle discussion.",
+    ),
+    (
+        "discussion_not_found",
+        "No discussion with identifier {discussion_id} is visible to this account.",
+        "Aucune discussion avec l'identifiant {discussion_id} n'est visible "
+        "depuis ce compte.",
+    ),
+    (
+        "discussion_closed",
+        "Discussion {discussion_id} is closed and cannot be replied to.",
+        "La discussion {discussion_id} est close : impossible d'y répondre.",
+    ),
+    (
+        "recipient_not_found",
+        "Unknown recipients: {missing}. Reachable recipients are: {available}.",
+        "Destinataires inconnus : {missing}. Les destinataires joignables "
+        "sont : {available}.",
+    ),
+    (
+        "todo_item_unknown",
+        "That to-do item has no PRONOTE identifier, so it cannot be updated.",
+        "Cet élément de liste n'a pas d'identifiant PRONOTE : il ne peut pas "
+        "être mis à jour.",
+    ),
+]
+
+ISSUES: list[tuple[str, str, str, str, str]] = [
+    (
+        # Opened by `async_open_unreadable_issue`, on a live path
+        # (`__init__.py`), and it had no entry here -- so Home Assistant
+        # rendered the raw key as the title of a repair the user cannot
+        # otherwise diagnose. A separate issue from `bootstrap_failed` because
+        # the remedy differs: there is nothing for the user to correct.
+        "account_unreadable",
+        "PRONOTE answered something this integration cannot read",
+        "PRONOTE a répondu quelque chose d'illisible",
+        "The address {url} and the credentials are both fine: PRONOTE "
+        "answered, and the answer is outside what the pinned pronotepy "
+        "version can decode. This usually means the establishment's PRONOTE "
+        "changed something. There is nothing to correct on your side -- "
+        "please report it, ideally with the integration's diagnostics "
+        "attached.",
+        "L'adresse {url} et les identifiants sont corrects : PRONOTE a "
+        "répondu, mais sa réponse sort de ce que la version épinglée de "
+        "pronotepy sait décoder. Cela signifie généralement que le PRONOTE de "
+        "l'établissement a changé. Il n'y a rien à corriger de votre côté : "
+        "merci de le signaler, si possible avec le diagnostic de "
+        "l'intégration.",
+    ),
+    (
+        "invalid_credentials",
+        "PRONOTE credentials refused",
+        "Identifiants PRONOTE refusés",
+        "PRONOTE refused the credentials {attempts} times, so attempts have "
+        "been paused until {until}. Repeatedly retrying a wrong password is "
+        "what gets an address blocked. Reconfigure the integration to enter "
+        "corrected credentials.",
+        "PRONOTE a refusé les identifiants {attempts} fois : les tentatives "
+        "sont suspendues jusqu'à {until}. Réessayer en boucle un mot de passe "
+        "erroné est précisément ce qui fait bloquer une adresse. "
+        "Reconfigurez l'intégration pour saisir des identifiants corrigés.",
+    ),
+    (
+        "bootstrap_failed",
+        "Cannot read the PRONOTE session page",
+        "Page de session PRONOTE illisible",
+        "{url} answered, but the response contained no PRONOTE session block. "
+        "This can mean the address is wrong, the space is closed for "
+        "maintenance, the establishment changed its URL, or the server is "
+        "returning an error page. The response does not say which, so no "
+        "cause is claimed here. Retrying automatically until {until}.",
+        "{url} a répondu, mais la réponse ne contenait aucun bloc de session "
+        "PRONOTE. Cela peut signifier que l'adresse est erronée, que l'espace "
+        "est fermé pour maintenance, que l'établissement a changé son URL, ou "
+        "que le serveur renvoie une page d'erreur. La réponse ne permet pas de "
+        "trancher : aucune cause n'est donc affirmée ici. Nouvelle tentative "
+        "automatique jusqu'à {until}.",
+    ),
+    (
+        "daily_cap_near",
+        "Approaching the daily request limit",
+        "Plafond d'appels quotidien bientôt atteint",
+        "{calls} of {cap} requests used today. Low-priority categories are "
+        "already being postponed. Lengthening the intervals of the categories "
+        "you care least about in the options is the usual fix.",
+        "{calls} appels sur {cap} utilisés aujourd'hui. Les catégories de "
+        "faible priorité sont déjà reportées. Allonger les intervalles des "
+        "catégories qui vous importent le moins dans les options est le "
+        "réglage habituel.",
+    ),
+    (
+        "mfa_required",
+        "PRONOTE is asking for the two-factor PIN",
+        "PRONOTE demande le code PIN à deux facteurs",
+        "This integration deliberately never stores the two-factor PIN, so it "
+        "has to be entered again. Reconfigure the integration to supply it.",
+        "Cette intégration ne conserve délibérément jamais le code PIN à deux "
+        "facteurs : il doit donc être saisi à nouveau. Reconfigurez "
+        "l'intégration pour le fournir.",
+    ),
+]
+
+TRIGGER_TYPES: list[tuple[str, str, str]] = [
+    ("grade_added", "A grade was added", "Une note est arrivée"),
+    ("homework_added", "Homework was added", "Un devoir a été ajouté"),
+    ("lesson_canceled", "A lesson was cancelled", "Un cours a été annulé"),
+    (
+        "lesson_restored",
+        "A cancelled lesson is back on",
+        "Un cours annulé est rétabli",
+    ),
+    ("lesson_moved", "A lesson was moved", "Un cours a été déplacé"),
+    ("room_changed", "A room changed", "Une salle a changé"),
+    ("teacher_changed", "A teacher changed", "Un professeur a changé"),
+    (
+        "lesson_status_changed",
+        "A lesson's status changed",
+        "Le statut d'un cours a changé",
+    ),
+    ("information_added", "A news item was posted", "Une actualité a été publiée"),
+    ("absence_added", "An absence was recorded", "Une absence a été enregistrée"),
+    ("delay_added", "A late arrival was recorded", "Un retard a été enregistré"),
+    ("punishment_added", "A punishment was given", "Une punition a été donnée"),
+    ("message_received", "A message was received", "Un message a été reçu"),
+    (
+        "evaluation_added",
+        "A skill assessment was added",
+        "Une évaluation a été ajoutée",
+    ),
+]
+
+CONDITION_TYPES: list[tuple[str, str, str]] = [
+    ("is_school_day", "It is a school day", "C'est un jour de classe"),
+    ("is_not_school_day", "It is not a school day", "Ce n'est pas un jour de classe"),
+    ("is_in_class", "The child is in class", "L'enfant est en cours"),
+    ("is_not_in_class", "The child is not in class", "L'enfant n'est pas en cours"),
+    ("is_test_today", "A test is scheduled today", "Un contrôle est prévu aujourd'hui"),
+    ("is_homework_overdue", "Homework is overdue", "Des devoirs sont en retard"),
+    (
+        "is_absence_in_progress",
+        "An absence is in progress",
+        "Une absence est en cours",
+    ),
+    (
+        "is_punishment_upcoming",
+        "A detention is scheduled",
+        "Une punition est programmée",
+    ),
+    ("is_holidays", "It is the holidays", "C'est les vacances"),
+    ("is_not_holidays", "It is not the holidays", "Ce ne sont pas les vacances"),
+]
+
+ACTION_TYPES: list[tuple[str, str, str]] = [
+    ("refresh", "Refresh everything", "Tout rafraîchir"),
+    ("refresh_marks", "Refresh the grades", "Rafraîchir les notes"),
+    ("mark_homework_done", "Tick a homework item", "Cocher un devoir"),
+    (
+        "mark_information_read",
+        "Mark a news item read",
+        "Marquer une actualité comme lue",
+    ),
+]
+
+
+#: Which event types each ``event`` entity may report -- the same mapping
+#: ``event.py`` declares in its entity descriptions. Duplicated here because
+#: this script deliberately imports nothing from the integration (it has to run
+#: without Home Assistant installed), and kept honest by
+#: ``test_every_event_type_an_entity_can_report_is_translated``, which compares
+#: it against the entities that were actually created.
+EVENT_TYPES_BY_ENTITY: dict[str, tuple[str, ...]] = {
+    "new_grade": ("grade_added",),
+    "new_homework": ("homework_added",),
+    "lesson_changed": (
+        "lesson_canceled",
+        "lesson_restored",
+        "lesson_moved",
+        "room_changed",
+        "teacher_changed",
+        "lesson_status_changed",
+    ),
+    "new_information": ("information_added",),
+    "new_absence": ("absence_added",),
+    "new_delay": ("delay_added",),
+    "new_punishment": ("punishment_added",),
+    "new_message": ("message_received",),
+    "new_evaluation": ("evaluation_added",),
+}
+
+
+def _entities(index: int) -> dict[str, Any]:
+    """The ``entity`` block for one language (1 = English, 2 = French)."""
+    sensor: dict[str, Any] = {}
+    for key, en, fr in [*SENSORS, *HISTORY_SENSORS, *DIAGNOSTIC_SENSORS]:
+        sensor[key] = {"name": (en, fr)[index - 1]}
+    sensor["limiter_state"]["state"] = {
+        key: (en, fr)[index - 1] for key, en, fr in LIMITER_STATES
+    }
+
+    def block(rows: list[tuple[str, str, str]]) -> dict[str, Any]:
+        return {key: {"name": (en, fr)[index - 1]} for key, en, fr in rows}
+
+    # An `event` entity's *state* is the type of the last event it fired, and
+    # Home Assistant displays it. Read from
+    # `entity.event.<key>.state_attributes.event_type.state.<value>`; without
+    # these, a dashboard showed `lesson_canceled` in snake case while the very
+    # same string sat translated two blocks away under
+    # `device_automation.trigger_type`. Both come from `TRIGGER_TYPES` here, so
+    # the two readings of one event can no longer disagree.
+    labels = {key: (en, fr)[index - 1] for key, en, fr in TRIGGER_TYPES}
+    events: dict[str, Any] = block(EVENTS)
+    for key, types in EVENT_TYPES_BY_ENTITY.items():
+        events[key]["state_attributes"] = {
+            "event_type": {
+                "name": ("Event type", "Type d'évènement")[index - 1],
+                "state": {value: labels[value] for value in types},
+            }
+        }
+
+    return {
+        "sensor": sensor,
+        "binary_sensor": block(BINARY_SENSORS),
+        "calendar": block(CALENDARS),
+        "todo": block(TODOS),
+        "button": block(BUTTONS),
+        "event": events,
+        "image": block(IMAGES),
+    }
+
+
+def _options(index: int) -> dict[str, Any]:
+    """The ``options`` block for one language."""
+    pick = index - 1
+    description = (OPTIONS_INIT_DESCRIPTION_EN, OPTIONS_INIT_DESCRIPTION_FR)[pick]
+
+    general_data = {row[0]: row[1 + pick] for row in GENERAL_OPTIONS}
+    general_help = {row[0]: row[3 + pick] for row in GENERAL_OPTIONS if row[3 + pick]}
+    limit_data = {row[0]: row[1 + pick] for row in RATE_LIMIT_OPTIONS}
+    limit_help = {row[0]: row[3 + pick] for row in RATE_LIMIT_OPTIONS if row[3 + pick]}
+
+    tier_data: dict[str, str] = {}
+    for key, en, fr in TIERS:
+        label = (en, fr)[pick]
+        tier_data[f"interval_{key}"] = (
+            f"{label} - interval" if pick == 0 else f"{label} - intervalle"
+        )
+        tier_data[f"enabled_{key}"] = (
+            f"{label} - enabled" if pick == 0 else f"{label} - activé"
+        )
+
+    titles = (
+        {
+            "init": "PRONOTE options",
+            "general": "General",
+            "tiers": "Collection intervals",
+            "rate_limit": "Rate limiting",
+        },
+        {
+            "init": "Options PRONOTE",
+            "general": "Général",
+            "tiers": "Intervalles de collecte",
+            "rate_limit": "Limitation de débit",
+        },
+    )[pick]
+
+    menu_labels = (
+        {
+            "general": "General",
+            "tiers": "Collection intervals",
+            "rate_limit": "Rate limiting",
+        },
+        {
+            "general": "Général",
+            "tiers": "Intervalles de collecte",
+            "rate_limit": "Limitation de débit",
+        },
+    )[pick]
+
+    tiers_description = (
+        "One interval per category. The estimate above updates when you save.",
+        "Un intervalle par catégorie. L'estimation ci-dessus se met à jour à "
+        "l'enregistrement.",
+    )[pick]
+
+    limit_description = (
+        "These defaults were chosen to stay well inside what a PRONOTE server "
+        "tolerates. Raising them raises the risk of a sanction, which is borne "
+        "by the account, not by the integration.",
+        "Ces valeurs par défaut ont été choisies pour rester largement dans ce "
+        "qu'un serveur PRONOTE tolère. Les augmenter augmente le risque de "
+        "sanction, et cette sanction pèse sur le compte, pas sur "
+        "l'intégration.",
+    )[pick]
+
+    return {
+        "step": {
+            "init": {
+                "title": titles["init"],
+                "description": description,
+                "menu_options": menu_labels,
+            },
+            "general": {
+                "title": titles["general"],
+                "description": description,
+                "data": general_data,
+                "data_description": general_help,
+            },
+            "tiers": {
+                "title": titles["tiers"],
+                "description": f"{description}\n\n{tiers_description}",
+                "data": tier_data,
+            },
+            "rate_limit": {
+                "title": titles["rate_limit"],
+                "description": f"{description}\n\n{limit_description}",
+                "data": limit_data,
+                "data_description": limit_help,
+            },
+        }
+    }
+
+
+def _services(index: int) -> dict[str, Any]:
+    """The ``services`` block for one language."""
+    pick = index - 1
+    block: dict[str, Any] = {}
+    for service in SERVICES:
+        fields = {}
+        for key, en, fr, help_en, help_fr in service["fields"]:
+            entry: dict[str, str] = {"name": (en, fr)[pick]}
+            help_text = (help_en, help_fr)[pick]
+            entry["description"] = help_text or (en, fr)[pick]
+            fields[key] = entry
+        block[str(service["key"])] = {
+            "name": service[f"name_{'en' if pick == 0 else 'fr'}"],
+            "description": service[f"description_{'en' if pick == 0 else 'fr'}"],
+            "fields": fields,
+        }
+    return block
+
+
+def _catalogue(index: int) -> dict[str, Any]:
+    """A complete catalogue for one language."""
+    pick = index - 1
+    return {
+        "config": (CONFIG_EN, CONFIG_FR)[pick],
+        "options": _options(index),
+        "entity": _entities(index),
+        "services": _services(index),
+        "exceptions": {key: {"message": (en, fr)[pick]} for key, en, fr in EXCEPTIONS},
+        "issues": {
+            key: {
+                "title": (title_en, title_fr)[pick],
+                "description": (body_en, body_fr)[pick],
+            }
+            for key, title_en, title_fr, body_en, body_fr in ISSUES
+        },
+        "device_automation": {
+            "trigger_type": {key: (en, fr)[pick] for key, en, fr in TRIGGER_TYPES},
+            "condition_type": {key: (en, fr)[pick] for key, en, fr in CONDITION_TYPES},
+            "action_type": {key: (en, fr)[pick] for key, en, fr in ACTION_TYPES},
+        },
+        "selector": {
+            # Referenced by `services.yaml` through `translation_key: tier`, so
+            # the refresh service's tier picker reads in the user's language
+            # while the automation still sends the raw tier name (§10.3).
+            "tier": {"options": {key: (en, fr)[pick] for key, en, fr in TIERS}},
+            "session_strategy": {
+                "options": (
+                    {
+                        "lazy": "Keep the session alive (recommended)",
+                        "per_batch": "One session per batch",
+                    },
+                    {
+                        "lazy": "Conserver la session (recommandé)",
+                        "per_batch": "Une session par lot",
+                    },
+                )[pick]
+            },
+            # Referenced by `services.yaml` through `translation_key:
+            # orientation`. Without it the PDF service offered "portrait" and
+            # "landscape" as raw values, in English, in both catalogues.
+            "orientation": {
+                "options": (
+                    {"portrait": "Portrait", "landscape": "Landscape"},
+                    {"portrait": "Portrait", "landscape": "Paysage"},
+                )[pick]
+            },
+        },
+    }
+
+
+def _services_yaml() -> str:
+    """``services.yaml``: structure only, no user-visible text.
+
+    Names and descriptions live in ``strings.json`` so they are translatable.
+    A description written here would be untranslatable and would silently win
+    over the catalogue (§10.5).
+    """
+    lines = [
+        "# Generated by scripts/build_translations.py -- do not edit by hand.",
+        "#",
+        "# Structure only. Every user-visible string lives in strings.json and",
+        "# translations/, because a name written here cannot be translated.",
+        "",
+    ]
+    selectors = {
+        "device_id": "      device:\n        integration: pronote_ng",
+        "tiers": (
+            "      select:\n"
+            "        multiple: true\n"
+            "        translation_key: tier\n"
+            "        options:\n"
+            + "\n".join(f'          - "{key}"' for key, _en, _fr in TIERS)
+        ),
+        "homework_id": "      text:",
+        "information_id": "      text:",
+        "discussion_id": "      text:",
+        "subject": "      text:",
+        "message": "      text:\n        multiline: true",
+        "recipients": "      object:",
+        "done": "      boolean:",
+        "day": "      date:",
+        "orientation": (
+            "      select:\n"
+            "        translation_key: orientation\n"
+            "        options:\n"
+            '          - "portrait"\n'
+            '          - "landscape"'
+        ),
+    }
+    required = {
+        "device_id",
+        "homework_id",
+        "information_id",
+        "message",
+    }
+
+    for service in SERVICES:
+        lines.append(f"{service['key']}:")
+        lines.append("  fields:")
+        for key, *_rest in service["fields"]:
+            lines.append(f"    {key}:")
+            if key in required:
+                lines.append("      required: true")
+            lines.append("      selector:")
+            # Re-indented by two. The table below is written at the depth of
+            # `selector:` itself so it stays readable, and emitting it verbatim
+            # made every selector body a *sibling* of `selector:` rather than
+            # its child: `selector: null`, eighteen times. Home Assistant
+            # validates `services.yaml` against its own schema at load time
+            # (`helpers/service.py:498`), logs one line and returns `{}` -- so
+            # all eight services appeared in the UI with **no fields at all**,
+            # and `hassfest` failed on the same file. This is the whole defect,
+            # and it is two spaces.
+            lines.extend(
+                f"  {line}" if line else line for line in selectors[key].splitlines()
+            )
+        lines.append("")
+    return "\n".join(lines)
+
+
+def main() -> None:
+    """Write the three catalogues and ``services.yaml``."""
+    english = _catalogue(1)
+    french = _catalogue(2)
+
+    translations = COMPONENT / "translations"
+    translations.mkdir(exist_ok=True)
+
+    for path, payload in (
+        (COMPONENT / "strings.json", english),
+        (translations / "en.json", english),
+        (translations / "fr.json", french),
+    ):
+        path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(f"wrote {path.relative_to(ROOT)}")
+
+    services_path = COMPONENT / "services.yaml"
+    services_path.write_text(_services_yaml(), encoding="utf-8")
+    print(f"wrote {services_path.relative_to(ROOT)}")
+
+
+if __name__ == "__main__":
+    main()

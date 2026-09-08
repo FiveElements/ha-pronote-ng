@@ -1,0 +1,211 @@
+# Lesson cancelled or changed -- pronote_ng
+#
+# What it does: notifies when one of the student's lessons is cancelled, moved,
+# changes room, changes teacher or changes status -- with the time and subject.
+#
+# What it leans on: the integration's device triggers (device_trigger.py:58,
+# types `lesson_canceled`, `lesson_restored`, `lesson_moved`, `room_changed`,
+# `teacher_changed`, `lesson_status_changed`). You pick a child's device, not
+# an entity: device triggers are independent of the installation language
+# (docs/SPECIFICATION.md §10.8). Sorting the six types apart is done with a
+# native `trigger` condition whose id list comes straight from the selector --
+# zero Jinja.
+#
+# The trap it avoids: `lesson_restored` (a cancellation LIFTED) is a type of
+# its own, distinct from `lesson_canceled`. A detector that conflates them
+# fires the "no first period, sleep in" automation on the very morning the
+# lesson is reinstated (const.py:325). Here, if "Cancellation lifted" is not
+# ticked, that case never gets through.
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/lesson_canceled.yaml. The duplication
+# is deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Lesson cancelled or changed
+  description: >-
+    Notifies on every timetable change for the student: cancellation, move,
+    room, teacher, status. You choose which changes interest you; the others do
+    not pass the condition. An option keeps only the first and the last lesson
+    of the current day -- the only ones whose change actually moves when the
+    student has to leave or come home.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/lesson_canceled.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Student device
+          description: >-
+            The child's PRONOTE device. The list is restricted to devices
+            carrying `event` entities, which excludes the account device: "a
+            lesson was cancelled" does not happen to an account, it happens to
+            a student (device_trigger.py:83).
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: What should be notified?
+      icon: mdi:filter-variant
+      input:
+        changes:
+          name: Changes to keep
+          description: >-
+            The change types that will produce a notification. The values are
+            the types the integration actually declares.
+          default:
+            - lesson_canceled
+            - lesson_moved
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Lesson cancelled
+                  value: lesson_canceled
+                - label: Cancellation lifted (the lesson is back on)
+                  value: lesson_restored
+                - label: Lesson moved
+                  value: lesson_moved
+                - label: Room changed
+                  value: room_changed
+                - label: Teacher changed
+                  value: teacher_changed
+                - label: Status changed (teacher away, lesson relocated)
+                  value: lesson_status_changed
+        only_day_edges:
+          name: First and last lesson of the day only
+          description: >-
+            Only alert when the affected lesson opened or closed the day -- the
+            only ones whose change moves the arrival or departure time.
+            Requires the sensor below. Careful: this filter only knows about the
+            CURRENT day; a cancellation announced the evening before for
+            tomorrow will not get through.
+          default: false
+          selector:
+            boolean:
+        lessons_today_sensor:
+          name: "\"Lessons today\" sensor (for the option above)"
+          description: >-
+            The student's `lessons_today` entity. It publishes the day's
+            lessons, cancelled ones included, which is exactly what is needed
+            here: the day's boundaries do not shift under our feet. Leave empty
+            if the option above is off.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: pronote_ng
+                domain: sensor
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Notification action
+          description: >-
+            The variables `title` and `message` are available. `message` holds
+            the time, the subject and the nature of the change.
+          selector:
+            action:
+
+# `queued` rather than `single`: one collection can detect several changes, and
+# the integration fires one event per change (event.py:11). Under `single` the
+# second cancellation of the day would be silently dropped. `max: 15` covers a
+# whole day being reshuffled.
+mode: queued
+max: 15
+
+triggers:
+  - alias: Lesson cancelled
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: lesson_canceled
+    id: lesson_canceled
+  - alias: Cancellation lifted
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: lesson_restored
+    id: lesson_restored
+  - alias: Lesson moved
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: lesson_moved
+    id: lesson_moved
+  - alias: Room changed
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: room_changed
+    id: room_changed
+  - alias: Teacher changed
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: teacher_changed
+    id: teacher_changed
+  - alias: Status changed
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: lesson_status_changed
+    id: lesson_status_changed
+
+conditions:
+  - alias: The change is one the user asked for
+    # Native: the id list is exactly the list ticked in the selector. No
+    # template, no hand-rolled string comparison, and the refusal shows up in
+    # the trace.
+    condition: trigger
+    id: !input changes
+  - alias: First or last lesson of the day, when the option is on
+    # The one place in this file where a template is unavoidable: the event
+    # payload (delta.py:_lesson_context) carries `start` and `end` but nothing
+    # saying "this lesson opened the day". So we compare against the boundaries
+    # published by the "Lessons today" sensor. Both sides are ISO strings
+    # produced by the same code, so equality is exact.
+    condition: template
+    value_template: >-
+      {% set lessons = day_sensors | map('state_attr', 'lessons')
+         | select('iterable') | sum(start=[]) | list %}
+      {{ not edges_only or lessons | count == 0
+         or trigger.event.data.attributes.start == (lessons | map(attribute='start') | min)
+         or trigger.event.data.attributes.end == (lessons | map(attribute='end') | max) }}
+
+variables:
+  edges_only: !input only_day_edges
+  day_sensors: !input lessons_today_sensor
+  # Text composition only: formatting a time and naming an event type are not
+  # things a trigger can do.
+  change_label: >-
+    {% set labels = {
+      'lesson_canceled': 'cancelled',
+      'lesson_restored': 'back on after all',
+      'lesson_moved': 'moved',
+      'room_changed': 'has a new room',
+      'teacher_changed': 'has a new teacher',
+      'lesson_status_changed': 'changed status'} %}
+    {{ labels.get(trigger.id, trigger.id) }}
+  lesson_at: >-
+    {{ (trigger.event.data.attributes.start | as_datetime | as_local).strftime('%H:%M') }}
+  title: Timetable changed
+  message: >-
+    {{ trigger.event.data.attributes.subject }} at {{ lesson_at }}:
+    {{ change_label }}.
+
+actions:
+  - alias: Run the chosen notification action
+    sequence: !input notify_action

@@ -1,0 +1,9 @@
+# Normalise line endings in the repository to LF. The test suite runs on Linux
+# (pytest-homeassistant-custom-component imports fcntl), so a CRLF file that
+# reaches CI is a diff nobody asked for.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary

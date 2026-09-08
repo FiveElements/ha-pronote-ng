@@ -1,0 +1,156 @@
+# Adaptive wake-up alarm -- pronote_ng
+#
+# What it does: runs the wake-up action of your choice at the time the
+# integration computed for the first lesson of the next school day.
+#
+# What it leans on: the timestamp sensor "Next wake-up" (key `next_wake_up`,
+# sensor.py:958) handed straight to a core `time` trigger as its `at:`. No
+# time arithmetic in Jinja: the "first lesson of the next teaching day minus a
+# margin" calculation lives in the integration (sensor.py:_wake_target, option
+# `wake_margin`, 90 minutes by default).
+#
+# The trap it avoids: on a day with no lessons that sensor has no value and
+# reads `unknown`, and the `time` trigger skips `unknown` (time.py:229) -- so
+# nothing arms and nothing happens. There is therefore NO calendar to write and
+# no "are we on holiday?" test. The sensor already ignores cancelled lessons and
+# does not move on to tomorrow before today's lessons are over.
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/wake_up_alarm.yaml. The duplication
+# is deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Adaptive wake-up alarm
+  description: >-
+    Fires a wake-up (light, radio, TTS, notification...) at the time the
+    integration computed for the first lesson of the next school day. The
+    automation does nothing on days without lessons, during holidays, or when
+    every morning lesson is cancelled: the "Next wake-up" sensor then has no
+    value, and a time trigger with no value never arms. The margin before the
+    first lesson is set in the integration options ("Wake-up margin"); the
+    offset below is added to it, it does not replace it.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/wake_up_alarm.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        wake_up_sensor:
+          name: "\"Next wake-up\" sensor"
+          description: >-
+            The student's `next_wake_up` entity. Careful: the entity id depends
+            on the language Home Assistant was installed in
+            (`..._next_wake_up` in English, `..._prochain_reveil` in French),
+            which is exactly why this blueprint asks you to pick it instead of
+            hard-coding it. The list offers every timestamp sensor of the
+            integration: make sure you pick the wake-up one, not "Next lesson"
+            or "End of lessons".
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+                device_class: timestamp
+    reglages:
+      name: Settings
+      icon: mdi:tune
+      collapsed: true
+      input:
+        extra_offset:
+          name: Extra offset
+          description: >-
+            Added to the margin the integration already applies. Negative to
+            ring earlier, positive to ring later, zero to follow the sensor
+            exactly.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+              allow_negative: true
+        earliest_time:
+          name: Not before
+          description: >-
+            Safety net: a nonsensical timetable must not wake the house at
+            3 a.m.
+          default: "05:00:00"
+          selector:
+            time:
+        latest_time:
+          name: Not after
+          description: >-
+            The symmetric safety net: past this time the alarm has no point
+            left.
+          default: "10:00:00"
+          selector:
+            time:
+        school_day_sensor:
+          name: "\"School day\" sensor (optional)"
+          description: >-
+            Belt and braces: the student's `school_day` entity. Leave it empty,
+            this is already covered by the wake-up sensor having no value. Fill
+            it in if you want the automation explicitly conditioned on a school
+            day.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: pronote_ng
+                domain: binary_sensor
+    reveil:
+      name: Wake-up
+      icon: mdi:alarm
+      input:
+        wake_up_action:
+          name: Wake-up action
+          description: >-
+            What to do: turn on a light, start a playlist, send a
+            notification... The variables `title` and `message` are available;
+            `message` holds the time and subject of the first lesson.
+          selector:
+            action:
+
+# `single`: one wake-up a day, and two concurrent runs would make no sense.
+# Stating it beats inheriting it.
+mode: single
+
+triggers:
+  - alias: At the wake-up time published by the integration
+    trigger: time
+    at:
+      entity_id: !input wake_up_sensor
+      offset: !input extra_offset
+
+conditions:
+  - alias: There really are lessons today (if a sensor was provided)
+    condition: state
+    entity_id: !input school_day_sensor
+    state: "on"
+  - alias: Within the allowed time window
+    condition: time
+    after: !input earliest_time
+    before: !input latest_time
+
+variables:
+  wake_sensor: !input wake_up_sensor
+  # The only two templates in this file, and they exist purely to compose a
+  # sentence: neither a trigger nor a native condition can format a time. The
+  # `first_lesson` and `subject` attributes are published by the sensor itself
+  # (sensor.py:_wake_attributes).
+  first_lesson_at: >-
+    {% set first = state_attr(wake_sensor, 'first_lesson') %}
+    {{ (first | as_datetime | as_local).strftime('%H:%M') if first else '?' }}
+  first_lesson_subject: "{{ state_attr(wake_sensor, 'subject') or 'lesson' }}"
+  title: Wake up
+  message: >-
+    First lesson at {{ first_lesson_at }} ({{ first_lesson_subject }}).
+
+actions:
+  - alias: Run the chosen wake-up action
+    sequence: !input wake_up_action

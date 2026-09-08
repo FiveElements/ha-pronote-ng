@@ -1,0 +1,503 @@
+"""Services: the on-demand actions, and the secrets that never become states.
+
+Two rules shape this file.
+
+**A secret is returned, never stored (§8.2).** The iCal URL, the identity and
+the timetable PDF link are ``SupportsResponse.ONLY`` services. The iCal URL in
+particular grants read access to a child's whole timetable with no username and
+no password; as a state it would land in the recorder database, in every
+backup, in screenshots and in bug reports. As a service response it exists for
+the length of one script run. That is also why it is absent from the
+diagnostics download -- there is nothing to redact, because nothing is kept.
+
+**A write is off by default (§8.3).** Ticking a homework item, marking news read
+and sending a message all change what the establishment sees. They are refused
+unless the user turned write operations on, and refused with an explanation
+rather than ignored.
+
+Every call goes through the rate limiter and the serial executor like any
+collection: a service is not a dispensation. ``refresh`` in particular does not
+call anything itself -- it raises the priority of the requested tiers and lets
+the next master tick serve them, so a button mashed ten times still costs one
+batch (§5.1).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Final
+
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+    callback,
+)
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+import voluptuous as vol
+
+from .const import (
+    DOMAIN,
+    SERVICE_GENERATE_TIMETABLE_PDF,
+    SERVICE_GET_ICAL_URL,
+    SERVICE_GET_IDENTITY,
+    SERVICE_GET_RATE_LIMIT_STATUS,
+    SERVICE_MARK_HOMEWORK_DONE,
+    SERVICE_MARK_INFORMATION_READ,
+    SERVICE_REFRESH,
+    SERVICE_SEND_MESSAGE,
+    Priority,
+    Tier,
+)
+from .gateway import DiscussionIsClosed, DiscussionNotFound, RecipientNotFound
+from .ratelimit import TierDeferred
+
+if TYPE_CHECKING:
+    from datetime import date
+
+    from .account import PronoteAccount
+    from .models import Identity
+
+ATTR_DEVICE_ID: Final = "device_id"
+ATTR_TIERS: Final = "tiers"
+ATTR_HOMEWORK_ID: Final = "homework_id"
+ATTR_DONE: Final = "done"
+ATTR_INFORMATION_ID: Final = "information_id"
+ATTR_DISCUSSION_ID: Final = "discussion_id"
+ATTR_SUBJECT: Final = "subject"
+ATTR_MESSAGE: Final = "message"
+ATTR_RECIPIENTS: Final = "recipients"
+ATTR_DAY: Final = "day"
+ATTR_ORIENTATION: Final = "orientation"
+
+ORIENTATION_PORTRAIT: Final = "portrait"
+ORIENTATION_LANDSCAPE: Final = "landscape"
+
+#: Tiers a user may ask to refresh. ``session`` is absent on purpose: forcing a
+#: re-login on demand is the one gesture that can get an address suspended, and
+#: it is never what somebody pressing "refresh" wants (annexe B §3).
+REFRESHABLE_TIERS: Final = tuple(
+    tier.value for tier in Tier if tier is not Tier.SESSION
+)
+
+_DEVICE_SCHEMA: Final = vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string})
+
+_REFRESH_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Optional(ATTR_TIERS): vol.All(cv.ensure_list, [vol.In(REFRESHABLE_TIERS)]),
+    }
+)
+
+_MARK_HOMEWORK_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_HOMEWORK_ID): cv.string,
+        vol.Optional(ATTR_DONE, default=True): cv.boolean,
+    }
+)
+
+_MARK_INFORMATION_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_INFORMATION_ID): cv.string,
+    }
+)
+
+#: Either a reply to an existing thread, or a new one with named recipients --
+#: never both, and never neither. Enforced in the schema rather than in the
+#: handler so a malformed script fails before it spends a request.
+_SEND_MESSAGE_SCHEMA: Final = vol.All(
+    vol.Schema(
+        {
+            vol.Required(ATTR_DEVICE_ID): cv.string,
+            vol.Required(ATTR_MESSAGE): cv.string,
+            vol.Optional(ATTR_DISCUSSION_ID): cv.string,
+            vol.Optional(ATTR_SUBJECT): cv.string,
+            vol.Optional(ATTR_RECIPIENTS): vol.All(cv.ensure_list, [cv.string]),
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_DISCUSSION_ID, ATTR_RECIPIENTS),
+    cv.has_at_most_one_key(ATTR_DISCUSSION_ID, ATTR_RECIPIENTS),
+)
+
+_TIMETABLE_PDF_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Optional(ATTR_DAY): cv.date,
+        vol.Optional(ATTR_ORIENTATION, default=ORIENTATION_PORTRAIT): vol.In(
+            (ORIENTATION_PORTRAIT, ORIENTATION_LANDSCAPE)
+        ),
+    }
+)
+
+
+# ---------------------------------------------------------------------------
+# Target resolution
+# ---------------------------------------------------------------------------
+
+
+def _accounts(hass: HomeAssistant) -> dict[str, PronoteAccount]:
+    """Every loaded account, keyed by config entry id."""
+    accounts: dict[str, PronoteAccount] = hass.data.get(DOMAIN, {})
+    return accounts
+
+
+def _resolve(hass: HomeAssistant, device_id: str) -> tuple[PronoteAccount, str | None]:
+    """Map a device to its account and, for a child device, to the child.
+
+    Devices are targeted rather than entities because a service acts on a
+    *child*, not on one of their sensors -- and because the child device is what
+    the automation editor already offers (§2.3).
+    """
+    registry = dr.async_get(hass)
+    device = registry.async_get(device_id)
+    if device is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_device",
+            translation_placeholders={"device_id": device_id},
+        )
+
+    accounts = _accounts(hass)
+    for domain, identifier in device.identifiers:
+        if domain != DOMAIN:
+            continue
+        # `<entry_id>_<student_id>` is a child; a bare `<entry_id>` is the
+        # account device that carries the diagnostics.
+        if identifier in accounts:
+            return accounts[identifier], None
+        entry_id, _, student_id = identifier.partition("_")
+        account = accounts.get(entry_id)
+        if account is not None and student_id:
+            return account, student_id
+
+    raise ServiceValidationError(
+        translation_domain=DOMAIN,
+        translation_key="device_not_pronote",
+        translation_placeholders={"device_id": device_id},
+    )
+
+
+def _resolve_student(
+    hass: HomeAssistant, call: ServiceCall
+) -> tuple[PronoteAccount, str]:
+    """Resolve a service that needs a specific child.
+
+    An account with a single child accepts the account device as a shorthand;
+    with several, the call has to say which one -- guessing would send a message
+    from the wrong child.
+    """
+    account, student_id = _resolve(hass, call.data[ATTR_DEVICE_ID])
+    if student_id is not None:
+        return account, student_id
+    if len(account.students) == 1:
+        return account, account.students[0].id
+    raise ServiceValidationError(
+        translation_domain=DOMAIN,
+        translation_key="student_required",
+        translation_placeholders={
+            "children": ", ".join(student.name for student in account.students)
+        },
+    )
+
+
+def _require_writes(account: PronoteAccount) -> None:
+    """Refuse a write, with a reason, unless the user enabled writes (§8.3)."""
+    if not account.write_enabled:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="writes_disabled",
+        )
+
+
+async def _run(
+    account: PronoteAccount,
+    tier: Tier,
+    student_id: str | None,
+    fn: Any,
+    *,
+    cost: int,
+    priority: Priority = Priority.HIGH,
+) -> Any:
+    """Run one gateway call, translating a deferral into a clear error.
+
+    A service that is silently postponed looks like a service that did nothing,
+    so unlike a scheduled collection a deferred service *fails* -- loudly, and
+    saying when to try again.
+    """
+    try:
+        return await account.session.run(
+            str(tier), priority, fn, student_id=student_id, cost=cost
+        )
+    except TierDeferred as deferred:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="service_deferred",
+            translation_placeholders={
+                "reason": str(deferred.reason),
+                "seconds": str(int(deferred.retry_after)),
+            },
+        ) from deferred
+
+
+# ---------------------------------------------------------------------------
+# Handlers
+# ---------------------------------------------------------------------------
+
+
+async def _async_refresh(call: ServiceCall) -> None:
+    """Raise the priority of some tiers for the next tick.
+
+    Deliberately does not fetch. Ten presses inside one interval still cost one
+    batch, because the request is a *boost* recorded in the scheduler and not a
+    call placed on the wire (§5.1).
+    """
+    account, _ = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
+    requested = call.data.get(ATTR_TIERS)
+    tiers = (
+        [Tier(value) for value in requested]
+        if requested
+        else [tier for tier in Tier if tier is not Tier.SESSION]
+    )
+    account.scheduler.request(tiers)
+    await account.async_request_tick()
+
+
+async def _async_get_ical_url(call: ServiceCall) -> ServiceResponse:
+    """Return the iCal URL, once, in the response.
+
+    Never a state, never an attribute, never in diagnostics, and never logged.
+    Anyone holding this URL reads the child's timetable without credentials
+    (§8.2).
+    """
+    account, student_id = _resolve_student(call.hass, call)
+
+    def work(client: Any) -> tuple[str, int]:
+        return account.gateway.ical_url(client)
+
+    url, _cost = await _run(account, Tier.TIMETABLE, student_id, work, cost=1)
+    return {"url": url}
+
+
+async def _async_get_identity(call: ServiceCall) -> ServiceResponse:
+    """Return the identity block, once, in the response.
+
+    Address, telephone number, e-mail, INE number and guardians are personal
+    data with no business in a state machine that gets recorded and backed up.
+    """
+    account, student_id = _resolve_student(call.hass, call)
+
+    def work(client: Any) -> tuple[Identity, int]:
+        return account.gateway.identity(client)
+
+    identity, _cost = await _run(account, Tier.STATIC, student_id, work, cost=1)
+    return {
+        "name": identity.name,
+        "birth_date": identity.birth_date.isoformat() if identity.birth_date else None,
+        "birth_place": identity.birth_place,
+        "email": identity.email,
+        "phone": identity.phone,
+        "address": list(identity.address),
+        "ine_number": identity.ine_number,
+        "guardians": [
+            {
+                "name": guardian.name,
+                "relation": guardian.relation,
+                "email": guardian.email,
+                "phone": guardian.phone,
+                "address": list(guardian.address),
+                "is_legal": guardian.is_legal,
+            }
+            for guardian in identity.guardians
+        ],
+    }
+
+
+async def _async_mark_homework_done(call: ServiceCall) -> None:
+    """Tick or untick one homework item."""
+    account, student_id = _resolve_student(call.hass, call)
+    _require_writes(account)
+    homework_id = call.data[ATTR_HOMEWORK_ID]
+    done = call.data[ATTR_DONE]
+
+    def work(client: Any) -> int:
+        return account.gateway.set_homework_done(client, homework_id, done=done)
+
+    await _run(account, Tier.HOMEWORK, student_id, work, cost=1)
+    # Re-read soon rather than immediately: the tick is local truth already, and
+    # an instant re-fetch would double the cost of every checkbox.
+    account.scheduler.request([Tier.HOMEWORK])
+
+
+async def _async_mark_information_read(call: ServiceCall) -> None:
+    """Mark one news item as read."""
+    account, student_id = _resolve_student(call.hass, call)
+    _require_writes(account)
+    information_id = call.data[ATTR_INFORMATION_ID]
+
+    def work(client: Any) -> int:
+        return account.gateway.mark_information_read(client, information_id)
+
+    await _run(account, Tier.NEWS, student_id, work, cost=1)
+    account.scheduler.request([Tier.NEWS])
+
+
+async def _async_send_message(call: ServiceCall) -> None:
+    """Reply to a thread, or open a new one with named recipients.
+
+    Billed at three requests either way, which is what it costs: a reply has to
+    re-list the threads, then read the message being answered, then post. A
+    write that under-reports its cost corrupts the budget protecting the
+    account (annexe B §8).
+    """
+    account, student_id = _resolve_student(call.hass, call)
+    _require_writes(account)
+    message = call.data[ATTR_MESSAGE]
+    discussion_id = call.data.get(ATTR_DISCUSSION_ID)
+    recipients = call.data.get(ATTR_RECIPIENTS)
+    subject = call.data.get(ATTR_SUBJECT)
+
+    if discussion_id is None and not subject:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="subject_required",
+        )
+
+    def work(client: Any) -> int:
+        if discussion_id is not None:
+            return account.gateway.reply_to_discussion(client, discussion_id, message)
+        return account.gateway.start_discussion(
+            client, str(subject), message, recipients or []
+        )
+
+    try:
+        await _run(account, Tier.DISCUSSIONS, student_id, work, cost=3)
+    except DiscussionNotFound as error:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="discussion_not_found",
+            translation_placeholders={"discussion_id": error.discussion_id},
+        ) from error
+    except DiscussionIsClosed as error:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="discussion_closed",
+            translation_placeholders={"discussion_id": error.discussion_id},
+        ) from error
+    except RecipientNotFound as error:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="recipient_not_found",
+            translation_placeholders={
+                "missing": ", ".join(error.missing),
+                "available": ", ".join(error.available),
+            },
+        ) from error
+
+    account.scheduler.request([Tier.DISCUSSIONS])
+
+
+async def _async_generate_timetable_pdf(call: ServiceCall) -> ServiceResponse:
+    """Ask PRONOTE to render a timetable PDF and return its URL.
+
+    A response and not a state for the same reason as the iCal URL: the link
+    carries its own authorisation.
+    """
+    account, student_id = _resolve_student(call.hass, call)
+    day: date | None = call.data.get(ATTR_DAY)
+    portrait = call.data[ATTR_ORIENTATION] == ORIENTATION_PORTRAIT
+
+    def work(client: Any) -> tuple[str, int]:
+        return account.gateway.timetable_pdf_url(client, day, portrait=portrait)
+
+    url, _cost = await _run(account, Tier.TIMETABLE, student_id, work, cost=1)
+    return {"url": url}
+
+
+async def _async_get_rate_limit_status(call: ServiceCall) -> ServiceResponse:
+    """Report the budget without spending any of it.
+
+    Reads the limiter's counters in memory: zero requests, so this is safe to
+    poll from a template or a dashboard while tuning the cadence (§6.6).
+    """
+    account, _ = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
+    counters = account.limiter.snapshot_counters()
+    return {
+        **counters,
+        "scheduler": account.scheduler.diagnostics(),
+        "session": account.session.diagnostics(),
+    }
+
+
+#: ``(name, handler, schema, response support)``. Kept as data so the test that
+#: checks every service is documented in ``services.yaml`` and translated in
+#: ``strings.json`` can iterate it (§10.5).
+_SERVICES: Final[tuple[tuple[str, Any, Any, SupportsResponse], ...]] = (
+    (SERVICE_REFRESH, _async_refresh, _REFRESH_SCHEMA, SupportsResponse.NONE),
+    (
+        SERVICE_GET_ICAL_URL,
+        _async_get_ical_url,
+        _DEVICE_SCHEMA,
+        SupportsResponse.ONLY,
+    ),
+    (
+        SERVICE_GET_IDENTITY,
+        _async_get_identity,
+        _DEVICE_SCHEMA,
+        SupportsResponse.ONLY,
+    ),
+    (
+        SERVICE_MARK_HOMEWORK_DONE,
+        _async_mark_homework_done,
+        _MARK_HOMEWORK_SCHEMA,
+        SupportsResponse.NONE,
+    ),
+    (
+        SERVICE_MARK_INFORMATION_READ,
+        _async_mark_information_read,
+        _MARK_INFORMATION_SCHEMA,
+        SupportsResponse.NONE,
+    ),
+    (
+        SERVICE_SEND_MESSAGE,
+        _async_send_message,
+        _SEND_MESSAGE_SCHEMA,
+        SupportsResponse.NONE,
+    ),
+    (
+        SERVICE_GENERATE_TIMETABLE_PDF,
+        _async_generate_timetable_pdf,
+        _TIMETABLE_PDF_SCHEMA,
+        SupportsResponse.ONLY,
+    ),
+    (
+        SERVICE_GET_RATE_LIMIT_STATUS,
+        _async_get_rate_limit_status,
+        _DEVICE_SCHEMA,
+        SupportsResponse.ONLY,
+    ),
+)
+
+
+@callback
+def async_setup_services(hass: HomeAssistant) -> None:
+    """Register the domain services, once, whatever the number of accounts."""
+    for name, handler, schema, supports_response in _SERVICES:
+        if hass.services.has_service(DOMAIN, name):
+            continue
+        hass.services.async_register(
+            DOMAIN,
+            name,
+            handler,
+            schema=schema,
+            supports_response=supports_response,
+        )
+
+
+@callback
+def async_unload_services(hass: HomeAssistant) -> None:
+    """Remove the domain services when the last account goes away."""
+    for name, _handler, _schema, _supports_response in _SERVICES:
+        hass.services.async_remove(DOMAIN, name)

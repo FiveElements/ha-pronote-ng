@@ -1,0 +1,134 @@
+# Unfinished homework -- pronote_ng
+#
+# What it does: reminds you in the evening, at a time of your choosing, that
+# homework is still due tomorrow, and lists the subjects concerned.
+#
+# What it leans on: a core `time` trigger and the `homework_tomorrow` sensor
+# (sensor.py:986), whose state is the NUMBER of items due tomorrow -- so a
+# native `numeric_state` condition is enough for "the list is not empty", with
+# no template. The threshold is a `numeric_state above`, strictly greater: 0
+# means "at least one item".
+#
+# The trap it avoids: `homework_tomorrow` counts the items due tomorrow whether
+# they are ticked or not (sensor.py:372). A reminder that fires when everything
+# is already done burns a teenager's patience faster than it helps, hence the
+# "only unticked homework" option, which reads each item's `done` attribute.
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/homework_reminder.yaml. The
+# duplication is deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Homework reminder for tomorrow
+  description: >-
+    Reminds you in the evening, at a fixed time, of the homework due tomorrow.
+    Says nothing when there is nothing to do: the "Homework tomorrow" sensor
+    then reads 0 and the condition does not pass. Nothing on holiday evenings
+    either, for the same reason. The "only unticked homework" option uses each
+    item's state in PRONOTE or in the Home Assistant to-do list.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/homework_reminder.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        homework_tomorrow_sensor:
+          name: "\"Homework tomorrow\" sensor"
+          description: >-
+            The student's `homework_tomorrow` entity. Its state is the number
+            of homework items due tomorrow. The entity id depends on the
+            installation language (`..._devoirs_demain` in French), which is
+            why it is picked here instead of hard-coded
+            (docs/SPECIFICATION.md §10.8).
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+    reglages:
+      name: Settings
+      icon: mdi:tune
+      input:
+        reminder_time:
+          name: Reminder time
+          default: "19:30:00"
+          selector:
+            time:
+        minimum_items:
+          name: Alert from this many items
+          description: >-
+            The reminder goes out when the number of items due tomorrow is
+            STRICTLY greater than this value. 0 = from the first item.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 20
+              step: 1
+              unit_of_measurement: items
+              mode: box
+        only_unfinished:
+          name: Only unticked homework
+          description: >-
+            Ignore homework already marked as done. Recommended, otherwise the
+            reminder fires even when everything is finished.
+          default: true
+          selector:
+            boolean:
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Notification action
+          description: >-
+            The variables `title` and `message` are available. `message` lists
+            the subjects concerned.
+          selector:
+            action:
+
+# `single`: one reminder per evening. Two concurrent runs cannot happen with a
+# single time trigger, and saying so makes it explicit.
+mode: single
+
+triggers:
+  - alias: At the reminder time
+    trigger: time
+    at: !input reminder_time
+
+conditions:
+  - alias: There is homework left for tomorrow
+    # Native: the sensor's state IS the number of items. No template.
+    condition: numeric_state
+    entity_id: !input homework_tomorrow_sensor
+    above: !input minimum_items
+  - alias: And at least one is unticked, when the option is on
+    # Template unavoidable: "unticked" is a field inside a list-valued
+    # attribute (`items[].done`, sensor.py:344), and no native condition can
+    # filter a list of objects.
+    condition: template
+    value_template: >-
+      {% set items = state_attr(homework_entity, 'items') or [] %}
+      {{ not unfinished_only
+         or (items | rejectattr('done') | list | count) > minimum }}
+
+variables:
+  homework_entity: !input homework_tomorrow_sensor
+  unfinished_only: !input only_unfinished
+  minimum: !input minimum_items
+  # Text composition only.
+  subjects: >-
+    {% set items = state_attr(homework_entity, 'items') or [] %}
+    {% set kept = items | rejectattr('done') | list if unfinished_only else items %}
+    {{ kept | map(attribute='subject') | unique | join(', ') }}
+  title: Homework for tomorrow
+  message: >-
+    There is homework left for tomorrow: {{ subjects }}.
+
+actions:
+  - alias: Run the chosen notification action
+    sequence: !input notify_action

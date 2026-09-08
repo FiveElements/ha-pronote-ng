@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Minimal permissions, declared in the workflow. This is the only workflow that
+# uses the token GitHub Actions provides (SPECIFICATION.md §11.1).
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: manifest version must equal the tag
+        # A HACS integration whose manifest diverges from the tag installs and
+        # then never updates again (SPECIFICATION.md §11.1).
+        run: python scripts/check_manifest.py --expect-version "${GITHUB_REF_NAME#v}"
+
+      - name: Build the integration archive
+        run: |
+          cd custom_components/pronote_ng
+          zip -r ../../pronote_ng.zip . -x '*__pycache__*' -x '*.pyc'
+
+      - name: Publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pronote_ng.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true

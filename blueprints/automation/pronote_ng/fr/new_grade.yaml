@@ -1,0 +1,140 @@
+# Nouvelle note -- pronote_ng
+#
+# Ce qu'elle fait : notifie à l'arrivée d'une note, avec la matière et la
+# valeur, et permet de ne notifier qu'en dessous d'un seuil.
+#
+# Sur quoi elle s'appuie : le déclencheur d'appareil `grade_added`
+# (device_trigger.py:58, const.py:322). Le payload porte `grade`, `out_of`,
+# `coefficient`, `class_average` et `status` (delta.py:_grade_context).
+#
+# Le piège évité, deux fois.
+# 1. Pas de `numeric_state` sur le capteur « Dernière note ». Deux 12/20
+#    consécutifs ne font pas bouger l'état du capteur, donc la deuxième note
+#    passerait inaperçue. C'est précisément pour cela que les entités `event`
+#    existent (event.py:3).
+# 2. Le seuil est ramené sur 20. Une note sur 10 ou sur 40 comparée
+#    directement à « 10 » donnerait n'importe quoi ; `out_of` est dans le
+#    payload, on s'en sert.
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/new_grade.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Nouvelle note
+  description: >-
+    Notifie quand une note est publiée pour l'élève. Le seuil optionnel est
+    exprimé sur 20 et appliqué après remise à l'échelle : une note sur 10 ou
+    sur 40 est comparée correctement. Laisser le seuil à 20 notifie toutes les
+    notes. Les notes sans valeur numérique (Absent, Non rendu, Dispensé...) ont
+    leur propre option, parce qu'elles ne se comparent à aucun seuil
+    (const.py:287).
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/new_grade.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Appareil de l'élève
+          description: >-
+            L'appareil PRONOTE de l'enfant. La liste exclut l'appareil du
+            compte, qui ne porte aucune entité `event`.
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: Filtrage
+      icon: mdi:filter-variant
+      input:
+        threshold:
+          name: Seuil de notification
+          description: >-
+            Ne notifier que si la note, ramenée sur 20, est inférieure ou égale
+            à cette valeur. 20 = toutes les notes.
+          default: 20
+          selector:
+            number:
+              min: 0
+              max: 20
+              step: 0.5
+              unit_of_measurement: "/20"
+              mode: slider
+        notify_sentinels:
+          name: Notifier aussi les notes sans valeur
+          description: >-
+            Absent, Dispensé, Non noté, Non rendu, Félicitations... Ces notes
+            n'ont pas de valeur numérique : leur état vaut `unknown` et la
+            raison est dans l'attribut `status`. Aucun seuil ne s'y applique.
+          default: false
+          selector:
+            boolean:
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Action de notification
+          description: >-
+            Les variables `title` et `message` sont disponibles. `message`
+            contient la matière, la note brute et le coefficient.
+          selector:
+            action:
+
+# `queued` et non `single` : PRONOTE publie souvent plusieurs notes d'un coup
+# et l'intégration émet un évènement par note (event.py:11). En `single`, tout
+# ce qui arrive pendant l'envoi de la première notification serait perdu.
+mode: queued
+max: 15
+
+triggers:
+  - alias: Une note a été publiée
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: grade_added
+
+conditions:
+  - alias: La note franchit le seuil demandé
+    # Un template est inévitable : la valeur à comparer est dans le payload de
+    # l'évènement, pas dans un état, donc ni `numeric_state` ni `state` ne
+    # peuvent l'atteindre. Il tient en trois lignes et ne fait qu'une règle de
+    # trois plus une comparaison.
+    condition: template
+    value_template: >-
+      {% set g = trigger.event.data.attributes %}
+      {{ (g.grade is none and sentinels)
+         or (g.grade is not none and (g.out_of | float(0)) > 0
+             and (g.grade | float) * 20 / (g.out_of | float) <= max_grade) }}
+
+variables:
+  max_grade: !input threshold
+  sentinels: !input notify_sentinels
+  # Composition de texte uniquement. Le petit `v == v | int` évite d'annoncer
+  # « 14.0/20 » : PRONOTE renvoie des flottants, les parents lisent des notes.
+  grade_text: >-
+    {% set g = trigger.event.data.attributes %}
+    {% if g.grade is none %}{{ g.status or 'non notée' }}
+    {% else %}{% set v = g.grade | float %}{{ v | int if v == v | int else v }}/{{
+      g.out_of | float | round(0) | int }}{% endif %}
+  coefficient_text: >-
+    {% set c = trigger.event.data.attributes.coefficient %}
+    {% if c %}{% set v = c | float %}coef. {{ v | int if v == v | int else v }}{% endif %}
+  title: Nouvelle note
+  # Home Assistant élague le résultat de CHAQUE template : les espaces et les
+  # parenthèses autour du coefficient doivent donc être assemblées ici.
+  message: >-
+    {{ trigger.event.data.attributes.subject }} : {{ grade_text }}{{
+    ' (' ~ coefficient_text ~ ')' if coefficient_text else '' }}.
+
+actions:
+  - alias: Exécuter l'action de notification choisie
+    sequence: !input notify_action

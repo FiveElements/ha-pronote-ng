@@ -1,0 +1,166 @@
+# Absence, late arrival or punishment -- pronote_ng
+#
+# What it does: notifies immediately when the school records an absence, a late
+# arrival or a punishment.
+#
+# What it leans on: three distinct device triggers -- `absence_added`,
+# `delay_added`, `punishment_added` (device_trigger.py:58, const.py:342).
+# Choosing what should alert is done with a native `trigger` condition fed
+# straight from the selector: no Jinja to decide, only to write the sentence.
+#
+# The trap it avoids: absence and late arrival are two separate events because
+# their payloads do not match -- `hours`/`days` on one side, `minutes` on the
+# other (delta.py, models.py:257 and :276). An automation that merges them ends
+# up announcing "0 minutes late" for a full day's absence. Here each case gets
+# its own sentence.
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/absence_alert.yaml. The duplication
+# is deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Absence, late arrival or punishment
+  description: >-
+    Alerts as soon as the school records an absence, a late arrival or a
+    punishment for the student. Each type can be enabled separately. An
+    optional threshold ignores trivial late arrivals, the two-minute ones that
+    teach nobody anything.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/absence_alert.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Student device
+          description: >-
+            The child's PRONOTE device. The list excludes the account device,
+            which carries no `event` entity.
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: What should be notified?
+      icon: mdi:filter-variant
+      input:
+        events:
+          name: Events to keep
+          description: >-
+            The values are the types the integration actually declares. The
+            attendance tier does not exist in every school: if none of these
+            events ever arrives, PRONOTE simply does not publish the data.
+          default:
+            - absence_added
+            - delay_added
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Absence
+                  value: absence_added
+                - label: Late arrival
+                  value: delay_added
+                - label: Punishment
+                  value: punishment_added
+        minimum_delay_minutes:
+          name: Ignore late arrivals shorter than
+          description: >-
+            Applies to late arrivals only. The delay must be STRICTLY greater
+            than this duration. 0 = every late arrival.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Notification action
+          description: >-
+            The variables `title` and `message` are available. `message` is
+            worded differently for an absence, a late arrival and a punishment.
+          selector:
+            action:
+
+# `queued` rather than `single`: an attendance entry rarely arrives alone (a
+# morning off = several slots) and the integration fires one event per item
+# (event.py:11).
+mode: queued
+max: 10
+
+triggers:
+  - alias: Absence recorded
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: absence_added
+    id: absence_added
+  - alias: Late arrival recorded
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: delay_added
+    id: delay_added
+  - alias: Punishment recorded
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: punishment_added
+    id: punishment_added
+
+conditions:
+  - alias: This event is one the user asked for
+    # Native: the id list is exactly the list ticked in the selector.
+    condition: trigger
+    id: !input events
+  - alias: The late arrival is over the threshold, if it is a late arrival
+    # Template unavoidable: the duration lives in the event payload, not in a
+    # state, so `numeric_state` cannot reach it. One line, and it lets anything
+    # that is not a late arrival through unconditionally.
+    condition: template
+    value_template: >-
+      {{ trigger.id != 'delay_added'
+         or (trigger.event.data.attributes.minutes | int(0)) > min_minutes }}
+
+variables:
+  min_minutes: !input minimum_delay_minutes
+  # Text composition only: three wordings for three payloads that do not share
+  # the same fields.
+  detail: >-
+    {% set a = trigger.event.data.attributes %}
+    {% if trigger.id == 'absence_added' %}
+      absent from {{ (a.from_date | as_datetime | as_local).strftime('%d/%m at %H:%M') }}
+      {{- ' (' ~ a.hours ~ ')' if a.hours else '' }}
+      {{- ', unjustified' if not a.justified else '' }}
+    {% elif trigger.id == 'delay_added' %}
+      {{ a.minutes }} min late on
+      {{ (a.date | as_datetime | as_local).strftime('%d/%m at %H:%M') }}
+    {% else %}
+      punishment: {{ a.nature or 'unspecified' }}
+      {{- ' (' ~ a.giver ~ ')' if a.giver else '' }}
+    {% endif %}
+  reasons_text: >-
+    {% set reasons = trigger.event.data.attributes.reasons or [] %}
+    {{ 'Reason: ' ~ (reasons | join(', ')) ~ '.' if reasons else '' }}
+  title: School attendance
+  # Home Assistant strips the result of EVERY template: a leading space in
+  # `reasons_text` would be lost, so it is added here.
+  message: "{{ detail | trim }}. {{ reasons_text }}"
+
+actions:
+  - alias: Run the chosen notification action
+    sequence: !input notify_action

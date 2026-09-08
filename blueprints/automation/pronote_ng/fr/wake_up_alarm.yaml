@@ -1,0 +1,157 @@
+# Réveil adaptatif -- pronote_ng
+#
+# Ce qu'elle fait : exécute l'action de réveil de votre choix à l'heure
+# calculée par l'intégration pour le premier cours du prochain jour de classe.
+#
+# Sur quoi elle s'appuie : le capteur horodaté « Prochain réveil » (clé
+# `next_wake_up`, sensor.py:958) est passé directement en `at:` d'un
+# déclencheur `time` du cœur. Aucune arithmétique d'heure en Jinja : le calcul
+# « premier cours du prochain jour utile - marge » vit dans l'intégration
+# (sensor.py:_wake_target, option `wake_margin`, 90 min par défaut).
+#
+# Le piège évité : les jours sans cours, ce capteur n'a pas de valeur et vaut
+# `unknown` ; le déclencheur `time` ignore `unknown` (time.py:229), donc rien
+# ne s'arme et rien ne se produit. Il n'y a donc AUCUN calendrier à écrire, ni
+# de test « est-on en vacances ? ». Le capteur ignore déjà les cours annulés et
+# ne passe pas au lendemain avant la fin des cours du jour.
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/wake_up_alarm.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Réveil adaptatif
+  description: >-
+    Déclenche un réveil (lumière, radio, TTS, notification...) à l'heure que
+    l'intégration a calculée pour le premier cours du prochain jour de classe.
+    L'automatisation ne fait rien les jours sans cours, en vacances ou quand
+    tous les cours du matin sont annulés : le capteur « Prochain réveil » n'a
+    alors pas de valeur, et un déclencheur horaire sans valeur ne s'arme pas.
+    La marge avant le premier cours se règle dans les options de l'intégration
+    (« Marge de réveil ») ; l'écart ci-dessous s'y ajoute, sans la remplacer.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/wake_up_alarm.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        wake_up_sensor:
+          name: Capteur « Prochain réveil »
+          description: >-
+            L'entité `next_wake_up` de l'élève. Attention : l'identifiant
+            d'entité dépend de la langue d'installation de Home Assistant
+            (`..._prochain_reveil` en français, `..._next_wake_up` en anglais),
+            c'est pourquoi ce blueprint le fait choisir au lieu de le coder en
+            dur. La liste propose tous les capteurs horodatés de
+            l'intégration : prenez bien celui du réveil, pas « Prochain cours »
+            ni « Fin des cours ».
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+                device_class: timestamp
+    reglages:
+      name: Réglages
+      icon: mdi:tune
+      collapsed: true
+      input:
+        extra_offset:
+          name: Écart supplémentaire
+          description: >-
+            S'ajoute à la marge déjà appliquée par l'intégration. Négatif pour
+            sonner plus tôt, positif pour sonner plus tard, zéro pour suivre
+            exactement le capteur.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+              allow_negative: true
+        earliest_time:
+          name: Pas avant
+          description: >-
+            Garde-fou : un emploi du temps aberrant ne doit pas réveiller la
+            maison à 3 h du matin.
+          default: "05:00:00"
+          selector:
+            time:
+        latest_time:
+          name: Pas après
+          description: >-
+            Garde-fou symétrique : passée cette heure, le réveil n'a plus
+            d'objet.
+          default: "10:00:00"
+          selector:
+            time:
+        school_day_sensor:
+          name: Capteur « Jour de classe » (optionnel)
+          description: >-
+            Ceinture et bretelles : le capteur `school_day` de l'élève. Laissez
+            vide, c'est déjà couvert par l'absence de valeur du capteur de
+            réveil. Renseignez-le si vous voulez que l'automatisation soit
+            explicitement conditionnée à un jour de classe.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: pronote_ng
+                domain: binary_sensor
+    reveil:
+      name: Réveil
+      icon: mdi:alarm
+      input:
+        wake_up_action:
+          name: Action de réveil
+          description: >-
+            Ce qu'il faut faire : allumer une lumière, lancer une playlist,
+            envoyer une notification... Les variables `title` et `message` sont
+            disponibles ; `message` contient l'heure et la matière du premier
+            cours.
+          selector:
+            action:
+
+# `single` : un réveil par jour, et deux exécutions simultanées n'ont aucun
+# sens. Une valeur explicite vaut mieux qu'un défaut implicite.
+mode: single
+
+triggers:
+  - alias: À l'heure de réveil publiée par l'intégration
+    trigger: time
+    at:
+      entity_id: !input wake_up_sensor
+      offset: !input extra_offset
+
+conditions:
+  - alias: Il y a effectivement cours (si un capteur a été renseigné)
+    condition: state
+    entity_id: !input school_day_sensor
+    state: "on"
+  - alias: Dans la plage horaire autorisée
+    condition: time
+    after: !input earliest_time
+    before: !input latest_time
+
+variables:
+  wake_sensor: !input wake_up_sensor
+  # Les deux seuls templates du fichier, et ils ne servent qu'à composer un
+  # texte : ni déclencheur ni condition native ne sait mettre en forme une
+  # heure. Les attributs `first_lesson` et `subject` sont publiés par le
+  # capteur lui-même (sensor.py:_wake_attributes).
+  first_lesson_at: >-
+    {% set first = state_attr(wake_sensor, 'first_lesson') %}
+    {{ (first | as_datetime | as_local).strftime('%H:%M') if first else '?' }}
+  first_lesson_subject: "{{ state_attr(wake_sensor, 'subject') or 'cours' }}"
+  title: Réveil
+  message: >-
+    Premier cours à {{ first_lesson_at }} ({{ first_lesson_subject }}).
+
+actions:
+  - alias: Exécuter l'action de réveil choisie
+    sequence: !input wake_up_action

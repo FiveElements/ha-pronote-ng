@@ -1,0 +1,169 @@
+# Absence, retard ou punition -- pronote_ng
+#
+# Ce qu'elle fait : notifie immédiatement une absence, un retard ou une
+# punition nouvellement saisis par l'établissement.
+#
+# Sur quoi elle s'appuie : trois déclencheurs d'appareil distincts --
+# `absence_added`, `delay_added`, `punishment_added` (device_trigger.py:58,
+# const.py:342). Le choix de ce qui doit alerter se fait avec une condition
+# `trigger` native, alimentée directement par le sélecteur : aucun Jinja pour
+# décider, seulement pour rédiger le texte.
+#
+# Le piège évité : absence et retard sont deux évènements séparés parce que
+# leurs payloads ne se ressemblent pas -- `hours`/`days` d'un côté, `minutes`
+# de l'autre (delta.py, models.py:257 et :276). Une automatisation qui les
+# fusionne finit par afficher « retard de 0 minute » sur une absence d'une
+# journée. Ici chaque cas a sa phrase.
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/absence_alert.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Absence, retard ou punition
+  description: >-
+    Alerte dès que l'établissement saisit une absence, un retard ou une
+    punition pour l'élève. Chaque type est activable séparément. Un seuil
+    optionnel permet d'ignorer les petits retards, ceux de deux minutes qui
+    n'apprennent rien à personne.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/absence_alert.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Appareil de l'élève
+          description: >-
+            L'appareil PRONOTE de l'enfant. La liste exclut l'appareil du
+            compte, qui ne porte aucune entité `event`.
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: Que faut-il notifier ?
+      icon: mdi:filter-variant
+      input:
+        events:
+          name: Évènements retenus
+          description: >-
+            Les valeurs sont les types réellement déclarés par l'intégration.
+            Le palier « vie scolaire » n'existe pas dans tous les
+            établissements : si aucun de ces évènements n'arrive jamais, c'est
+            que PRONOTE ne publie pas la donnée.
+          default:
+            - absence_added
+            - delay_added
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Absence
+                  value: absence_added
+                - label: Retard
+                  value: delay_added
+                - label: Punition
+                  value: punishment_added
+        minimum_delay_minutes:
+          name: Ignorer les retards plus courts que
+          description: >-
+            Ne s'applique qu'aux retards. Le retard doit être STRICTEMENT
+            supérieur à cette durée. 0 = tous les retards.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Action de notification
+          description: >-
+            Les variables `title` et `message` sont disponibles. `message` est
+            rédigé différemment selon qu'il s'agit d'une absence, d'un retard
+            ou d'une punition.
+          selector:
+            action:
+
+# `queued` et non `single` : une saisie de vie scolaire arrive rarement seule
+# (une matinée d'absence = plusieurs créneaux) et l'intégration émet un
+# évènement par élément (event.py:11).
+mode: queued
+max: 10
+
+triggers:
+  - alias: Absence saisie
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: absence_added
+    id: absence_added
+  - alias: Retard saisi
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: delay_added
+    id: delay_added
+  - alias: Punition saisie
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: punishment_added
+    id: punishment_added
+
+conditions:
+  - alias: Cet évènement fait partie de ceux qui intéressent l'utilisateur
+    # Native : la liste d'identifiants est exactement la liste cochée.
+    condition: trigger
+    id: !input events
+  - alias: Le retard dépasse le seuil, si c'est un retard
+    # Template inévitable : la durée est dans le payload de l'évènement, pas
+    # dans un état, donc `numeric_state` ne peut pas l'atteindre. Une ligne, et
+    # elle laisse passer sans condition tout ce qui n'est pas un retard.
+    condition: template
+    value_template: >-
+      {{ trigger.id != 'delay_added'
+         or (trigger.event.data.attributes.minutes | int(0)) > min_minutes }}
+
+variables:
+  min_minutes: !input minimum_delay_minutes
+  # Composition de texte uniquement : trois formulations pour trois payloads
+  # qui n'ont pas les mêmes champs.
+  detail: >-
+    {% set a = trigger.event.data.attributes %}
+    {% if trigger.id == 'absence_added' %}
+      absence du {{ (a.from_date | as_datetime | as_local).strftime('%d/%m à %H:%M') }}
+      {{- ' (' ~ a.hours ~ ')' if a.hours else '' }}
+      {{- ', non justifiée' if not a.justified else '' }}
+    {% elif trigger.id == 'delay_added' %}
+      retard de {{ a.minutes }} min le
+      {{ (a.date | as_datetime | as_local).strftime('%d/%m à %H:%M') }}
+    {% else %}
+      punition : {{ a.nature or 'non précisée' }}
+      {{- ' (' ~ a.giver ~ ')' if a.giver else '' }}
+    {% endif %}
+  reasons_text: >-
+    {% set reasons = trigger.event.data.attributes.reasons or [] %}
+    {{ 'Motif : ' ~ (reasons | join(', ')) ~ '.' if reasons else '' }}
+  title: Vie scolaire
+  # Home Assistant élague le résultat de CHAQUE template : une espace en tête
+  # de `reasons_text` serait perdue, donc elle est mise ici.
+  message: "{{ detail | trim }}. {{ reasons_text }}"
+
+actions:
+  - alias: Exécuter l'action de notification choisie
+    sequence: !input notify_action

@@ -1,0 +1,138 @@
+# New grade -- pronote_ng
+#
+# What it does: notifies when a grade arrives, with the subject and the value,
+# and can stay quiet unless the grade is below a threshold.
+#
+# What it leans on: the `grade_added` device trigger (device_trigger.py:58,
+# const.py:322). The payload carries `grade`, `out_of`, `coefficient`,
+# `class_average` and `status` (delta.py:_grade_context).
+#
+# The trap it avoids, twice over.
+# 1. No `numeric_state` on the "Latest grade" sensor. Two consecutive 12/20 do
+#    not move the sensor's state, so the second grade would go unnoticed. That
+#    is precisely why the `event` entities exist (event.py:3).
+# 2. The threshold is rescaled to /20. A grade out of 10 or out of 40 compared
+#    directly against "10" would be nonsense; `out_of` is in the payload, so we
+#    use it.
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/new_grade.yaml. The duplication is
+# deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - New grade
+  description: >-
+    Notifies when a grade is published for the student. The optional threshold
+    is expressed out of 20 and applied after rescaling, so a grade out of 10 or
+    out of 40 is compared correctly. Leaving the threshold at 20 notifies every
+    grade. Grades with no numeric value (Absent, Not handed in, Exempted...)
+    have their own option, because no threshold applies to them
+    (const.py:287).
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/new_grade.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Student device
+          description: >-
+            The child's PRONOTE device. The list excludes the account device,
+            which carries no `event` entity.
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: Filtering
+      icon: mdi:filter-variant
+      input:
+        threshold:
+          name: Notification threshold
+          description: >-
+            Only notify when the grade, rescaled to /20, is lower than or equal
+            to this value. 20 = every grade.
+          default: 20
+          selector:
+            number:
+              min: 0
+              max: 20
+              step: 0.5
+              unit_of_measurement: "/20"
+              mode: slider
+        notify_sentinels:
+          name: Also notify grades with no value
+          description: >-
+            Absent, Exempted, Not graded, Not handed in, Congratulations...
+            These grades have no numeric value: their state reads `unknown` and
+            the reason sits in the `status` attribute. No threshold applies.
+          default: false
+          selector:
+            boolean:
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Notification action
+          description: >-
+            The variables `title` and `message` are available. `message` holds
+            the subject, the raw grade and the coefficient.
+          selector:
+            action:
+
+# `queued` rather than `single`: PRONOTE often publishes several grades at once
+# and the integration fires one event per grade (event.py:11). Under `single`,
+# everything arriving while the first notification is being sent would be lost.
+mode: queued
+max: 15
+
+triggers:
+  - alias: A grade was published
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: grade_added
+
+conditions:
+  - alias: The grade meets the requested threshold
+    # A template is unavoidable here: the value to compare lives in the event
+    # payload, not in a state, so neither `numeric_state` nor `state` can reach
+    # it. Three lines, doing one cross-multiplication and one comparison.
+    condition: template
+    value_template: >-
+      {% set g = trigger.event.data.attributes %}
+      {{ (g.grade is none and sentinels)
+         or (g.grade is not none and (g.out_of | float(0)) > 0
+             and (g.grade | float) * 20 / (g.out_of | float) <= max_grade) }}
+
+variables:
+  max_grade: !input threshold
+  sentinels: !input notify_sentinels
+  # Text composition only. The small `v == v | int` dance avoids announcing
+  # "14.0/20": PRONOTE returns floats, parents read grades.
+  grade_text: >-
+    {% set g = trigger.event.data.attributes %}
+    {% if g.grade is none %}{{ g.status or 'not graded' }}
+    {% else %}{% set v = g.grade | float %}{{ v | int if v == v | int else v }}/{{
+      g.out_of | float | round(0) | int }}{% endif %}
+  coefficient_text: >-
+    {% set c = trigger.event.data.attributes.coefficient %}
+    {% if c %}{% set v = c | float %}weight {{ v | int if v == v | int else v }}{% endif %}
+  title: New grade
+  # Home Assistant strips the result of EVERY template, so the spaces and
+  # brackets around the coefficient have to be assembled here.
+  message: >-
+    {{ trigger.event.data.attributes.subject }}: {{ grade_text }}{{
+    ' (' ~ coefficient_text ~ ')' if coefficient_text else '' }}.
+
+actions:
+  - alias: Run the chosen notification action
+    sequence: !input notify_action
