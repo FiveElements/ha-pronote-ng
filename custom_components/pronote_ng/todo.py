@@ -37,6 +37,13 @@ if TYPE_CHECKING:
     from .coordinator import PronoteTierCoordinator
     from .models import Student
 
+#: One at a time. Entities on this platform *act*: they place a real write
+#: against the school's server. The limiter already serialises the wire under
+#: its own lock, but declaring it at the platform level costs nothing and is
+#: the layer Home Assistant itself honours -- zero here would let a script that
+#: ticks off six homework items fire six writes at once.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 -- required by the platform contract

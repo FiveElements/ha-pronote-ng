@@ -69,6 +69,21 @@ if TYPE_CHECKING:
         TimetableFacts,
     )
 
+#: Nothing on this platform fetches. Entities read a snapshot the scheduler has
+#: already published, so there is no update to serialise and no ceiling to set.
+#: Zero states that, rather than leaving a reader to infer it from the absence
+#: of an ``async_update``.
+PARALLEL_UPDATES = 0
+
+#: 30 seconds, which is the cadence these entities already ran at: with
+#: ``_attr_should_poll`` set and no ``SCAN_INTERVAL``, Home Assistant applies
+#: its own 30-second default. Declaring it changes no behaviour and records two
+#: things -- that the cadence is deliberate, and that it is free. The polled
+#: entities here are diagnostic readings of the limiter, the scheduler and the
+#: session, all held in memory: polling them places no request, which is why a
+#: sub-minute cadence is affordable on this platform and nowhere else.
+SCAN_INTERVAL = timedelta(seconds=30)
+
 type StateValue = str | int | float | datetime | date | None
 
 
