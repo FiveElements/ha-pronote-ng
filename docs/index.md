@@ -1,0 +1,100 @@
+---
+hide:
+  - navigation
+---
+
+# Pronote NG
+
+<p align="center">
+  <img src="assets/logo.png" alt="Pronote NG" width="220">
+</p>
+
+Intégration Home Assistant pour PRONOTE — seconde génération.
+
+Le dépôt s'appelle `ha-pronote`, l'intégration s'appelle **Pronote NG**, et son
+domaine Home Assistant est **`pronote_ng`** — choisi pour cohabiter avec
+l'intégration existante sans conflit de domaine.
+
+!!! tip "Par où commencer"
+
+    * Vous voulez **installer et utiliser** l'intégration :
+      [le guide de l'utilisateur](GUIDE-UTILISATEUR.md).
+    * Vous voulez **contribuer**, ou comprendre pourquoi c'est construit ainsi :
+      [l'architecture](ARCHITECTURE.md).
+    * Vous voulez le **raisonnement d'origine**, y compris ce qui s'est révélé
+      faux : [la spécification](SPECIFICATION.md) et
+      [la revue contradictoire](revue-contradictoire-v1.md).
+
+## Ce que ça fait
+
+- **Sept plateformes d'entités** : `sensor`, `binary_sensor`, `calendar`,
+  `todo`, `image`, `event`, `button` — emploi du temps, devoirs, notes et
+  moyennes, absences et retards, punitions, évaluations par compétences,
+  actualités, discussions, menus, personnel, bulletins.
+- **Huit services**, dont quatre renvoient une réponse plutôt que d'alimenter
+  une entité : l'URL iCal, l'identité, le PDF d'emploi du temps et l'état du
+  limiteur.
+- **Écritures optionnelles**, coupées par défaut : cocher un devoir, marquer
+  une actualité comme lue, envoyer un message.
+- **Automatisations d'appareil** : 14 déclencheurs, 10 conditions, 4 actions,
+  plus sept blueprints livrés en français et en anglais.
+- **Trois modes de connexion** : QR code (recommandé), identifiants directs,
+  ENT.
+- **Comptes parents multi-enfants**, chaque enfant étant un appareil distinct.
+
+## Ce que ça protège
+
+!!! warning "PRONOTE sanctionne une adresse IP, pas seulement un compte"
+
+    C'est la contrainte qui a dicté l'architecture, et la raison pour laquelle
+    la page d'options affiche un budget de requêtes plutôt qu'un simple
+    intervalle.
+
+Le limiteur de débit est au centre du design : trois couches — espacement
+minimal, seau à jetons, plafond journalier — plus deux compteurs de connexion,
+tous **débités à l'admission** sous un verrou, jamais à la sortie. Une
+connexion coûte cinq à sept requêtes et la poignée de main PRONOTE est lente ;
+facturée au retour, elle laisse une fenêtre de plusieurs secondes pendant
+laquelle un second appelant lit un budget intact — c'est ainsi qu'un plafond de
+cinq connexions en laisse passer dix.
+
+Le budget par défaut est d'environ **180 requêtes par jour** pour un enfant.
+
+Aucun secret ne transite par un état d'entité, un attribut ou le fichier de
+diagnostic : ni l'URL iCal — qui donne accès à l'emploi du temps complet d'un
+élève sans aucun identifiant — ni le bloc d'identité, ni le lien du PDF. Ce
+sont des réponses de service, et rien ne les stocke.
+
+## Installation
+
+=== "HACS (dépôt personnalisé)"
+
+    1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
+    2. Ajouter `https://github.com/FiveElements/ha-pronote-ng`, catégorie
+       *Intégration*.
+    3. Installer **Pronote NG**, puis redémarrer Home Assistant.
+    4. *Paramètres → Appareils et services → Ajouter une intégration →
+       PRONOTE*.
+
+=== "Manuellement"
+
+    Copier `custom_components/pronote_ng/` dans le dossier
+    `custom_components/` de votre configuration, puis redémarrer.
+
+Home Assistant **2026.2.0** minimum.
+
+Le [guide de l'utilisateur](GUIDE-UTILISATEUR.md) reprend chaque étape, y
+compris les trois modes de connexion et ce qu'il faut avoir sous la main avant
+de commencer.
+
+## Qualité
+
+494 tests, `mypy --strict` propre, et un portail de couverture qui exige 80 %
+globalement et **100 %** sur le limiteur, l'ordonnanceur, la passerelle et le
+détecteur de changements — en prenant pour chacun le minimum de la couverture
+de lignes et de branches.
+
+La suite ne tourne pas sous Windows : `pytest-homeassistant-custom-component`
+importe `fcntl`. La moitié sans dépendance à Home Assistant s'y exécute quand
+même, et c'est précisément celle qui porte le portail à 100 %. Les détails sont
+au chapitre *Qualité* de [l'architecture](ARCHITECTURE.md).

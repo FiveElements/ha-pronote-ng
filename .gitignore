@@ -26,3 +26,6 @@ Thumbs.db
 # anonymised by hand and reviewed; anything captured live goes here.
 tests/fixtures/_raw/
 *.raw.json
+
+# The MkDocs build output.
+site/
