@@ -658,3 +658,77 @@ def test_a_stale_check_uses_the_tier_s_own_interval(clock: FakeClock) -> None:
 
     assert scheduler.is_stale(Tier.TIMETABLE, stale_after=3)
     assert not scheduler.is_stale(Tier.HISTORY, stale_after=3)
+
+
+def test_a_second_boost_inside_the_interval_is_refused(clock: FakeClock) -> None:
+    """§5.1: ten presses inside one interval cost one batch, not ten.
+
+    This is the ceiling, and it is the substance of `request` rather than a
+    refinement of it. A boosted tier is due *regardless* of its deadline --
+    that is what makes the button do anything at all -- so without a ceiling
+    each press re-armed the dispensation and each press bought another
+    collection. Ten presses on `history`, at six requests per child, were 120
+    requests against a server whose one sanction applies to an IP address.
+
+    It used to hold by accident: the collections overlapped, so all but the
+    first hit the account's "a batch is already running" guard. That is a
+    property of the event loop rather than of this code, and it stopped
+    holding between two Home Assistant releases with nothing changed here --
+    measured at 2 requests on 2026.2 and 20 on 2026.8 for the same ten presses.
+    """
+    scheduler = build(clock, one(Tier.HISTORY, 1440, Priority.LOW))
+    scheduler.mark_collected(Tier.HISTORY)
+
+    # The first press is served: the tier becomes due and is collected.
+    scheduler.request([Tier.HISTORY])
+    assert scheduler.due() == [Tier.HISTORY]
+    scheduler.mark_collected(Tier.HISTORY)
+
+    # Nine more presses inside the same interval buy nothing.
+    for _ in range(9):
+        clock.advance(30)
+        scheduler.request([Tier.HISTORY])
+        assert scheduler.due() == [], "a second boost was served inside the interval"
+
+
+def test_the_button_works_again_in_the_next_interval(clock: FakeClock) -> None:
+    """The ceiling is a rate, not a one-shot.
+
+    A tier boosted once must not be boost-proof for ever: the refusal has to
+    expire with the interval it was measured against, or the button silently
+    stops working after its first use.
+    """
+    scheduler = build(clock, one(Tier.TIMETABLE, 15, Priority.HIGH))
+    scheduler.mark_collected(Tier.TIMETABLE)
+    scheduler.request([Tier.TIMETABLE])
+    scheduler.mark_collected(Tier.TIMETABLE)
+
+    clock.advance(15 * 60)
+    scheduler.request([Tier.TIMETABLE])
+
+    assert scheduler.due() == [Tier.TIMETABLE]
+
+
+def test_a_boost_that_was_deferred_does_not_count_against_the_ceiling(
+    clock: FakeClock,
+) -> None:
+    """A request the limiter refused was never honoured.
+
+    `defer` clears `boosted` just as `mark_collected` does, so the two are easy
+    to conflate -- and conflating them would spend the user's one boost per
+    interval on a collection that never happened. Somebody pressing refresh
+    during a budget squeeze would then be told nothing and get nothing, twice.
+    """
+    scheduler = build(clock, one(Tier.MARKS, 180, Priority.NORMAL))
+    scheduler.mark_collected(Tier.MARKS)
+
+    scheduler.request([Tier.MARKS])
+    assert scheduler.due() == [Tier.MARKS]
+    scheduler.defer(Tier.MARKS, 60.0)
+    assert scheduler.due() == []
+
+    # The hold expires, the user presses again: it must be served.
+    clock.advance(61)
+    scheduler.request([Tier.MARKS])
+
+    assert scheduler.due() == [Tier.MARKS]
