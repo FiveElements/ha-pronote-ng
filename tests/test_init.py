@@ -294,7 +294,21 @@ async def test_unloading_stops_the_heartbeat_and_releases_the_client(
     account: PronoteAccount,
     parent_client: FakeClient,
 ) -> None:
-    """And takes the services with it, since they are registered once."""
+    """And leaves the actions in place, which is the opposite of tidiness.
+
+    The actions belong to the integration, not to this entry: they are
+    registered from `async_setup` and deliberately never removed. Home Assistant
+    can only validate an automation against actions that *exist*, so removing
+    them when the last entry unloaded made every automation referencing
+    `pronote_ng.mark_homework_done` unvalidatable exactly when the user was
+    already looking at a broken account -- and being driven by automations is
+    this integration's stated purpose (§1).
+
+    The handlers are built for it: each resolves its account from the target
+    device at call time and raises `ServiceValidationError` for one it cannot
+    place. So the action stays present and fails with a reason, rather than
+    vanishing and failing with "action not found".
+    """
     assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
 
     assert await hass.config_entries.async_unload(mock_entry.entry_id)
@@ -303,8 +317,8 @@ async def test_unloading_stops_the_heartbeat_and_releases_the_client(
     assert mock_entry.state is ConfigEntryState.NOT_LOADED
     assert parent_client.closed
     assert not hass.data.get(DOMAIN)
-    assert not hass.services.has_service(DOMAIN, SERVICE_REFRESH)
-    assert not hass.services.has_service(DOMAIN, SERVICE_GET_RATE_LIMIT_STATUS)
+    assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_RATE_LIMIT_STATUS)
 
 
 # ---------------------------------------------------------------------------
