@@ -483,7 +483,14 @@ _SERVICES: Final[tuple[tuple[str, Any, Any, SupportsResponse], ...]] = (
 
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
-    """Register the domain services, once, whatever the number of accounts."""
+    """Register the domain services, once, for the life of Home Assistant.
+
+    Called from ``async_setup`` rather than per entry, so the actions exist
+    before any account is loaded and survive one going away. The
+    ``has_service`` guard is kept as a cheap belt: registering twice would
+    replace the handler rather than fail, which is a silent way to end up with
+    two of them.
+    """
     for name, handler, schema, supports_response in _SERVICES:
         if hass.services.has_service(DOMAIN, name):
             continue
@@ -494,10 +501,3 @@ def async_setup_services(hass: HomeAssistant) -> None:
             schema=schema,
             supports_response=supports_response,
         )
-
-
-@callback
-def async_unload_services(hass: HomeAssistant) -> None:
-    """Remove the domain services when the last account goes away."""
-    for name, _handler, _schema, _supports_response in _SERVICES:
-        hass.services.async_remove(DOMAIN, name)

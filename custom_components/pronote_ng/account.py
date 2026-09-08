@@ -208,6 +208,13 @@ class PronoteAccount:
         self._tick_lock = asyncio.Lock()
         self._unread_by_student: dict[str, dict[str, int]] = {}
         self._shutting_down: bool = False
+        #: Registry id of this entry's account device, filled in by
+        #: `async_setup_entry` right after it creates that device and before the
+        #: platforms are forwarded. Child devices need it to declare their
+        #: parent: `DeviceInfo` takes `via_device_id` -- a registry id -- and no
+        #: longer the identifier tuple, so the link cannot be expressed without
+        #: having created the parent first.
+        self.account_device_id: str | None = None
 
     # -- properties --------------------------------------------------------
 

@@ -63,19 +63,28 @@ pytestmark = REQUIRES_HASS
 STUDENT_ONE, STUDENT_TWO = (child_id for child_id, _name in CHILDREN)
 
 
-def _device_id(hass: HomeAssistant, identifier: str) -> str:
-    """A registry device id, by our own identifier."""
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, identifier)})
+def _device_id(hass: HomeAssistant, entry_id: str, identifier: str) -> str:
+    """A registry device id, by our own identifier, within its entry.
+
+    The entry is required rather than incidental: from HA 2026.9 identifiers
+    are unique only within a config entry, and the entry-less lookup is
+    deprecated for being ambiguous.
+    """
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, identifier), entry_id
+    )
     assert device is not None, f"no device for {identifier}"
     return device.id
 
 
 def _child(hass: HomeAssistant, entry: MockConfigEntry, student: str) -> str:
-    return _device_id(hass, f"{entry.entry_id}_{student}")
+    return _device_id(hass, entry.entry_id, f"{entry.entry_id}_{student}")
 
 
 def _account_device(hass: HomeAssistant, entry: MockConfigEntry) -> str:
-    return _device_id(hass, entry.entry_id)
+    # The account device's identifier *is* the bare entry id, so the entry is
+    # passed twice on purpose: once as the owner, once as the identifier.
+    return _device_id(hass, entry.entry_id, entry.entry_id)
 
 
 async def _fire(

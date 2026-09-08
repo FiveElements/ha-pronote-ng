@@ -294,7 +294,21 @@ async def test_unloading_stops_the_heartbeat_and_releases_the_client(
     account: PronoteAccount,
     parent_client: FakeClient,
 ) -> None:
-    """And takes the services with it, since they are registered once."""
+    """And leaves the actions in place, which is the opposite of tidiness.
+
+    The actions belong to the integration, not to this entry: they are
+    registered from `async_setup` and deliberately never removed. Home Assistant
+    can only validate an automation against actions that *exist*, so removing
+    them when the last entry unloaded made every automation referencing
+    `pronote_ng.mark_homework_done` unvalidatable exactly when the user was
+    already looking at a broken account -- and being driven by automations is
+    this integration's stated purpose (§1).
+
+    The handlers are built for it: each resolves its account from the target
+    device at call time and raises `ServiceValidationError` for one it cannot
+    place. So the action stays present and fails with a reason, rather than
+    vanishing and failing with "action not found".
+    """
     assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
 
     assert await hass.config_entries.async_unload(mock_entry.entry_id)
@@ -303,8 +317,8 @@ async def test_unloading_stops_the_heartbeat_and_releases_the_client(
     assert mock_entry.state is ConfigEntryState.NOT_LOADED
     assert parent_client.closed
     assert not hass.data.get(DOMAIN)
-    assert not hass.services.has_service(DOMAIN, SERVICE_REFRESH)
-    assert not hass.services.has_service(DOMAIN, SERVICE_GET_RATE_LIMIT_STATUS)
+    assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_RATE_LIMIT_STATUS)
 
 
 # ---------------------------------------------------------------------------
@@ -447,3 +461,34 @@ async def test_a_school_that_is_simply_down_is_retried(
     await _setup_failing(hass, mock_entry, OSError("connection refused"))
 
     assert mock_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_a_snapshot_collected_for_another_child_is_refused(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    account: PronoteAccount,
+) -> None:
+    """The one runtime defence against publishing the wrong child's data.
+
+    `pronotepy`'s parent client sets `_selected_child = self.children[0]` in
+    its constructor, so a path that forgets `set_child` raises nothing: it
+    returns the *first* child's data. With one child -- the likeliest test
+    configuration -- the defect is undetectable. With two it publishes one
+    child's timetable under the other child's entities, and the only detector
+    left is a parent recognising the wrong lessons on their dashboard (§7.1).
+
+    Every snapshot carries the child it was collected for, and this is the
+    check that makes the stamp worth having. Asserted here rather than trusted
+    to the atomic `(child, tier)` closure in `session.py`, because the point of
+    a safety net is that it holds when the thing above it does not.
+    """
+    coordinator = account.coordinators[Tier.TIMETABLE]
+    theirs = coordinator.snapshot_for(STUDENT_TWO)
+    assert theirs is not None, "the fixture collected nothing for the second child"
+
+    with pytest.raises(ValueError, match="another"):
+        coordinator.publish(STUDENT_ONE, theirs)
+
+    # And the first child's own snapshot is untouched by the refusal.
+    assert coordinator.snapshot_for(STUDENT_ONE) is not None
+    assert coordinator.snapshot_for(STUDENT_ONE).student_id == STUDENT_ONE

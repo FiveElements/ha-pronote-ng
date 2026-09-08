@@ -1,4 +1,4 @@
-"""ha-pronote -- a Home Assistant PRONOTE integration designed for automations.
+"""ha-pronote-ng -- a Home Assistant PRONOTE integration built for automations.
 
 The directing objective is in ``docs/SPECIFICATION.md`` §1: make automations on
 PRONOTE data simple to write. Every structural choice here follows from it, and
@@ -18,12 +18,12 @@ from typing import TYPE_CHECKING, Final
 
 from homeassistant.const import Platform
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from pronotepy.exceptions import PronoteAPIError
 
 from .account import PronoteAccount
 from .const import DOMAIN
-from .services import async_setup_services, async_unload_services
+from .services import async_setup_services
 from .session import (
     AccountUnreadable,
     BootstrapFailed,
@@ -36,6 +36,7 @@ from .session import (
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.typing import ConfigType
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -50,6 +51,38 @@ PLATFORMS: Final[list[Platform]] = [
 ]
 
 type PronoteConfigEntry = ConfigEntry[PronoteAccount]
+
+#: There is no YAML configuration for this integration and there never will be:
+#: a PRONOTE account needs a login before it can name its own children, and a
+#: login cannot happen while YAML is being read. Declaring the schema is not a
+#: formality either -- defining `async_setup` without it silently accepts a
+#: `pronote_ng:` block in `configuration.yaml` and does nothing with it, which
+#: is the most confusing possible answer to somebody who wrote one.
+CONFIG_SCHEMA: Final = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: ARG001 -- required by the integration contract
+    """Register the actions, once, independently of any account.
+
+    Registered here and not from ``async_setup_entry`` for a reason that is
+    about the automation editor rather than about tidiness: Home Assistant can
+    only validate an automation against actions that *exist*, so an automation
+    referencing ``pronote_ng.mark_homework_done`` was unvalidatable whenever the
+    entry happened to be unloaded -- and being driven by automations is this
+    integration's stated purpose (§1).
+
+    The handlers already have the shape this requires: each resolves its account
+    at call time from the target device and raises ``ServiceValidationError`` for
+    a device it cannot place. So the action is always present and fails with a
+    reason when no account is loaded, instead of being absent and failing with
+    "action not found".
+
+    Nothing is unregistered on unload, deliberately. Removing an action because
+    the last entry went away is what made the editor's view of the world depend
+    on whether a school's server happened to be reachable at start-up.
+    """
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> bool:
@@ -98,21 +131,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
 
     # The account device, created here rather than left to whichever platform
     # happens to register a child first. Every child device declares
-    # `via_device` on it, and the seven platforms are forwarded in parallel: on
+    # `via_device_id` on it, and the seven platforms are forwarded in parallel: on
     # a first start the child devices were created before their parent existed,
-    # which Home Assistant reports as "references a non existing via_device"
+    # which Home Assistant reports as a non-existent parent device
     # and answers by flattening the device tree. It repaired itself on the next
     # restart, which is exactly why it survived review.
-    dr.async_get(hass).async_get_or_create(
+    account_device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         manufacturer="PRONOTE",
         model="Account",
         name=account.establishment_name,
     )
+    # Kept because the children need the *registry id* to point at their parent,
+    # not the identifier tuple; see `PronoteAccount.account_device_id`.
+    account.account_device_id = account_device.id
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    async_setup_services(hass)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
@@ -126,9 +161,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> 
     if account is not None:
         await account.async_unload()
 
-    if not hass.data.get(DOMAIN):
-        async_unload_services(hass)
-
+    # The actions are *not* removed. They belong to the integration, not to this
+    # entry (see `async_setup`), and an automation referencing one must stay
+    # validatable while the account is down -- which is the whole point of
+    # registering them there.
     return unloaded
 
 

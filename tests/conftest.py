@@ -198,9 +198,10 @@ def utc_now_fixture() -> datetime:
 def domain_fixture() -> str:
     """The Home Assistant domain, which is *not* the project name.
 
-    ``pronote_ng`` rather than ``pronote``, so this integration can be
-    installed alongside the existing community ``pronote`` integration on the
-    same instance. The project and the repository are called ``ha-pronote``.
+    ``pronote_ng`` rather than ``pronote``: another PRONOTE custom integration
+    may already own that domain, and two custom components claiming one domain
+    cannot be installed side by side. The repository is ``ha-pronote-ng`` and the
+    integration is displayed as "Pronote NG".
     """
     return DOMAIN
 

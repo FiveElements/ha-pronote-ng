@@ -65,6 +65,11 @@ class TierState:
     #: Raised for exactly one tick by the refresh button. A button asks for a
     #: priority pass; it does not get a dispensation from the limiter (§6.2).
     boosted: bool = False
+    #: Monotonic instant at which a boost was last *served* -- that is, followed
+    #: by a real collection. ``None`` while no boost has ever been honoured.
+    #: This is what makes ten presses inside one interval cost one batch; see
+    #: :meth:`FetchScheduler.request`.
+    boost_served_at: float | None = None
     #: Consecutive deferrals, for the diagnostic attribute only.
     deferrals: int = 0
     #: Wall-clock instant of the last successful collection. Kept alongside the
@@ -268,6 +273,14 @@ class FetchScheduler:
         state = self._states.get(tier)
         if state is None:
             return
+        if state.boosted:
+            # A boost that led to a collection has been *served*, and that is
+            # remembered separately from the collection itself: `request` uses
+            # it to refuse a second boost inside the same interval. Only set
+            # here, and deliberately not in `defer` -- a boost that was
+            # deferred was never honoured, so the user is entitled to ask
+            # again.
+            state.boost_served_at = self._clock()
         state.last_collected = self._clock()
         state.last_collected_at = self._now() if self._now is not None else None
         state.not_before = 0.0
@@ -303,12 +316,46 @@ class FetchScheduler:
         Deliberately not a call: the button raises priority for the next
         heartbeat, it does not bypass the limiter and it does not short-circuit
         the minimum spacing (annexe B §6).
+
+        **At most one boost per tier per interval**, and that ceiling is the
+        substance of this method rather than a refinement of it. A boosted tier
+        is due regardless of its deadline -- that is what makes the button do
+        something at all -- so without a ceiling here, each press re-armed the
+        dispensation and each press bought another collection. Ten presses on
+        ``history``, which costs six requests per child, were 120 requests
+        against a server whose one sanction applies to an IP address; §5.1 says
+        ten presses cost one batch, and this is the line that makes that true.
+
+        It was previously true only by accident: the ten collections used to
+        overlap, so all but the first hit the account's "a batch is already
+        running" guard and skipped. That is a property of the event loop, not of
+        this code, and it stopped holding between two Home Assistant releases
+        with nothing changed here -- measured at 2 requests on 2026.2 and 20 on
+        2026.8 for the same ten presses.
+
+        A press whose boost is refused is not an error: the tier keeps its
+        deadline and will be collected on time. Pressing again in the next
+        interval works, and a boost that was *deferred* rather than served does
+        not count against the ceiling.
         """
         targets = list(tiers) if tiers is not None else list(self._plans)
+        now = self._clock()
         for tier in targets:
             state = self._states.get(tier)
             plan = self._plans.get(tier)
             if state is None or plan is None or not plan.enabled:
+                continue
+            if (
+                state.boost_served_at is not None
+                and now - state.boost_served_at < plan.interval_seconds
+            ):
+                _LOGGER.debug(
+                    "tier %s already had a boost served %.0fs ago; "
+                    "refusing a second one inside its %.0fs interval",
+                    tier,
+                    now - state.boost_served_at,
+                    plan.interval_seconds,
+                )
                 continue
             state.boosted = True
             state.not_before = 0.0

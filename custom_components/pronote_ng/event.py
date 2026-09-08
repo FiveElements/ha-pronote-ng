@@ -51,6 +51,12 @@ if TYPE_CHECKING:
     from .coordinator import PronoteTierCoordinator
     from .models import Student
 
+#: Nothing on this platform fetches. Entities read a snapshot the scheduler has
+#: already published, so there is no update to serialise and no ceiling to set.
+#: Zero states that, rather than leaving a reader to infer it from the absence
+#: of an ``async_update``.
+PARALLEL_UPDATES = 0
+
 
 @dataclass(frozen=True, kw_only=True)
 class PronoteEventDescription(EventEntityDescription):

@@ -111,6 +111,11 @@ plugins:
   - search:
       lang: fr
 
+# Une seule surcharge de style : le logo de la barre de titre, que le thème
+# contraint à 24 px de haut. Chemin relatif à `docs_dir`.
+extra_css:
+  - assets/extra.css
+
 extra:
   social:
     - icon: fontawesome/brands/github

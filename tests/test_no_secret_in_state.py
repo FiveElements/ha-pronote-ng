@@ -166,8 +166,8 @@ async def test_the_budget_service_response_carries_no_secret(
     """
     from homeassistant.helpers import device_registry as dr
 
-    device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, mock_entry.entry_id)}
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, mock_entry.entry_id), mock_entry.entry_id
     )
     assert device is not None
 
@@ -197,8 +197,8 @@ async def test_the_ical_url_exists_only_in_its_service_response(
     """
     from homeassistant.helpers import device_registry as dr
 
-    device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, f"{mock_entry.entry_id}_{STUDENT_ONE}")}
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"{mock_entry.entry_id}_{STUDENT_ONE}"), mock_entry.entry_id
     )
     assert device is not None
 

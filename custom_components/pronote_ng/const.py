@@ -11,12 +11,13 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
-#: Deliberately not ``pronote``. The widely installed community integration
-#: (delphiki/hass-pronote) already owns that domain, and two custom components
-#: claiming the same domain cannot be installed side by side -- Home Assistant
-#: loads one and ignores the other. Keeping ``pronote_ng`` lets somebody try
-#: this integration without first uninstalling the one they depend on. The
-#: repository and the project are named ``ha-pronote``; only the domain differs.
+#: Deliberately not ``pronote``. Another PRONOTE custom integration may already
+#: own that domain, and two custom components claiming the same domain cannot be
+#: installed side by side -- Home Assistant loads one and ignores the other.
+#: Keeping ``pronote_ng`` lets somebody try this integration without first
+#: uninstalling the one they depend on. The repository is ``ha-pronote-ng`` and
+#: the integration is displayed as "Pronote NG"; this domain is the only place
+#: the underscored form appears.
 DOMAIN: Final = "pronote_ng"
 
 # ---------------------------------------------------------------------------
@@ -237,13 +238,30 @@ OPTION_RANGES: Final[dict[str, tuple[float, float]]] = {
 
 #: The mark shown at the top of the first screen of the configuration flow.
 #:
-#: A URL and not a path, because ``custom_components/pronote_ng/brand/`` is
-#: read by the HACS validation and by nothing else: the Home Assistant frontend
-#: fetches an integration's icon from brands.home-assistant.io keyed by domain,
-#: and a custom integration reaches that host only once it is listed in
-#: ``home-assistant/brands`` under ``custom_integrations/``. Until it is, a
-#: markdown image in the step's own description is what puts the mark on the
-#: screen.
+#: A URL and not a path -- though not because the local brand folder goes
+#: unread. Since Home Assistant 2026.3 a custom integration's own ``brand/``
+#: directory is served by the frontend through the brands proxy API
+#: (``/api/brands/integration/{domain}/{image}``), and those local images take
+#: precedence over the ``home-assistant/brands`` repository; so
+#: ``custom_components/pronote_ng/brand/`` is read by the frontend itself on a
+#: recent instance, not only by the HACS validation.
+#:
+#: The mechanism is version-gated, and the gate is now closed behind us:
+#: ``hacs.json`` declares a floor of 2026.8.0, which is above the 2026.3 that
+#: introduced the proxy, so **every supported instance serves the local
+#: folder**. There is therefore no longer a version on which this constant is
+#: the only way to put the mark on that screen -- the argument that justified
+#: it has expired.
+#:
+#: What still holds it here is one unverified claim: that the config-flow
+#: dialog's own header consumes the proxy. The proxy's existence does not
+#: establish that this particular screen uses it, and if it does, the markdown
+#: image below renders the logo a second time. So the removal is pending a
+#: visual check of the first step of the flow on a 2026.8-or-newer instance,
+#: and not pending anything else. When that check comes back positive, this
+#: constant, its import, the ``description_placeholders`` argument in
+#: ``config_flow.async_step_user`` and the ``{logo}`` placeholder in
+#: ``scripts/build_translations.py`` all go together.
 #:
 #: Passed as a description placeholder rather than written into the translation
 #: string, because hassfest rejects a URL inside one and names this as the

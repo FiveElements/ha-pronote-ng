@@ -186,14 +186,28 @@ def _student_device(account: PronoteAccount, student: Student) -> DeviceInfo:
     A device per child under a parent device carrying the establishment: that is
     what makes the device triggers of §2.3 readable, because "when a lesson is
     cancelled" has to be asked about *somebody*.
+
+    The parent is named by ``via_device_id`` -- a registry id -- and not by the
+    ``via_device`` identifier tuple this used to pass. That is not a style
+    change: on Home Assistant 2026.9 the tuple form is rejected outright, and
+    because the platforms build their devices from this mapping, the rejection
+    surfaced as ``RuntimeError`` while *adding each entity*. Six of the seven
+    platforms failed -- every entity attached to a child -- and only the account
+    entities, which declare no parent, survived. A device link is therefore
+    load-bearing for the whole integration, which is why it is spelled out here.
     """
-    return DeviceInfo(
+    info = DeviceInfo(
         identifiers={(DOMAIN, f"{account.entry.entry_id}_{student.id}")},
         name=student.name,
         manufacturer="PRONOTE",
         model=student.class_name or None,
-        via_device=(DOMAIN, account.entry.entry_id),
     )
+    if account.account_device_id is not None:
+        # Omitted rather than passed as `None` when the parent is not known:
+        # a flat device tree is a cosmetic loss, whereas a rejected key costs
+        # every entity on this device.
+        info["via_device_id"] = account.account_device_id
+    return info
 
 
 def _account_device(account: PronoteAccount) -> DeviceInfo:

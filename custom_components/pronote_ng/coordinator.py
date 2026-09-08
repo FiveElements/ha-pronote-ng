@@ -69,7 +69,31 @@ class PronoteTierCoordinator(DataUpdateCoordinator[TierData]):
         their last known value and report its age instead (§4.4, §5.4). That is
         enforced simply by this being the only writer and only ever being called
         after a success.
+
+        The identity check is the one runtime defence against the worst silent
+        failure this integration has (§7.1). ``pronotepy``'s parent client sets
+        ``_selected_child = self.children[0]`` in its constructor, so a code
+        path that forgets ``set_child`` raises nothing at all -- it returns the
+        *first* child's data. With one child that is undetectable; with two it
+        publishes one child's timetable under the other child's entities, and
+        the only detector left is a parent recognising the wrong lessons on
+        their dashboard. Every snapshot is stamped with the child it was
+        collected for, so the mismatch can be caught here instead.
+
+        Raised rather than dropped: the collection loop turns an exception into
+        a failed tier with a repair, which keeps the previous good snapshot and
+        makes the fault visible. Silently skipping it would leave the entities
+        stale with no explanation, which is the failure this check exists to
+        remove.
         """
+        if snapshot.student_id is not None and snapshot.student_id != student_id:
+            message = (
+                f"refusing a {snapshot.tier} snapshot collected for another "
+                f"child: the collection loop asked for one child and the "
+                f"client answered for another"
+            )
+            raise ValueError(message)
+
         merged: TierData = dict(self.data or {})
         merged[student_id] = snapshot
         self.async_set_updated_data(merged)

@@ -65,9 +65,16 @@ STUDENT_ONE, STUDENT_TWO = (child_id for child_id, _name in CHILDREN)
 
 
 def _device_id(hass: HomeAssistant, entry_id: str, identifier: str) -> str:
-    """The registry id of one of our devices, by its PRONOTE identifier."""
+    """The registry id of one of our devices, by its PRONOTE identifier.
+
+    Looked up *through the owning entry*: from HA 2026.9 an identifier is only
+    unique within a config entry, and the entry-less lookup this used to do is
+    deprecated for being ambiguous. Passing the entry is not a workaround, it
+    is the correct question -- two accounts on one instance can legitimately
+    follow children whose identifiers collide.
+    """
     registry = dr.async_get(hass)
-    device = registry.async_get_device(identifiers={(DOMAIN, identifier)})
+    device = registry.async_get_device_by_identifier((DOMAIN, identifier), entry_id)
     assert device is not None, f"no device for {identifier}"
     assert entry_id in device.config_entries
     return device.id

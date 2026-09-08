@@ -239,10 +239,10 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_menu(
             step_id=STEP_USER,
             menu_options=[STEP_QR_CODE, STEP_CREDENTIALS, STEP_ENT],
-            # See BRAND_LOGO_URL: the frontend cannot find this integration's
-            # icon until the domain is listed in `home-assistant/brands`, and
-            # hassfest refuses a URL written into the translation string
-            # itself, naming a placeholder as the way to pass one.
+            # See BRAND_LOGO_URL for why this is a URL and for the version gate
+            # that keeps it: the mark reaches this screen as a markdown image
+            # because hassfest refuses a URL written into the translation
+            # string itself, and names a placeholder as the way to pass one.
             description_placeholders={"logo": BRAND_LOGO_URL},
         )
 
