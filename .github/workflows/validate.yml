@@ -1,0 +1,114 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# No repository secret is required by this workflow (SPECIFICATION.md §11.1).
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test.txt
+
+      - name: ruff check
+        run: ruff check --output-format=github .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+      - name: mypy --strict
+        run: mypy --strict custom_components/pronote_ng
+
+  test:
+    name: Tests (HA ${{ matrix.ha-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The pinned baseline carries the coverage gate; the floating row
+          # catches upstream breakage early without blocking on it.
+          - ha-version: "2026.2"
+            pytest-hacc: "0.13.316"
+            gate: true
+          - ha-version: "latest"
+            pytest-hacc: ""
+            gate: false
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install dependencies (pinned)
+        if: matrix.pytest-hacc != ''
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test.txt
+
+      - name: Install dependencies (latest)
+        if: matrix.pytest-hacc == ''
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test.txt
+          pip install --upgrade pytest-homeassistant-custom-component
+
+      - name: pytest
+        run: |
+          pytest \
+            --cov=custom_components/pronote_ng \
+            --cov-branch \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing
+
+      - name: Coverage gate (global 80 %, critical modules 100 %)
+        if: matrix.gate
+        run: python scripts/check_coverage.py coverage.xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.ha-version }}
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  manifest:
+    name: Manifest sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: manifest.json carries no `loggers` key
+        # SPECIFICATION.md §8.1: enabling the pronotepy logger at DEBUG writes
+        # the request payload, credentials included. The requirement is only
+        # worth anything if it is enforced.
+        run: python scripts/check_manifest.py

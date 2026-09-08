@@ -1,0 +1,184 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ha-pronote"
+version = "0.1.0"
+description = "Home Assistant integration for PRONOTE, designed for automations"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Jérôme Morille" }]
+
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+src = ["custom_components", "tests"]
+
+[tool.ruff.lint]
+# The specification and its annexes are written in French and use typographic
+# characters; quoting them faithfully in docstrings is deliberate.
+allowed-confusables = ["×", "—", "’", "«", "»", "…"]
+# Wide rule set on purpose: the project starts clean, so there is no reason to
+# open a register of exemptions (SPECIFICATION.md §11).
+select = [
+  "A",    # builtins shadowing
+  "ARG",  # unused arguments
+  "ASYNC",
+  "B",    # bugbear
+  "BLE",  # blind except
+  "C4",   # comprehensions
+  "C90",  # mccabe
+  "DTZ",  # naive datetimes -- load-bearing here, see §4.2
+  "E",
+  "EM",   # exception messages
+  "ERA",  # commented-out code
+  "F",
+  "FBT",  # boolean trap
+  "FLY",
+  "FURB",
+  "G",    # logging format
+  "I",    # isort
+  "ICN",
+  "INP",
+  "ISC",
+  "LOG",
+  "N",
+  "PERF",
+  "PGH",
+  "PIE",
+  "PL",
+  "PT",
+  "PTH",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",    # bandit
+  "SIM",
+  "SLF",
+  "SLOT",
+  "T20",  # print
+  "TC",
+  "TID",
+  "TRY",
+  "UP",
+  "W",
+]
+ignore = [
+  "PLR0913", # many arguments: DTO constructors and HA callbacks legitimately have them
+  "TRY003",  # long messages outside exception class: our errors carry translation keys
+  "EM101",   # string literal in exception: internal errors are not user-facing
+  "EM102",
+  "ISC001",  # conflicts with the formatter
+  "PLR2004", # magic values: protocol tab numbers are inherently magic
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may assert on private helpers, use asserts, and hardcode fake secrets.
+# FBT001/FBT002: pytest passes parametrised values positionally, so a boolean
+# expectation column is unavoidable and harmless.
+"tests/*" = [
+  "S101",
+  "SLF001",
+  "PLR2004",
+  "ARG001",
+  "ARG002",
+  "PLC0415",
+  "S105",
+  "S106",
+  "FBT001",
+  "FBT002",
+]
+# The gateway is the one place allowed to reach into pronotepy internals; that
+# is the whole point of concentrating the upstream surface in a single file
+# (SPECIFICATION.md §3.4).
+"custom_components/pronote_ng/gateway.py" = ["SLF001"]
+"custom_components/pronote_ng/hardened_client.py" = ["SLF001"]
+# The protocol fixtures are *naive* datetimes on purpose: PRONOTE transmits
+# local wall-clock times with no offset, and attaching a zone here would test a
+# shape the server never sends. The gateway is the single place a zone is
+# attached (§4.2), and that is what tests/test_gateway.py checks.
+"tests/fixtures/protocol.py" = ["DTZ001"]
+"tests/test_gateway.py" = ["DTZ001"]
+"tests/clock.py" = ["DTZ001"]
+# Standalone CI helpers, not an importable package.
+"scripts/*" = ["INP001", "T201"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+force-sort-within-sections = true
+combine-as-imports = true
+
+[tool.ruff.lint.flake8-type-checking]
+# Frozen dataclasses evaluate their annotations at runtime, so the types they
+# mention must stay importable outside a TYPE_CHECKING block.
+runtime-evaluated-decorators = ["dataclasses.dataclass"]
+runtime-evaluated-base-classes = [
+  "homeassistant.helpers.update_coordinator.DataUpdateCoordinator",
+]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+show_error_codes = true
+plugins = []
+files = ["custom_components/pronote_ng"]
+
+# pronotepy ships py.typed, but dataClasses.py imports autoslot.Slots under a
+# `# type: ignore` and carries several ignored annotations. Without this
+# derogation the first CI run fights upstream's annotations instead of ours
+# (SPECIFICATION.md §11).
+[[tool.mypy.overrides]]
+module = "pronotepy.*"
+follow_imports = "silent"
+ignore_missing_imports = true
+# `pronotepy.clients` re-exports `_Communication` from `pronoteAPI` without an
+# `__all__`, and §3.2 substitutes that very name to get a timeout onto the
+# bootstrap GET. Under `no_implicit_reexport` that deliberate reach-in reads as
+# an error about upstream's packaging rather than about our code.
+implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = "autoslot.*"
+ignore_missing_imports = true
+
+# Home Assistant publishes its public API through package namespaces without
+# `__all__` -- `homeassistant.components.todo.TodoListEntityFeature` lives in
+# `.const`, and the event trigger's `CONF_EVENT_DATA` in `homeassistant.const`.
+# These are the documented import paths every core integration uses, and core's
+# own CI does not enforce `no_implicit_reexport` against them.
+[[tool.mypy.overrides]]
+module = "homeassistant.*"
+implicit_reexport = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = ["error::DeprecationWarning:custom_components.pronote_ng.*"]
+
+[tool.coverage.run]
+source = ["custom_components/pronote_ng"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+]

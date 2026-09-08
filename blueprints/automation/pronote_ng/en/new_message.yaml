@@ -1,0 +1,141 @@
+# New message or information -- pronote_ng
+#
+# What it does: notifies when a message arrives in the PRONOTE mailbox, or when
+# the school publishes a piece of information (news).
+#
+# What it leans on: the `message_received` and `information_added` device
+# triggers (device_trigger.py:58, const.py:341 and :345). Choosing between the
+# two sources is a native `trigger` condition fed from the selector.
+#
+# The trap it avoids: these are two different collection tiers, `discussions`
+# and `news` (event.py:100 and :81), both of which can be disabled or slowed
+# down in the options. If nothing ever arrives, the automation is not what
+# needs debugging -- the corresponding tier needs re-enabling. Also, when the
+# gateway could not expand the discussion thread the message author is `null`:
+# the text below plans for that instead of printing "None".
+#
+# Home Assistant has no translation mechanism for blueprints: the French
+# version of this very blueprint is ../fr/new_message.yaml. The duplication is
+# deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - New message or information
+  description: >-
+    Notifies when a message arrives in the student's PRONOTE mailbox, or when
+    the school publishes a piece of information. Both sources can be enabled
+    separately: the mailbox is often chatty, the news feed much less so.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/new_message.yaml
+  input:
+    eleve:
+      name: Student
+      icon: mdi:account-school
+      input:
+        child_device:
+          name: Student device
+          description: >-
+            The child's PRONOTE device. The list excludes the account device,
+            which carries no `event` entity.
+          selector:
+            device:
+              filter:
+                integration: pronote_ng
+              entity:
+                integration: pronote_ng
+                domain: event
+    filtres:
+      name: What should be notified?
+      icon: mdi:filter-variant
+      input:
+        sources:
+          name: Sources to keep
+          description: >-
+            The values are the types the integration actually declares. The
+            mailbox depends on the `discussions` tier, the news feed on the
+            `news` tier: either can be switched off in the integration options.
+          default:
+            - message_received
+            - information_added
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Mailbox message
+                  value: message_received
+                - label: School information / news item
+                  value: information_added
+        surveys_only:
+          name: Only information items carrying a survey
+          description: >-
+            Applies to information items only. Useful if you want to be alerted
+            solely about news that is waiting for an answer from you.
+          default: false
+          selector:
+            boolean:
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Notification action
+          description: >-
+            The variables `title` and `message` are available. `message` holds
+            the author and the subject.
+          selector:
+            action:
+
+# `queued` rather than `single`: the integration fires one event per unread
+# message (delta.py:_message_events), and a busy morning can produce several in
+# a row.
+mode: queued
+max: 15
+
+triggers:
+  - alias: Message received in the mailbox
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: message_received
+    id: message_received
+  - alias: Information published by the school
+    trigger: device
+    domain: pronote_ng
+    device_id: !input child_device
+    type: information_added
+    id: information_added
+
+conditions:
+  - alias: This source is one the user asked for
+    # Native: the id list is exactly the list ticked in the selector.
+    condition: trigger
+    id: !input sources
+  - alias: The information carries a survey, when the option is on
+    # Template unavoidable: `survey` is a field of the event payload
+    # (delta.py:_information_context), not a state. One line, and it lets
+    # anything that is not an information item through unconditionally.
+    condition: template
+    value_template: >-
+      {{ trigger.id != 'information_added' or not surveys
+         or trigger.event.data.attributes.survey }}
+
+variables:
+  surveys: !input surveys_only
+  # Text composition only: the two payloads do not share their fields --
+  # `discussion`/`author` on one side, `title`/`category`/`author` on the other.
+  author: >-
+    {{ trigger.event.data.attributes.author or 'The school' }}
+  subject: >-
+    {% set a = trigger.event.data.attributes %}
+    {{ a.discussion if trigger.id == 'message_received' else a.title }}
+  title: >-
+    {{ 'New PRONOTE message' if trigger.id == 'message_received'
+       else 'School information' }}
+  message: "{{ author }}: {{ subject }}"
+
+actions:
+  - alias: Run the chosen notification action
+    sequence: !input notify_action

@@ -1,0 +1,25 @@
+name: HACS
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, so an upstream HACS rule change surfaces without a push.
+    - cron: "27 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: HACS action
+        uses: hacs/action@main
+        with:
+          category: integration

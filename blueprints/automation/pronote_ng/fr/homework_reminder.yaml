@@ -1,0 +1,135 @@
+# Devoirs non faits -- pronote_ng
+#
+# Ce qu'elle fait : rappelle le soir, à l'heure de votre choix, qu'il reste
+# des devoirs à faire pour le lendemain, et liste les matières concernées.
+#
+# Sur quoi elle s'appuie : un déclencheur `time` du cœur et le capteur
+# `homework_tomorrow` (sensor.py:986), dont l'état est le NOMBRE de devoirs
+# dus demain -- donc une condition `numeric_state` native suffit pour « la
+# liste n'est pas vide », sans template. Le seuil est un `numeric_state above`,
+# strictement supérieur : 0 signifie « au moins un devoir ».
+#
+# Le piège évité : `homework_tomorrow` compte les devoirs dus demain, cochés ou
+# non (sensor.py:372). Un rappel qui sonne alors que tout est fait use la
+# patience de l'adolescent plus vite qu'il ne l'aide, d'où l'option « seulement
+# les devoirs non cochés », qui lit l'attribut `done` de chaque élément.
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/homework_reminder.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Rappel des devoirs du lendemain
+  description: >-
+    Rappelle le soir, à heure fixe, les devoirs à rendre le lendemain. Ne dit
+    rien s'il n'y a rien à faire : le capteur « Devoirs demain » vaut alors 0 et
+    la condition ne passe pas. Rien à faire non plus les soirs de vacances, pour
+    la même raison. L'option « seulement les devoirs non cochés » utilise
+    l'état de chaque devoir dans PRONOTE ou dans la liste de tâches de Home
+    Assistant.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/homework_reminder.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        homework_tomorrow_sensor:
+          name: Capteur « Devoirs demain »
+          description: >-
+            L'entité `homework_tomorrow` de l'élève. Son état est le nombre de
+            devoirs dus le lendemain. L'identifiant d'entité dépend de la
+            langue d'installation (`..._devoirs_demain` en français), c'est
+            pourquoi on le choisit ici au lieu de le coder en dur
+            (docs/SPECIFICATION.md §10.8).
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+    reglages:
+      name: Réglages
+      icon: mdi:tune
+      input:
+        reminder_time:
+          name: Heure du rappel
+          default: "19:30:00"
+          selector:
+            time:
+        minimum_items:
+          name: Nombre de devoirs à partir duquel alerter
+          description: >-
+            Le rappel part si le nombre de devoirs dus demain est STRICTEMENT
+            supérieur à cette valeur. 0 = dès le premier devoir.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 20
+              step: 1
+              unit_of_measurement: devoirs
+              mode: box
+        only_unfinished:
+          name: Seulement les devoirs non cochés
+          description: >-
+            Ignorer les devoirs déjà marqués comme faits. Recommandé, sinon le
+            rappel sonne même quand tout est terminé.
+          default: true
+          selector:
+            boolean:
+    notification:
+      name: Notification
+      icon: mdi:bell
+      input:
+        notify_action:
+          name: Action de notification
+          description: >-
+            Les variables `title` et `message` sont disponibles. `message`
+            liste les matières concernées.
+          selector:
+            action:
+
+# `single` : un rappel par soir. Deux exécutions simultanées ne peuvent pas
+# arriver avec un déclencheur horaire unique, et le déclarer le dit.
+mode: single
+
+triggers:
+  - alias: À l'heure du rappel
+    trigger: time
+    at: !input reminder_time
+
+conditions:
+  - alias: Il reste des devoirs pour demain
+    # Native : l'état du capteur EST le nombre de devoirs. Aucun template.
+    condition: numeric_state
+    entity_id: !input homework_tomorrow_sensor
+    above: !input minimum_items
+  - alias: Et au moins un n'est pas coché, si l'option est active
+    # Template inévitable : « non coché » est un champ à l'intérieur d'une
+    # liste d'attributs (`items[].done`, sensor.py:344), et aucune condition
+    # native ne sait filtrer une liste d'objets.
+    condition: template
+    value_template: >-
+      {% set items = state_attr(homework_entity, 'items') or [] %}
+      {{ not unfinished_only
+         or (items | rejectattr('done') | list | count) > minimum }}
+
+variables:
+  homework_entity: !input homework_tomorrow_sensor
+  unfinished_only: !input only_unfinished
+  minimum: !input minimum_items
+  # Composition de texte uniquement.
+  subjects: >-
+    {% set items = state_attr(homework_entity, 'items') or [] %}
+    {% set kept = items | rejectattr('done') | list if unfinished_only else items %}
+    {{ kept | map(attribute='subject') | unique | join(', ') }}
+  title: Devoirs pour demain
+  message: >-
+    Il reste des devoirs pour demain : {{ subjects }}.
+
+actions:
+  - alias: Exécuter l'action de notification choisie
+    sequence: !input notify_action

@@ -1,0 +1,742 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "PRONOTE",
+        "description": "Choisissez le mode de connexion. Le QR code de l'application mobile PRONOTE est le plus fiable : il enrôle ce Home Assistant comme appareil et évite de conserver votre mot de passe.",
+        "menu_options": {
+          "qr_code": "QR code de l'application mobile (recommandé)",
+          "credentials": "Identifiant et mot de passe",
+          "ent": "Connexion par l'ENT"
+        }
+      },
+      "qr_code": {
+        "title": "Enrôler avec un QR code",
+        "description": "Dans l'application mobile PRONOTE, ouvrez le menu du compte et générez un QR code, puis collez son contenu ci-dessous avec le code à quatre chiffres que vous avez choisi. Le QR code n'est utilisable qu'une seule fois.",
+        "data": {
+          "qr_payload": "Contenu du QR code (JSON)",
+          "qr_pin": "Code à quatre chiffres",
+          "device_name": "Nom de l'appareil",
+          "account_pin": "Code PIN à deux facteurs (si votre compte en a un)"
+        },
+        "data_description": {
+          "account_pin": "Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
+        }
+      },
+      "credentials": {
+        "title": "Identifiant et mot de passe",
+        "description": "Saisissez l'adresse de l'espace PRONOTE de l'établissement, terminée par eleve.html ou parent.html.",
+        "data": {
+          "pronote_url": "Adresse PRONOTE",
+          "username": "Identifiant",
+          "password": "Mot de passe",
+          "account_pin": "Code PIN à deux facteurs (si votre compte en a un)"
+        },
+        "data_description": {
+          "account_pin": "Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
+        }
+      },
+      "ent": {
+        "title": "Connexion par l'ENT",
+        "description": "Sélectionnez votre portail académique. Les identifiants sont ceux du portail, pas ceux de PRONOTE.",
+        "data": {
+          "pronote_url": "Adresse PRONOTE",
+          "username": "Identifiant",
+          "password": "Mot de passe",
+          "ent": "Portail"
+        }
+      },
+      "children": {
+        "title": "Enfants à suivre",
+        "description": "Chaque enfant suivi multiplie le nombre d'appels quotidiens au serveur : ne sélectionnez que ceux qui vous intéressent.",
+        "data": {
+          "children": "Enfants"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Se reconnecter à PRONOTE",
+        "description": "La connexion à {url} a été refusée. Saisissez un mot de passe corrigé, ou le code PIN à deux facteurs demandé par PRONOTE. Ce code est utilisé une fois et jamais conservé.",
+        "data": {
+          "password": "Mot de passe",
+          "account_pin": "Code PIN à deux facteurs"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "PRONOTE a refusé ces identifiants. Réessayer en boucle un mot de passe erroné est précisément ce qui fait bloquer une adresse : vérifiez-les avant de recommencer.",
+      "mfa_required": "PRONOTE demande le code PIN à deux facteurs de ce compte. Saisissez-le ci-dessus.",
+      "bootstrap_failed": "L'adresse a répondu, mais sans page de session PRONOTE. Vérifiez l'adresse, et que l'espace est bien ouvert en ce moment.",
+      "invalid_qr": "Le QR code ou son code à quatre chiffres a été refusé. Un QR code n'est utilisable qu'une fois : générez-en un nouveau dans l'application.",
+      "invalid_qr_payload": "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit s'agir d'un objet JSON avec login, jeton et url.",
+      "cannot_connect": "Impossible de joindre le serveur.",
+      "rate_limited": "Trop de tentatives de connexion dans la dernière heure : celle-ci n'a pas été envoyée. Attendez un peu avant de réessayer, car réessayer une connexion en boucle est précisément ce qui fait bloquer une adresse par PRONOTE.",
+      "unknown": "Erreur inattendue. Consultez le journal de Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré.",
+      "reauth_successful": "Reconnexion réussie."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options PRONOTE",
+        "description": "Actuellement environ **{estimate} appels par jour** pour {students} enfant(s). Durée de vie mesurée de la session : {measured} min.",
+        "menu_options": {
+          "general": "Général",
+          "tiers": "Intervalles de collecte",
+          "rate_limit": "Limitation de débit"
+        }
+      },
+      "general": {
+        "title": "Général",
+        "description": "Actuellement environ **{estimate} appels par jour** pour {students} enfant(s). Durée de vie mesurée de la session : {measured} min.",
+        "data": {
+          "master_tick": "Intervalle du battement",
+          "homework_horizon": "Horizon des devoirs",
+          "wake_margin": "Marge de réveil",
+          "stale_after": "Marquer périmé après",
+          "establishment_timezone": "Fuseau de l'établissement",
+          "session_strategy": "Stratégie de session",
+          "write_operations_enabled": "Autoriser l'écriture dans PRONOTE"
+        },
+        "data_description": {
+          "master_tick": "Fréquence à laquelle l'intégration regarde quels paliers sont dus. Ce n'est pas la fréquence des appels à PRONOTE.",
+          "homework_horizon": "Nombre de jours de devoirs affichés. Cela ne change pas le nombre d'appels : PRONOTE renvoie une plage de semaines dans tous les cas.",
+          "wake_margin": "Minutes retirées au premier cours de la journée pour calculer le capteur de réveil.",
+          "stale_after": "Multiples de l'intervalle d'un palier au-delà desquels ses entités sont marquées périmées. Elles conservent leur dernière valeur au lieu de devenir indisponibles : une entité qui clignote en indisponible déclenche des automatisations à tort.",
+          "establishment_timezone": "PRONOTE renvoie des heures locales sans fuseau. C'est le fuseau dans lequel elles sont interprétées.",
+          "session_strategy": "Conserver une session entre les collectes (lazy) ou en ouvrir une par lot. Le mode lazy démarre prudemment et basculera de lui-même si le serveur expire vite les sessions : il n'est jamais moins bon que l'autre.",
+          "write_operations_enabled": "Désactivé par défaut. Une fois activé, cocher un devoir, marquer une actualité comme lue et envoyer des messages deviennent possibles, et l'établissement voit ces actions."
+        }
+      },
+      "tiers": {
+        "title": "Intervalles de collecte",
+        "description": "Actuellement environ **{estimate} appels par jour** pour {students} enfant(s). Durée de vie mesurée de la session : {measured} min.\n\nUn intervalle par catégorie. L'estimation ci-dessus se met à jour à l'enregistrement.",
+        "data": {
+          "interval_timetable": "Emploi du temps - intervalle",
+          "enabled_timetable": "Emploi du temps - activé",
+          "interval_homework": "Devoirs - intervalle",
+          "enabled_homework": "Devoirs - activé",
+          "interval_news": "Actualités - intervalle",
+          "enabled_news": "Actualités - activé",
+          "interval_discussions": "Discussions - intervalle",
+          "enabled_discussions": "Discussions - activé",
+          "interval_marks": "Notes - intervalle",
+          "enabled_marks": "Notes - activé",
+          "interval_attendance": "Vie scolaire - intervalle",
+          "enabled_attendance": "Vie scolaire - activé",
+          "interval_evaluations": "Évaluations - intervalle",
+          "enabled_evaluations": "Évaluations - activé",
+          "interval_menus": "Menus - intervalle",
+          "enabled_menus": "Menus - activé",
+          "interval_static": "Données stables - intervalle",
+          "enabled_static": "Données stables - activé",
+          "interval_history": "Périodes closes - intervalle",
+          "enabled_history": "Périodes closes - activé"
+        }
+      },
+      "rate_limit": {
+        "title": "Limitation de débit",
+        "description": "Actuellement environ **{estimate} appels par jour** pour {students} enfant(s). Durée de vie mesurée de la session : {measured} min.\n\nCes valeurs par défaut ont été choisies pour rester largement dans ce qu'un serveur PRONOTE tolère. Les augmenter augmente le risque de sanction, et cette sanction pèse sur le compte, pas sur l'intégration.",
+        "data": {
+          "min_request_interval": "Intervalle minimum entre appels",
+          "max_requests_per_hour": "Appels par heure",
+          "burst_size": "Taille de la rafale",
+          "max_requests_per_day": "Appels par jour",
+          "max_wait": "Attente maximale avant report",
+          "max_logins_per_day": "Connexions par jour",
+          "max_failed_logins_per_hour": "Échecs de connexion avant pause",
+          "credentials_hold": "Pause après trop d'échecs",
+          "bootstrap_hold": "Pause si la page de session est illisible",
+          "backoff_base": "Base de la temporisation",
+          "backoff_max": "Temporisation maximale",
+          "connect_timeout": "Délai de connexion",
+          "read_timeout": "Délai de lecture",
+          "quiet_hours_enabled": "Heures calmes",
+          "quiet_start": "Début des heures calmes",
+          "quiet_end": "Fin des heures calmes"
+        },
+        "data_description": {
+          "min_request_interval": "Espacement appliqué à chaque appel, pour qu'un lot n'arrive jamais en rafale.",
+          "max_requests_per_hour": "Le débit soutenu auquel le seau à jetons se remplit.",
+          "burst_size": "Nombre d'appels pouvant partir d'affilée avant que le débit horaire s'applique.",
+          "max_requests_per_day": "Plafond absolu. Les paliers de faible priorité cessent d'être servis bien avant qu'il soit atteint : le plafond protège le compte au lieu de vous surprendre.",
+          "max_wait": "Si un palier devait attendre plus longtemps que cela pour son budget, il est reporté. Ses entités conservent leurs valeurs.",
+          "max_logins_per_day": "Une connexion coûte environ cinq appels : elle est donc comptée à part.",
+          "max_failed_logins_per_hour": "Le réglage le plus important de cette page. PRONOTE sanctionne les échecs de connexion répétés en bloquant l'adresse, et cette sanction n'est pas documentée et coûte cher. Gardez une valeur basse.",
+          "credentials_hold": "Durée pendant laquelle on arrête d'essayer une fois la limite atteinte. Une reconnexion manuelle la lève immédiatement.",
+          "bootstrap_hold": "Appliquée quand l'adresse répond sans page de session PRONOTE. La cause n'est pas déductible de la réponse : aucune cause n'est donc affirmée.",
+          "backoff_base": "Première attente après une erreur serveur. Elle double à chaque échec consécutif, avec une part d'aléatoire.",
+          "backoff_max": "Plafond de ce doublement.",
+          "connect_timeout": "La bibliothèque amont ne fixe aucun délai : celui-ci est appliqué par cette intégration.",
+          "read_timeout": "Durée d'attente d'une réponse avant d'abandonner un appel.",
+          "quiet_hours_enabled": "Arrêter de collecter la nuit. C'est environ un tiers du budget quotidien, dépensé sur des données que personne ne lit en dormant."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_lesson": {
+        "name": "Prochain cours"
+      },
+      "end_of_lessons": {
+        "name": "Fin des cours"
+      },
+      "next_wake_up": {
+        "name": "Prochain réveil"
+      },
+      "next_test": {
+        "name": "Prochain contrôle"
+      },
+      "lessons_today": {
+        "name": "Cours du jour"
+      },
+      "homework_todo": {
+        "name": "Devoirs à faire"
+      },
+      "homework_tomorrow": {
+        "name": "Devoirs pour demain"
+      },
+      "latest_grade": {
+        "name": "Dernière note"
+      },
+      "overall_average": {
+        "name": "Moyenne générale"
+      },
+      "class_average": {
+        "name": "Moyenne de la classe"
+      },
+      "next_punishment": {
+        "name": "Prochaine punition"
+      },
+      "unjustified_absences": {
+        "name": "Absences non justifiées"
+      },
+      "unread_information": {
+        "name": "Actualités non lues"
+      },
+      "unread_messages": {
+        "name": "Messages non lus"
+      },
+      "current_period": {
+        "name": "Période en cours"
+      },
+      "timetable_tomorrow": {
+        "name": "Emploi du temps de demain"
+      },
+      "timetable_week": {
+        "name": "Emploi du temps de la semaine"
+      },
+      "homework": {
+        "name": "Devoirs"
+      },
+      "grades": {
+        "name": "Notes"
+      },
+      "averages": {
+        "name": "Moyennes par matière"
+      },
+      "report_card": {
+        "name": "Bulletin"
+      },
+      "absences": {
+        "name": "Absences"
+      },
+      "delays": {
+        "name": "Retards"
+      },
+      "punishments": {
+        "name": "Punitions"
+      },
+      "evaluations": {
+        "name": "Évaluations"
+      },
+      "information": {
+        "name": "Actualités"
+      },
+      "discussions": {
+        "name": "Discussions"
+      },
+      "menu_today": {
+        "name": "Menu du jour"
+      },
+      "menu_tomorrow": {
+        "name": "Menu de demain"
+      },
+      "teaching_staff": {
+        "name": "Équipe pédagogique"
+      },
+      "class_name": {
+        "name": "Classe"
+      },
+      "periods": {
+        "name": "Périodes"
+      },
+      "grades_period": {
+        "name": "Notes ({period})"
+      },
+      "averages_period": {
+        "name": "Moyennes par matière ({period})"
+      },
+      "overall_average_period": {
+        "name": "Moyenne générale ({period})"
+      },
+      "report_card_period": {
+        "name": "Bulletin ({period})"
+      },
+      "absences_period": {
+        "name": "Absences ({period})"
+      },
+      "delays_period": {
+        "name": "Retards ({period})"
+      },
+      "punishments_period": {
+        "name": "Punitions ({period})"
+      },
+      "evaluations_period": {
+        "name": "Évaluations ({period})"
+      },
+      "calls_today": {
+        "name": "Appels du jour"
+      },
+      "remaining_budget": {
+        "name": "Budget restant"
+      },
+      "last_collection": {
+        "name": "Dernière collecte"
+      },
+      "next_collection": {
+        "name": "Prochaine collecte"
+      },
+      "session_age": {
+        "name": "Âge de la session"
+      },
+      "session_lifetime": {
+        "name": "Durée de vie de la session"
+      },
+      "logins_today": {
+        "name": "Connexions du jour"
+      },
+      "limiter_state": {
+        "name": "État du limiteur",
+        "state": {
+          "nominal": "Nominal",
+          "throttled": "Bridé",
+          "backoff": "Temporisation",
+          "quiet_hours": "Heures calmes",
+          "credentials_hold": "Connexions suspendues",
+          "bootstrap_failed": "Page de session illisible"
+        }
+      }
+    },
+    "binary_sensor": {
+      "school_day": {
+        "name": "Jour de classe"
+      },
+      "in_class": {
+        "name": "En cours"
+      },
+      "lessons_canceled": {
+        "name": "Cours annulés"
+      },
+      "outing_today": {
+        "name": "Sortie pédagogique"
+      },
+      "test_today": {
+        "name": "Contrôle prévu"
+      },
+      "holidays": {
+        "name": "Vacances"
+      },
+      "homework_overdue": {
+        "name": "Devoirs en retard"
+      },
+      "absence_in_progress": {
+        "name": "Absence en cours"
+      },
+      "punishment_upcoming": {
+        "name": "Punition à venir"
+      },
+      "throttled": {
+        "name": "Collectes bridées"
+      }
+    },
+    "calendar": {
+      "timetable": {
+        "name": "Emploi du temps"
+      },
+      "homework": {
+        "name": "Devoirs"
+      },
+      "punishments": {
+        "name": "Punitions"
+      }
+    },
+    "todo": {
+      "homework": {
+        "name": "Devoirs"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Rafraîchir"
+      },
+      "refresh_marks": {
+        "name": "Rafraîchir les notes"
+      }
+    },
+    "event": {
+      "new_grade": {
+        "name": "Nouvelle note",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "grade_added": "Une note est arrivée"
+            }
+          }
+        }
+      },
+      "new_homework": {
+        "name": "Nouveau devoir",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "homework_added": "Un devoir a été ajouté"
+            }
+          }
+        }
+      },
+      "lesson_changed": {
+        "name": "Cours modifié",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "lesson_canceled": "Un cours a été annulé",
+              "lesson_restored": "Un cours annulé est rétabli",
+              "lesson_moved": "Un cours a été déplacé",
+              "room_changed": "Une salle a changé",
+              "teacher_changed": "Un professeur a changé",
+              "lesson_status_changed": "Le statut d'un cours a changé"
+            }
+          }
+        }
+      },
+      "new_information": {
+        "name": "Nouvelle actualité",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "information_added": "Une actualité a été publiée"
+            }
+          }
+        }
+      },
+      "new_absence": {
+        "name": "Nouvelle absence",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "absence_added": "Une absence a été enregistrée"
+            }
+          }
+        }
+      },
+      "new_delay": {
+        "name": "Nouveau retard",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "delay_added": "Un retard a été enregistré"
+            }
+          }
+        }
+      },
+      "new_punishment": {
+        "name": "Nouvelle punition",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "punishment_added": "Une punition a été donnée"
+            }
+          }
+        }
+      },
+      "new_message": {
+        "name": "Nouveau message",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "message_received": "Un message a été reçu"
+            }
+          }
+        }
+      },
+      "new_evaluation": {
+        "name": "Nouvelle évaluation",
+        "state_attributes": {
+          "event_type": {
+            "name": "Type d'évènement",
+            "state": {
+              "evaluation_added": "Une évaluation a été ajoutée"
+            }
+          }
+        }
+      }
+    },
+    "image": {
+      "photo": {
+        "name": "Photo"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Rafraîchir",
+      "description": "Demande un passage prioritaire à l'ordonnanceur. Ne contourne pas le limiteur : l'appeler plusieurs fois coûte un lot, pas plusieurs.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        },
+        "tiers": {
+          "name": "Paliers",
+          "description": "Catégories à rafraîchir. Toutes si le champ est vide."
+        }
+      }
+    },
+    "get_ical_url": {
+      "name": "Obtenir l'URL iCal",
+      "description": "Renvoie l'URL d'abonnement à l'emploi du temps dans la réponse. Elle n'est jamais stockée dans un état ni un attribut : quiconque détient cette URL lit l'emploi du temps de l'enfant sans mot de passe.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        }
+      }
+    },
+    "get_identity": {
+      "name": "Obtenir l'identité",
+      "description": "Renvoie l'état civil et les responsables légaux dans la réponse. Jamais stocké dans un état.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        }
+      }
+    },
+    "mark_homework_done": {
+      "name": "Cocher un devoir",
+      "description": "Marque un devoir comme fait ou non fait. L'établissement le voit. Nécessite l'activation de l'écriture dans les options.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        },
+        "homework_id": {
+          "name": "Identifiant du devoir",
+          "description": "Repris du champ id des items du capteur de devoirs."
+        },
+        "done": {
+          "name": "Fait",
+          "description": "Fait"
+        }
+      }
+    },
+    "mark_information_read": {
+      "name": "Marquer une actualité comme lue",
+      "description": "Marque une actualité comme lue. Nécessite l'activation de l'écriture.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        },
+        "information_id": {
+          "name": "Identifiant de l'actualité",
+          "description": "Repris du champ id des items du capteur d'actualités."
+        }
+      }
+    },
+    "send_message": {
+      "name": "Envoyer un message",
+      "description": "Répond à une discussion existante, ou en ouvre une nouvelle avec des destinataires nommés. Fournissez soit un identifiant de discussion, soit une liste de destinataires, pas les deux. Nécessite l'activation de l'écriture.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        },
+        "message": {
+          "name": "Message",
+          "description": "Message"
+        },
+        "discussion_id": {
+          "name": "Identifiant de discussion",
+          "description": "Pour répondre à un fil existant."
+        },
+        "subject": {
+          "name": "Objet",
+          "description": "Obligatoire pour ouvrir une nouvelle discussion."
+        },
+        "recipients": {
+          "name": "Destinataires",
+          "description": "Noms tels que PRONOTE les publie. Un nom non trouvé est refusé plutôt qu'ignoré silencieusement."
+        }
+      }
+    },
+    "generate_timetable_pdf": {
+      "name": "Générer un PDF de l'emploi du temps",
+      "description": "Demande à PRONOTE de produire un PDF et renvoie son URL dans la réponse.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        },
+        "day": {
+          "name": "Jour",
+          "description": "Aujourd'hui par défaut."
+        },
+        "orientation": {
+          "name": "Orientation",
+          "description": "Orientation"
+        }
+      }
+    },
+    "get_rate_limit_status": {
+      "name": "Obtenir l'état du limiteur",
+      "description": "Renvoie l'état complet du budget et de l'ordonnanceur dans la réponse. Ne coûte aucun appel : il lit des compteurs déjà en mémoire.",
+      "fields": {
+        "device_id": {
+          "name": "Compte ou enfant",
+          "description": "Compte ou enfant"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "writes_disabled": {
+      "message": "L'écriture dans PRONOTE est désactivée. Activez d'abord « Autoriser l'écriture dans PRONOTE » dans les options de l'intégration."
+    },
+    "service_deferred": {
+      "message": "Reporté par le limiteur ({reason}). Réessayez dans environ {seconds} secondes."
+    },
+    "unknown_device": {
+      "message": "Appareil inconnu : {device_id}."
+    },
+    "device_not_pronote": {
+      "message": "L'appareil {device_id} n'appartient pas à un compte PRONOTE."
+    },
+    "student_required": {
+      "message": "Ce compte suit plusieurs enfants ({children}). Ciblez l'appareil de l'enfant plutôt que celui du compte."
+    },
+    "subject_required": {
+      "message": "Un objet est obligatoire pour ouvrir une nouvelle discussion."
+    },
+    "discussion_not_found": {
+      "message": "Aucune discussion avec l'identifiant {discussion_id} n'est visible depuis ce compte."
+    },
+    "discussion_closed": {
+      "message": "La discussion {discussion_id} est close : impossible d'y répondre."
+    },
+    "recipient_not_found": {
+      "message": "Destinataires inconnus : {missing}. Les destinataires joignables sont : {available}."
+    },
+    "todo_item_unknown": {
+      "message": "Cet élément de liste n'a pas d'identifiant PRONOTE : il ne peut pas être mis à jour."
+    }
+  },
+  "issues": {
+    "account_unreadable": {
+      "title": "PRONOTE a répondu quelque chose d'illisible",
+      "description": "L'adresse {url} et les identifiants sont corrects : PRONOTE a répondu, mais sa réponse sort de ce que la version épinglée de pronotepy sait décoder. Cela signifie généralement que le PRONOTE de l'établissement a changé. Il n'y a rien à corriger de votre côté : merci de le signaler, si possible avec le diagnostic de l'intégration."
+    },
+    "invalid_credentials": {
+      "title": "Identifiants PRONOTE refusés",
+      "description": "PRONOTE a refusé les identifiants {attempts} fois : les tentatives sont suspendues jusqu'à {until}. Réessayer en boucle un mot de passe erroné est précisément ce qui fait bloquer une adresse. Reconfigurez l'intégration pour saisir des identifiants corrigés."
+    },
+    "bootstrap_failed": {
+      "title": "Page de session PRONOTE illisible",
+      "description": "{url} a répondu, mais la réponse ne contenait aucun bloc de session PRONOTE. Cela peut signifier que l'adresse est erronée, que l'espace est fermé pour maintenance, que l'établissement a changé son URL, ou que le serveur renvoie une page d'erreur. La réponse ne permet pas de trancher : aucune cause n'est donc affirmée ici. Nouvelle tentative automatique jusqu'à {until}."
+    },
+    "daily_cap_near": {
+      "title": "Plafond d'appels quotidien bientôt atteint",
+      "description": "{calls} appels sur {cap} utilisés aujourd'hui. Les catégories de faible priorité sont déjà reportées. Allonger les intervalles des catégories qui vous importent le moins dans les options est le réglage habituel."
+    },
+    "mfa_required": {
+      "title": "PRONOTE demande le code PIN à deux facteurs",
+      "description": "Cette intégration ne conserve délibérément jamais le code PIN à deux facteurs : il doit donc être saisi à nouveau. Reconfigurez l'intégration pour le fournir."
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "grade_added": "Une note est arrivée",
+      "homework_added": "Un devoir a été ajouté",
+      "lesson_canceled": "Un cours a été annulé",
+      "lesson_restored": "Un cours annulé est rétabli",
+      "lesson_moved": "Un cours a été déplacé",
+      "room_changed": "Une salle a changé",
+      "teacher_changed": "Un professeur a changé",
+      "lesson_status_changed": "Le statut d'un cours a changé",
+      "information_added": "Une actualité a été publiée",
+      "absence_added": "Une absence a été enregistrée",
+      "delay_added": "Un retard a été enregistré",
+      "punishment_added": "Une punition a été donnée",
+      "message_received": "Un message a été reçu",
+      "evaluation_added": "Une évaluation a été ajoutée"
+    },
+    "condition_type": {
+      "is_school_day": "C'est un jour de classe",
+      "is_not_school_day": "Ce n'est pas un jour de classe",
+      "is_in_class": "L'enfant est en cours",
+      "is_not_in_class": "L'enfant n'est pas en cours",
+      "is_test_today": "Un contrôle est prévu aujourd'hui",
+      "is_homework_overdue": "Des devoirs sont en retard",
+      "is_absence_in_progress": "Une absence est en cours",
+      "is_punishment_upcoming": "Une punition est programmée",
+      "is_holidays": "C'est les vacances",
+      "is_not_holidays": "Ce ne sont pas les vacances"
+    },
+    "action_type": {
+      "refresh": "Tout rafraîchir",
+      "refresh_marks": "Rafraîchir les notes",
+      "mark_homework_done": "Cocher un devoir",
+      "mark_information_read": "Marquer une actualité comme lue"
+    }
+  },
+  "selector": {
+    "tier": {
+      "options": {
+        "timetable": "Emploi du temps",
+        "homework": "Devoirs",
+        "news": "Actualités",
+        "discussions": "Discussions",
+        "marks": "Notes",
+        "attendance": "Vie scolaire",
+        "evaluations": "Évaluations",
+        "menus": "Menus",
+        "static": "Données stables",
+        "history": "Périodes closes"
+      }
+    },
+    "session_strategy": {
+      "options": {
+        "lazy": "Conserver la session (recommandé)",
+        "per_batch": "Une session par lot"
+      }
+    },
+    "orientation": {
+      "options": {
+        "portrait": "Portrait",
+        "landscape": "Paysage"
+      }
+    }
+  }
+}

@@ -1,0 +1,122 @@
+# Menu de la cantine -- pronote_ng
+#
+# Ce qu'elle fait : annonce le matin, à l'heure de votre choix, le menu de la
+# cantine du jour.
+#
+# Sur quoi elle s'appuie : un déclencheur `time` du cœur et le capteur
+# `menu_today` (sensor.py:1136), dont l'état est le NOMBRE de plats du repas du
+# jour -- donc `numeric_state above: 0` suffit pour dire « il y a un menu »,
+# sans template. Les plats sont dans ses attributs `first_meal`, `main_meal`,
+# `side_meal`, `cheese`, `dessert` (sensor.py:_menu_attributes_for).
+#
+# Le piège évité : le palier `menus` est collecté une fois par jour et il est
+# désactivé chez beaucoup d'établissements qui ne publient rien. Le capteur
+# vaut alors `unknown`, `numeric_state` ne passe pas, et l'automatisation se
+# tait -- au lieu d'annoncer un menu vide chaque matin.
+#
+# Ce blueprint est demandé par docs/SPECIFICATION.md §2.3 (« annonce du menu de
+# la cantine le matin »).
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/canteen_menu.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Menu de la cantine
+  description: >-
+    Annonce le menu de la cantine du jour, le matin à heure fixe. Ne dit rien
+    les jours sans menu publié, sans cours ou de vacances. Le texte est composé
+    à partir des attributs du capteur « Menu du jour ».
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.2.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/canteen_menu.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        menu_sensor:
+          name: Capteur « Menu du jour »
+          description: >-
+            L'entité `menu_today` de l'élève. Son état est le nombre de plats
+            du repas du jour. L'identifiant d'entité dépend de la langue
+            d'installation, c'est pourquoi on le choisit ici au lieu de le
+            coder en dur (docs/SPECIFICATION.md §10.8).
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+        school_day_sensor:
+          name: Capteur « Jour de classe » (optionnel)
+          description: >-
+            Le capteur `school_day` de l'élève. Renseigné, il évite l'annonce
+            les jours où l'enfant ne va pas au collège même si un menu est
+            publié. Laissez vide pour annoncer dès qu'un menu existe.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: pronote_ng
+                domain: binary_sensor
+    reglages:
+      name: Réglages
+      icon: mdi:tune
+      input:
+        announce_time:
+          name: Heure de l'annonce
+          default: "07:15:00"
+          selector:
+            time:
+    notification:
+      name: Annonce
+      icon: mdi:bullhorn
+      input:
+        announce_action:
+          name: Action d'annonce
+          description: >-
+            Notification, synthèse vocale, affichage... Les variables `title`
+            et `message` sont disponibles ; `message` contient le menu.
+          selector:
+            action:
+
+# `single` : une annonce par matin.
+mode: single
+
+triggers:
+  - alias: À l'heure de l'annonce
+    trigger: time
+    at: !input announce_time
+
+conditions:
+  - alias: Un menu est publié pour aujourd'hui
+    # Native : l'état du capteur EST le nombre de plats. Un jour sans menu vaut
+    # `unknown` et ne passe pas.
+    condition: numeric_state
+    entity_id: !input menu_sensor
+    above: 0
+  - alias: Il y a cours aujourd'hui (si un capteur a été renseigné)
+    condition: state
+    entity_id: !input school_day_sensor
+    state: "on"
+
+variables:
+  menu_entity: !input menu_sensor
+  # Composition de texte uniquement : concaténer cinq listes d'attributs en une
+  # phrase n'est pas quelque chose qu'une condition native sait faire.
+  menu_text: >-
+    {{ ((state_attr(menu_entity, 'first_meal') or [])
+      + (state_attr(menu_entity, 'main_meal') or [])
+      + (state_attr(menu_entity, 'side_meal') or [])
+      + (state_attr(menu_entity, 'other_meal') or [])
+      + (state_attr(menu_entity, 'cheese') or [])
+      + (state_attr(menu_entity, 'dessert') or [])) | join(', ') }}
+  title: Menu de la cantine
+  message: "Au menu aujourd'hui : {{ menu_text }}."
+
+actions:
+  - alias: Exécuter l'action d'annonce choisie
+    sequence: !input announce_action

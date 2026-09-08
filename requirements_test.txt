@@ -1,0 +1,13 @@
+# pytest-homeassistant-custom-component pins the whole Home Assistant test
+# stack -- freezegun included -- so nothing here may pin those transitively.
+#
+# 0.13.316 carries Home Assistant 2026.2.3, which is the most recent release
+# available to pin against. docs/SPECIFICATION.md targets 2026.9; nothing in
+# this integration uses an API newer than 2026.2, so the floor declared in
+# hacs.json is 2026.2.0 and the matrix in validate.yml also tests the floating
+# latest.
+pytest-homeassistant-custom-component==0.13.316
+pronotepy==2.15.6
+ruff==0.14.4
+mypy==1.18.2
+pytest-cov
