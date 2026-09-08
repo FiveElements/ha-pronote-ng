@@ -209,6 +209,34 @@ _NEVER_PERSISTED: Final = frozenset(
 )
 
 
+def _log_rejected_payload(error: Exception, raw: object) -> None:
+    """Say *why* a pasted QR code was rejected, without echoing it.
+
+    This rejection is the one flow failure that never reaches the network, and
+    it logged nothing at all -- so a parent whose messaging app had quietly
+    added characters to the JSON, and this happened, saw only "that does not
+    look like the content of a PRONOTE QR code" while the log stayed silent.
+
+    What is recorded is the *shape*: the exception's own message, the length of
+    what was pasted, and whether it even starts like a JSON object. Never the
+    content, because the content is a working credential -- the ``login`` and
+    ``jeton`` of the QR code -- and this log is what a user is invited to
+    attach to a public issue (§8.2). A length and a first character are enough
+    to tell "pasted an image filename" from "pasted valid JSON of the wrong
+    shape", which is the whole question here.
+    """
+    text = raw if isinstance(raw, str) else ""
+    _LOGGER.debug(
+        "the pasted QR code was rejected: %s(%s); %d characters, %s",
+        type(error).__name__,
+        error,
+        len(text),
+        "starts with an object brace"
+        if text.strip().startswith("{")
+        else "not an object",
+    )
+
+
 def _log_refusal(error: BaseException) -> None:
     """Say *why* a login was refused, on this integration's own logger.
 
@@ -236,26 +264,6 @@ def _log_refusal(error: BaseException) -> None:
         type(cause).__name__ if cause is not None else "nothing",
         cause if cause is not None else "",
     )
-
-
-#: Errors whose wording assumes a password, and what a QR step says instead.
-#:
-#: `invalid_auth` is shared by every step of the flow and tells the reader to
-#: check their password. On a QR step there is no password, so the message is
-#: worse than unhelpful: it points at the one thing that cannot be the cause.
-#: What *can* be, once PRONOTE has accepted the payload and its four-digit code
-#: -- a wrong one of those raises `QRCodeDecryptError`, which surfaces as
-#: `invalid_qr` -- is the account's two-factor PIN. That is a *different*
-#: four-digit code, and it sits in the same form, two fields below.
-_QR_ERROR_WORDING: Final = {"invalid_auth": "invalid_qr_auth"}
-
-
-@callback
-def _requalify_for_qr(errors: dict[str, str]) -> None:
-    """Re-word a shared error for a step that has no password."""
-    base = errors.get("base")
-    if base is not None and base in _QR_ERROR_WORDING:
-        errors["base"] = _QR_ERROR_WORDING[base]
 
 
 def _account_identity(account_id: str | None) -> tuple[str, str]:
@@ -355,7 +363,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 payload = _parse_qr_payload(user_input[CONF_QR_PAYLOAD])
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
+                _log_rejected_payload(error, user_input[CONF_QR_PAYLOAD])
                 errors[CONF_QR_PAYLOAD] = "invalid_qr_payload"
             else:
                 self._data = {
@@ -545,7 +554,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None and entry is not None:
             try:
                 payload = _parse_qr_payload(user_input[CONF_QR_PAYLOAD])
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
+                _log_rejected_payload(error, user_input[CONF_QR_PAYLOAD])
                 errors[CONF_QR_PAYLOAD] = "invalid_qr_payload"
             else:
                 # Before the attempt, for the reason `async_step_reauth_confirm`
@@ -563,7 +573,6 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
 
                 outcome = await self._async_probe(self._data, errors)
-                _requalify_for_qr(errors)
                 if outcome is not None:
                     # A QR code is the one reconnection input that can name a
                     # *different* account: a parent with two children in two
@@ -648,7 +657,6 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         """Re-display the form the user came from, with its errors."""
         mode = self._data.get(CONF_LOGIN_MODE)
         if mode == LoginMode.QR_CODE.value:
-            _requalify_for_qr(errors)
             return self.async_show_form(
                 step_id=STEP_QR_CODE, data_schema=QR_SCHEMA, errors=errors
             )
@@ -722,12 +730,18 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             guard.note_login(LoginOutcome.BOOTSTRAP, requests_used=cost)
             errors["base"] = "bootstrap_failed"
         except ProbeQrInvalid as error:
-            # A single-use payload that PRONOTE has already consumed. Charged
-            # to the credentials guard, because from the server's point of view
-            # it is a refused authentication like any other.
+            # A four-digit code that cannot decrypt the payload. Purely local:
+            # `qrcode_login` does that AES pass before it opens a socket, so
+            # nothing was sent and nothing may be charged.
+            _log_refusal(error)
+            errors["base"] = "invalid_qr"
+        except ProbeQrRefused as error:
+            # The payload decrypted and the server then refused the challenge.
+            # Charged to the credentials guard, because from PRONOTE's point of
+            # view it is a refused authentication like any other.
             _log_refusal(error)
             guard.note_login(LoginOutcome.BAD_CREDENTIALS, requests_used=cost)
-            errors["base"] = "invalid_qr"
+            errors["base"] = "qr_refused"
         except (TimeoutError, OSError) as error:
             _log_refusal(error)
             guard.note_login(LoginOutcome.TRANSPORT, requests_used=cost)
@@ -1082,3 +1096,15 @@ class ProbeBootstrapFailed(ProbeError):  # noqa: N818 -- a flow outcome, not an 
 
 class ProbeQrInvalid(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
     """The QR payload or its PIN was rejected."""
+
+
+class ProbeQrRefused(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
+    """The QR code decrypted, and then PRONOTE would not honour it.
+
+    Distinct from :class:`ProbeQrInvalid`, which is the *local* failure: a
+    four-digit code that cannot decrypt the payload at all. This one is the
+    server refusing the challenge afterwards, and separating them is the whole
+    point -- the first is a typo the user can fix, the second is about the QR
+    code's own validity and cannot be fixed by re-reading any field on the
+    form.
+    """

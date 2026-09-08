@@ -68,6 +68,7 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
         ProbeInvalidCredentials,
         ProbeMfaRequired,
         ProbeQrInvalid,
+        ProbeQrRefused,
     )
     from .hardened_client import (  # noqa: PLC0415 -- keeps pronotepy out of the flow
         BootstrapUnavailable,
@@ -87,6 +88,11 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
         raise ProbeBootstrapFailed(str(error)) from error
 
     mode = LoginMode(data.get(CONF_LOGIN_MODE, LoginMode.CREDENTIALS))
+    #: Whether this call is a QR *enrolment* rather than a login with stored
+    #: credentials. Read twice below -- once to pick the path, once to classify
+    #: a `CryptoError` -- and the two must agree, so it is decided here rather
+    #: than tested twice.
+    enrolling = mode is LoginMode.QR_CODE and bool(data.get(CONF_QR_PAYLOAD))
     client: HardenedClient | None = None
 
     try:
@@ -99,7 +105,7 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
         # as "unexpected error" on the one form whose whole job is to repair a
         # broken login. `build_client` maps `qr_code` to pronotepy's token mode,
         # which is exactly what the runtime session does with the same entry.
-        if mode is LoginMode.QR_CODE and data.get(CONF_QR_PAYLOAD):
+        if enrolling:
             client = _qr_login(data)
         else:
             client = build_client(
@@ -134,6 +140,23 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
         # A wrong password does **not** raise `PronoteAPIError`: the challenge
         # decryption fails first. This is the single most important line in the
         # module (annexe B §3.1).
+        #
+        # But on the enrolment path it is not about a password, because there is
+        # none. `qrcode_login` decrypts the QR code locally first -- a wrong
+        # four-digit code raises `QRCodeDecryptError`, caught above -- and then
+        # agrees the challenge from the payload's own `login` and `jeton`. The
+        # account's two-factor PIN cannot be the cause either: it never enters
+        # the key, which `ClientBase._login` derives as
+        # `username + SHA256(alea + password)` and uses the PIN only in
+        # `_do_2fa`, after a challenge that has already succeeded.
+        #
+        # So a failure here is about the QR code itself, and it is classified as
+        # such. It was reported as "the credentials were refused", which sent a
+        # parent looking at the one field that could not possibly matter --
+        # upstream's own message compounds it by appending "probably the qr code
+        # has expired" on nothing more than `login_mode == "qr_code"`.
+        if enrolling:
+            raise ProbeQrRefused(str(error)) from error
         raise ProbeInvalidCredentials(str(error)) from error
     except ENTLoginError as error:
         raise ProbeInvalidCredentials(str(error)) from error

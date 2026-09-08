@@ -1275,3 +1275,105 @@ def test_the_credential_snapshot_is_a_copy_the_caller_may_keep() -> None:
 
     assert first["password"] == "not-a-real-password"
     assert second["password"] == "rotating-sentinel-3"
+
+
+# ---------------------------------------------------------------------------
+# The identification diagnostic
+#
+# This exists because upstream's own is unusable. `pronotepy.clients` has no
+# logger of its own -- `clients.log is pronoteAPI.log` -- so the DEBUG line
+# that would show the `Identification` response shares a logger with
+# `pronoteAPI` line 139, which writes the hex of every request body,
+# credentials included. Turning that on to read one boolean writes a parent's
+# token into a file they are then invited to attach to a public issue (§8.2).
+#
+# So the client reads the response it already holds. What it logs is the three
+# values that decide whether the login can possibly succeed, and nothing else.
+# ---------------------------------------------------------------------------
+
+
+def _identification(**data: Any) -> dict[str, Any]:
+    """An `Identification` response of the shape upstream reads."""
+    return {"dataSec": {"data": data}}
+
+
+def test_the_flags_that_decide_the_key_are_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``modeCompMdp`` is the one that matters, and it is invisible otherwise.
+
+    When it is true, ``ClientBase._login`` lowercases the password *before*
+    hashing it. Harmless for a human password; destructive for a token or a QR
+    code's ``jeton``, which are case-sensitive -- and the resulting failure is
+    a challenge that will not decrypt, which is indistinguishable from a wrong
+    token. Six real login attempts were spent on that ambiguity.
+    """
+    caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
+
+    hardened_client._log_identification(
+        _identification(modeCompLog=True, modeCompMdp=True, alea="abc", challenge="ff")
+    )
+
+    assert "modeCompLog=True" in caplog.text
+    assert "modeCompMdp=True" in caplog.text
+    assert "alea=present(3 chars)" in caplog.text
+
+
+def test_an_absent_salt_is_reported_as_absent_and_not_as_empty(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``alea`` changes the key, so "missing" and "empty" are one fact here.
+
+    ``data.get("alea", "")`` is upstream's own default, and a response without
+    the key derives a different key from one carrying an empty string only if
+    something else differs -- so the log says which of the two it saw rather
+    than flattening them into ``alea=``.
+    """
+    caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
+
+    hardened_client._log_identification(_identification(modeCompLog=False))
+
+    assert "alea=absent(0 chars)" in caplog.text
+
+
+def test_the_challenge_and_the_credentials_are_never_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The point is to make the pronotepy logger unnecessary, not to copy it.
+
+    The whole reason this function exists is that upstream's DEBUG line cannot
+    be enabled without writing credentials to disk. A diagnostic that leaked
+    the challenge -- the AES material the login turns on -- would have
+    reproduced the problem it was written to avoid. Only the *key names* of the
+    response are recorded, which is enough to tell a shape change from a value
+    change.
+    """
+    caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
+    secret = "SENTINEL-CHALLENGE-DO-NOT-LEAK"
+
+    hardened_client._log_identification(
+        _identification(modeCompLog=False, modeCompMdp=False, challenge=secret)
+    )
+
+    assert secret not in caplog.text
+    # The key name is there, because a response that stopped carrying a
+    # challenge at all is a finding in itself.
+    assert "challenge" in caplog.text
+
+
+def test_a_response_of_the_wrong_shape_says_so_instead_of_raising(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A diagnostic that crashes the login it was added to observe is worse
+    than no diagnostic.
+
+    This runs inside ``post``, on the path of every request, so its failure
+    mode has to be a log line. The response shape is upstream's and can change
+    under us -- which is exactly the kind of thing worth being told about
+    rather than being killed by.
+    """
+    caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
+
+    hardened_client._log_identification({"unexpected": "shape"})
+
+    assert "no data section" in caplog.text

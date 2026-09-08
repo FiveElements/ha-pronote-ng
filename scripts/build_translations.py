@@ -200,8 +200,10 @@ CONFIG_EN: dict[str, Any] = {
                 "— your phone's camera or any scanner app — and share or copy "
                 "the text it gives you, then paste that text below with the "
                 "same four-digit code.\n\n"
-                "The QR code can only be used once: generate a new one if this "
-                "attempt fails."
+                "A QR code is single-use **and expires within minutes**, so "
+                "the order matters: open this form first, generate the QR code "
+                "second, and submit straight away. Generate a new one if this "
+                "attempt fails -- the old one is spent either way."
             ),
             "data": {
                 "qr_payload": "QR code content (JSON)",
@@ -326,15 +328,18 @@ CONFIG_EN: dict[str, Any] = {
             "The QR code or its four-digit code was refused. A QR code can "
             "only be used once, so generate a new one in the app."
         ),
-        "invalid_qr_auth": (
-            "PRONOTE refused this enrolment, and it is worth knowing what that "
-            "rules out: the QR code and its four-digit code were accepted -- a "
-            "wrong one of those is reported separately. What remains is the "
-            "account's two-factor PIN, which is a different four-digit code, "
-            "set on the PRONOTE account itself rather than chosen when "
-            "generating the QR code. Check that one before trying again: "
-            "repeatedly retrying a refused login is what gets an address "
-            "blocked."
+        "qr_refused": (
+            "PRONOTE would not honour this QR code. Its four-digit code was "
+            "right -- a wrong one is reported separately, and is caught before "
+            "anything is sent -- so what was refused is the QR code itself. "
+            "Almost always that means it has already been used, or was "
+            "generated more than a few minutes ago: PRONOTE issues them for "
+            "single use and expires them quickly. Generate a new one and use "
+            "it straight away, with the form already open. If a QR code you "
+            "generated seconds earlier is refused too, the account may not be "
+            "allowed to enrol a new device -- check with the establishment "
+            "rather than retrying, because repeatedly retrying a refused login "
+            "is what gets an address blocked."
         ),
         "invalid_qr_payload": (
             "That does not look like the content of a PRONOTE QR code. It "
@@ -391,8 +396,11 @@ CONFIG_FR: dict[str, Any] = {
                 "pour le lire, puis partagez ou copiez le texte obtenu et "
                 "collez-le ci-dessous avec le même code à quatre "
                 "chiffres.\n\n"
-                "Le QR code n'est utilisable qu'une seule fois : regénérez-en "
-                "un si cette tentative échoue."
+                "Un QR code est à usage unique **et périme en quelques "
+                "minutes** : l'ordre compte donc. Ouvrez d'abord ce "
+                "formulaire, générez le QR code ensuite, et validez "
+                "immédiatement. Regénérez-en un si cette tentative échoue — "
+                "l'ancien est dépensé de toute façon."
             ),
             "data": {
                 "qr_payload": "Contenu du QR code (JSON)",
@@ -523,15 +531,20 @@ CONFIG_FR: dict[str, Any] = {
             "n'est utilisable qu'une fois : générez-en un nouveau dans "
             "l'application."
         ),
-        "invalid_qr_auth": (
-            "PRONOTE a refusé cet enrôlement, et ce que cela écarte vaut d'être "
-            "su : le QR code et son code à quatre chiffres ont été acceptés — "
-            "une erreur sur l'un des deux est signalée à part. Reste le code "
-            "PIN à deux facteurs du compte, qui est un autre code à quatre "
-            "chiffres, défini sur le compte PRONOTE lui-même et non choisi au "
-            "moment de générer le QR code. Vérifiez celui-là avant de "
-            "recommencer : réessayer en boucle une connexion refusée est "
-            "précisément ce qui fait bloquer une adresse."
+        "qr_refused": (
+            "PRONOTE n'a pas honoré ce QR code. Son code à quatre chiffres "
+            "était juste — une erreur sur celui-là est signalée à part, et "
+            "détectée avant tout envoi — donc ce qui a été refusé, c'est le QR "
+            "code lui-même. Presque toujours, cela veut dire qu'il a déjà "
+            "servi, ou qu'il a été généré il y a plus de quelques minutes : "
+            "PRONOTE les délivre à usage unique et les périme vite. "
+            "Générez-en un nouveau et utilisez-le immédiatement, le "
+            "formulaire déjà ouvert. Si un QR code généré quelques secondes "
+            "plus tôt est refusé lui aussi, c'est peut-être que le compte "
+            "n'est pas autorisé à enrôler un nouvel appareil : renseignez-vous "
+            "auprès de l'établissement plutôt que de réessayer, car réessayer "
+            "en boucle une connexion refusée est précisément ce qui fait "
+            "bloquer une adresse."
         ),
         "invalid_qr_payload": (
             "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit "
