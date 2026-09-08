@@ -20,7 +20,8 @@
           "account_pin": "Code PIN à deux facteurs (si votre compte en a un)"
         },
         "data_description": {
-          "account_pin": "Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
+          "qr_pin": "Celui que vous avez choisi dans l'application en générant le QR code. Pas le code PIN du compte ci-dessous : les deux font quatre chiffres, et ce sont deux codes différents.",
+          "account_pin": "Le code PIN à deux facteurs défini sur le compte PRONOTE lui-même, s'il en a un. Quatre chiffres aussi, et pas celui du dessus. Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
         }
       },
       "credentials": {
@@ -71,7 +72,8 @@
           "account_pin": "Code PIN à deux facteurs (si votre compte en a un)"
         },
         "data_description": {
-          "account_pin": "Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
+          "qr_pin": "Celui que vous avez choisi dans l'application en générant le QR code. Pas le code PIN du compte ci-dessous : les deux font quatre chiffres, et ce sont deux codes différents.",
+          "account_pin": "Le code PIN à deux facteurs défini sur le compte PRONOTE lui-même, s'il en a un. Quatre chiffres aussi, et pas celui du dessus. Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
         }
       }
     },
@@ -80,6 +82,7 @@
       "mfa_required": "PRONOTE demande le code PIN à deux facteurs de ce compte. Saisissez-le ci-dessus.",
       "bootstrap_failed": "L'adresse a répondu, mais sans page de session PRONOTE. Vérifiez l'adresse, et que l'espace est bien ouvert en ce moment.",
       "invalid_qr": "Le QR code ou son code à quatre chiffres a été refusé. Un QR code n'est utilisable qu'une fois : générez-en un nouveau dans l'application.",
+      "invalid_qr_auth": "PRONOTE a refusé cet enrôlement, et ce que cela écarte vaut d'être su : le QR code et son code à quatre chiffres ont été acceptés — une erreur sur l'un des deux est signalée à part. Reste le code PIN à deux facteurs du compte, qui est un autre code à quatre chiffres, défini sur le compte PRONOTE lui-même et non choisi au moment de générer le QR code. Vérifiez celui-là avant de recommencer : réessayer en boucle une connexion refusée est précisément ce qui fait bloquer une adresse.",
       "invalid_qr_payload": "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit s'agir d'un objet JSON avec login, jeton et url.",
       "cannot_connect": "Impossible de joindre le serveur.",
       "rate_limited": "Trop de tentatives de connexion dans la dernière heure : celle-ci n'a pas été envoyée. Attendez un peu avant de réessayer, car réessayer une connexion en boucle est précisément ce qui fait bloquer une adresse par PRONOTE.",

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator  # noqa: TC003 -- a pytest fixture annotation
 import json
+import logging
 import pathlib
 from string import Formatter
 from typing import TYPE_CHECKING, Any
@@ -1123,6 +1124,172 @@ async def test_a_reconnection_does_not_widen_the_children_being_followed(
 
     assert done["reason"] == "reauth_successful"
     assert entry.data[CONF_CHILDREN] == ["STUDENT-2"]
+
+
+async def test_a_refused_qr_enrolment_does_not_blame_a_password(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The message a real parent got, and why it was the wrong one.
+
+    ``invalid_auth`` is shared by every step of the flow and tells the reader to
+    check their password. On a QR step there is none, so the message points at
+    the one thing that cannot be the cause. What the refusal actually rules
+    *out* is worth saying: the payload and its four-digit code were accepted,
+    because a wrong one of those raises ``QRCodeDecryptError`` and arrives as
+    ``invalid_qr``. What remains is the account's two-factor PIN -- a different
+    four-digit code, set on the account rather than chosen when generating the
+    QR code, and sitting two fields below in the same form.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeInvalidCredentials(),
+    ):
+        again = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    assert again["type"] is FlowResultType.FORM
+    assert again["step_id"] == "reauth_qr"
+    assert again["errors"] == {"base": "invalid_qr_auth"}
+
+
+async def test_a_refused_qr_enrolment_says_the_same_thing_when_adding(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """The enrolment form and the reconnection form are one problem.
+
+    Re-wording only the reconnection step would leave a parent adding the
+    account for the first time reading about a password they were never asked
+    for -- the same failure, on the screen it is most likely to be met on.
+    """
+    flow_id = await _start_qr(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeInvalidCredentials(),
+    ):
+        again = await hass.config_entries.flow.async_configure(
+            flow_id,
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    assert again["step_id"] == "qr_code"
+    assert again["errors"] == {"base": "invalid_qr_auth"}
+
+
+async def test_a_consumed_qr_code_keeps_its_own_message(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The re-wording must not swallow the distinction it depends on.
+
+    ``invalid_qr_auth`` claims the four-digit code was accepted. That claim is
+    only true because a wrong one arrives as ``invalid_qr`` instead -- so if the
+    re-wording ever caught that too, the new message would assert something
+    false and send the reader after the wrong code.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeQrInvalid(),
+    ):
+        again = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    assert again["errors"] == {"base": "invalid_qr"}
+
+
+async def test_a_password_reconnection_still_reads_as_one(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The credentials step keeps the wording that is correct for it."""
+    result = await mock_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeInvalidCredentials(),
+    ):
+        again = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"password": "still-wrong-not-real"}
+        )
+
+    assert again["errors"] == {"base": "invalid_auth"}
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(ProbeInvalidCredentials("challenge decryption failed"), id="auth"),
+        pytest.param(ProbeQrInvalid("invalid confirmation code"), id="qr"),
+        pytest.param(ProbeBootstrapFailed("no session page"), id="bootstrap"),
+        pytest.param(ProbeMfaRequired("pin required"), id="mfa"),
+        pytest.param(TimeoutError("timed out"), id="transport"),
+    ],
+)
+async def test_every_classified_refusal_says_why_on_our_own_logger(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    no_spacing: None,
+    caplog: pytest.LogCaptureFixture,
+    failure: Exception,
+) -> None:
+    """A classified failure used to log nothing at all.
+
+    Only the *unexpected* arm wrote a traceback, so "PRONOTE refused these
+    credentials" was the whole of what a bug report could contain, and the four
+    causes behind it were indistinguishable -- which cost two rounds of guessing
+    on a real instance before the cause was found by reading upstream's source
+    instead of the log.
+
+    At DEBUG, because that is what a user turns on before reporting a bug, and
+    strictly more conservative than the ERROR-level traceback the unexpected arm
+    already writes unconditionally.
+    """
+    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    result = await mock_entry.start_reauth_flow(hass)
+
+    with patch("custom_components.pronote_ng.config_flow._probe", side_effect=failure):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"password": "still-wrong-not-real"}
+        )
+
+    assert "the login was refused" in caplog.text
+    assert type(failure).__name__ in caplog.text
+
+
+async def test_the_refusal_log_names_the_upstream_cause_and_not_only_ours(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    no_spacing: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Our four categories are the part that was never in doubt.
+
+    The whole point of the line is the exception it was raised *from*: the
+    category says "refused", and only ``pronotepy``'s own message distinguishes
+    a stale token from a wrong two-factor PIN. `probe_account` already chains
+    them with ``raise ... from error``, so the cause is there to be read.
+    """
+    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    cause = ValueError("challenge decryption failed")
+    classified = ProbeInvalidCredentials("refused")
+    classified.__cause__ = cause
+
+    result = await mock_entry.start_reauth_flow(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe", side_effect=classified
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"password": "still-wrong-not-real"}
+        )
+
+    assert "challenge decryption failed" in caplog.text
+    assert "ValueError" in caplog.text
 
 
 def test_the_flow_never_imports_pronotepy_to_be_added(
