@@ -53,8 +53,8 @@ jobs:
         include:
           # The pinned baseline carries the coverage gate; the floating row
           # catches upstream breakage early without blocking on it.
-          - ha-version: "2026.8"
-            pytest-hacc: "0.13.354"
+          - ha-version: "2026.9"
+            pytest-hacc: "0.13.363"
             gate: true
           - ha-version: "latest"
             pytest-hacc: ""
@@ -91,15 +91,37 @@ jobs:
           pip install -r requirements_test.txt
           pip install --upgrade pytest-homeassistant-custom-component
 
+      # The floor is a promise made to users by hacs.json, and `tests/
+      # test_version_floor.py` only checks that the repository repeats the
+      # number consistently. This is the step that checks the number is *true*:
+      # that the pinned plugin release really carries the declared Home
+      # Assistant. Nothing else can -- the mapping lives on PyPI, and a test
+      # that fetched it would put the network in the suite.
+      - name: The pinned row really installs the declared floor
+        if: matrix.pytest-hacc != ''
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          from homeassistant.const import __version__ as installed
+          declared = json.loads(pathlib.Path("hacs.json").read_text())["homeassistant"]
+          assert installed == declared, (
+              f"hacs.json declares Home Assistant {declared}, but the pin in "
+              f"requirements_test.txt installed {installed}: the floor is not "
+              f"the socle being tested"
+          )
+          print(f"floor {declared} confirmed")
+          PY
+
       # Only on the floating row, and tolerated like the rest of it. The `lint`
       # job type-checks against the *pinned floor*, which cannot see an API
-      # that upstream removes later: `DeviceInfo.via_device` still existed on
-      # 2026.8 and was gone on 2026.9, so a call using it type-checked clean
-      # while failing on a user's instance -- and it failed by refusing to add
-      # every entity on the affected device, which no test can reproduce
-      # because the deprecation is only escalated outside the test harness.
-      # Running mypy against `latest` is what turns that class of removal into
-      # a warning here instead of a bug report.
+      # that upstream removes later. The removal that motivated this step:
+      # `DeviceInfo.via_device` still existed on 2026.8, the floor at the time,
+      # and was gone on 2026.9 -- so a call using it type-checked clean while
+      # failing on a user's instance, and it failed by refusing to add every
+      # entity on the affected device, which no test can reproduce because the
+      # deprecation is only escalated outside the test harness. Running mypy
+      # against `latest` is what turns that class of removal into a warning
+      # here instead of a bug report.
       - name: mypy --strict against the floating release
         if: matrix.pytest-hacc == ''
         continue-on-error: true

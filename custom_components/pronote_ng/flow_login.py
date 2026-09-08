@@ -90,7 +90,16 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
     client: HardenedClient | None = None
 
     try:
-        if mode is LoginMode.QR_CODE:
+        # Branching on the *payload*, not on the mode. A QR-enrolled entry keeps
+        # `login_mode: qr_code` for the rest of its life, but §8.1 refuses to
+        # persist the single-use payload -- so every login after the enrolment
+        # one has the mode without the payload, the re-authentication probe
+        # included. Branching on the mode alone made `_qr_login` raise
+        # `KeyError: 'qr_payload'` there, unclassified, which the flow reported
+        # as "unexpected error" on the one form whose whole job is to repair a
+        # broken login. `build_client` maps `qr_code` to pronotepy's token mode,
+        # which is exactly what the runtime session does with the same entry.
+        if mode is LoginMode.QR_CODE and data.get(CONF_QR_PAYLOAD):
             client = _qr_login(data)
         else:
             client = build_client(

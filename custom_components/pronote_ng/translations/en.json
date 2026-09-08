@@ -60,6 +60,19 @@
           "password": "Password",
           "account_pin": "Two-factor PIN"
         }
+      },
+      "reauth_qr": {
+        "title": "Reconnect with a new QR code",
+        "description": "The connection to {url} was refused. This account was enrolled from a QR code, so it has no password to correct: PRONOTE issues a new access token at every login, and once the stored one is refused the only way back in is a new QR code.\n\nIn the PRONOTE mobile app, generate a fresh QR code, choosing a four-digit code when asked, then paste its content below. Nothing else about this account changes -- the children you follow, your settings and your history are all kept.",
+        "data": {
+          "qr_payload": "QR code content (JSON)",
+          "qr_pin": "Four-digit code",
+          "device_name": "Device name",
+          "account_pin": "Two-factor PIN (if your account uses one)"
+        },
+        "data_description": {
+          "account_pin": "Used for this login only and never stored. You will be asked for it again if PRONOTE requires it."
+        }
       }
     },
     "error": {
@@ -74,7 +87,8 @@
     },
     "abort": {
       "already_configured": "This account is already configured.",
-      "reauth_successful": "Reconnected."
+      "reauth_successful": "Reconnected.",
+      "wrong_account": "That QR code belongs to a different PRONOTE account, so it was not applied: reconnecting this one with it would have pointed it at somebody else's child while keeping this child's name and history. Generate a QR code from the account this entry follows, or add the other account separately."
     }
   },
   "options": {

@@ -32,6 +32,7 @@ from unittest.mock import patch
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pronote_ng.config_flow import (
     ProbeBootstrapFailed,
@@ -42,6 +43,7 @@ from custom_components.pronote_ng.config_flow import (
 from custom_components.pronote_ng.const import (
     CONF_ACCOUNT_PIN,
     CONF_CHILDREN,
+    CONF_CLIENT_IDENTIFIER,
     CONF_ENT,
     CONF_LOGIN_MODE,
     CONF_PRONOTE_URL,
@@ -58,7 +60,6 @@ from .conftest import REQUIRES_HASS
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 pytestmark = REQUIRES_HASS
 
@@ -750,6 +751,378 @@ async def test_reauthentication_accepts_a_pin_without_a_new_password(
     assert done["reason"] == "reauth_successful"
     assert mock_entry.data["password"] == stored
     assert CONF_ACCOUNT_PIN not in mock_entry.data
+
+
+# ---------------------------------------------------------------------------
+# Re-authenticating a QR account
+#
+# The one login mode the documentation recommends, and the one the
+# re-authentication flow could not repair. §8.1 forbids keeping the QR payload,
+# so a QR-enrolled entry carries `login_mode: qr_code` for the rest of its life
+# with no payload beside it -- and the probe branched on the mode alone, so it
+# reached for `data[CONF_QR_PAYLOAD]` and raised `KeyError`. Unclassified, that
+# surfaced as "unexpected error" on the form whose only job is to repair a
+# broken login. Every reauth test above uses credentials mode, which is exactly
+# why none of them saw it.
+# ---------------------------------------------------------------------------
+
+#: What a QR-enrolled entry really holds once the flow has finished with it:
+#: the mode, the rotated token in `password`, the device identity -- and no
+#: payload.
+QR_ENTRY_DATA: dict[str, Any] = {
+    CONF_PRONOTE_URL: TRIMMED_URL,
+    CONF_LOGIN_MODE: LoginMode.QR_CODE.value,
+    "username": "not-a-real-login",
+    "password": "not-a-real-rotated-token",
+    CONF_UUID: "not-a-real-uuid",
+    CONF_CLIENT_IDENTIFIER: "not-a-real-client-id",
+    CONF_CHILDREN: ["STUDENT-2"],
+}
+
+
+#: Shaped like a real one, signature included: `flow_login._account_id` builds
+#: `<url>::<resource N>`, and the `N` of a parent resource is written
+#: `46#<opaque blob>`. The blob is the part that may rotate between enrolments,
+#: which is why the tests below care about it.
+QR_ACCOUNT_ID = f"{TRIMMED_URL}::46#not-a-real-signature"
+
+
+def _qr_outcome(
+    account_id: str = QR_ACCOUNT_ID,
+) -> dict[str, Any]:
+    """What the probe hands back after a successful re-enrolment.
+
+    The token is a *new* one, which is the point of the whole exercise: the old
+    one is what PRONOTE just refused.
+    """
+    return {
+        "account_id": account_id,
+        "children": [("STUDENT-1", "Enfant Un"), ("STUDENT-2", "Enfant Deux")],
+        "title": "PRONOTE",
+        CONF_LOGIN_MODE: LoginMode.QR_CODE.value,
+        "username": "not-a-real-login",
+        "password": "not-a-real-fresh-token",
+        CONF_UUID: "not-a-real-uuid",
+        CONF_CLIENT_IDENTIFIER: "not-a-real-new-client-id",
+    }
+
+
+@pytest.fixture(name="qr_entry")
+def qr_entry_fixture(hass: HomeAssistant) -> MockConfigEntry:
+    """A QR-enrolled entry, following one of the account's two children."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="PRONOTE",
+        data=dict(QR_ENTRY_DATA),
+        unique_id=QR_ACCOUNT_ID,
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_reconnecting_a_qr_account_asks_for_a_qr_code_and_not_a_password(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """A token account has no password, so a password field is a dead end.
+
+    PRONOTE rotates ``jetonConnexionAppliMobile`` at every login; once the
+    stored one is refused it is dead for good, and nothing but a new QR code
+    mints another. The old form offered a password box, which could not have
+    worked even if the parent had typed the right thing into it.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_qr"
+    schema = result["data_schema"]
+    assert schema is not None
+    fields = {str(key.schema) for key in schema.schema}
+    assert {CONF_QR_PAYLOAD, CONF_QR_PIN} <= fields
+    assert "password" not in fields
+    # And it names the address, so a parent with two entries knows which one.
+    placeholders = result["description_placeholders"] or {}
+    assert placeholders["url"] == TRIMMED_URL
+
+
+async def test_a_qr_reconnection_reaches_the_probe_instead_of_raising(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The regression, stated in terms of what the parent sees.
+
+    Before, submitting this form ended in ``KeyError: 'qr_payload'``, caught by
+    the flow's blanket handler and shown as ``unknown`` -- "unexpected error,
+    check the log". The account was unrepairable from the interface.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(),
+    ) as probe:
+        done = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    # Drained here rather than left to teardown: `async_update_reload_and_abort`
+    # *schedules* the reload, and a reload that runs after `no_setup` has
+    # released its patch sets the entry up for real -- a live login attempt out
+    # of a config-flow test, and a worker thread the test never tears down.
+    await hass.async_block_till_done()
+
+    assert done["type"] is FlowResultType.ABORT
+    assert done["reason"] == "reauth_successful"
+    assert probe.call_count == 1
+    submitted = probe.call_args.args[0]
+    assert submitted[CONF_QR_PAYLOAD]["jeton"] == QR_PAYLOAD["jeton"]
+    assert submitted[CONF_QR_PIN] == "1234"
+
+
+async def test_a_qr_reconnection_reuses_the_device_uuid_it_was_enrolled_with(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """PRONOTE lists enrolled devices, and a new UUID adds one every time.
+
+    Reusing the stored UUID keeps this Home Assistant a single device in the
+    account's list rather than one copy per reconnection.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(),
+    ) as probe:
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    await hass.async_block_till_done()
+
+    assert probe.call_args.args[0][CONF_UUID] == QR_ENTRY_DATA[CONF_UUID]
+    assert qr_entry.data[CONF_UUID] == QR_ENTRY_DATA[CONF_UUID]
+
+
+async def test_a_qr_reconnection_persists_the_token_and_no_single_use_secret(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """§8.1 applies to a reconnection exactly as it does to an enrolment.
+
+    The re-authentication path used to strip the account PIN and nothing else,
+    which was enough while the only reconnection was a password one. A QR
+    reconnection puts a single-use payload and its four-digit code into the same
+    dictionary, and both would have been written to the entry.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(),
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD),
+                CONF_QR_PIN: "1234",
+                CONF_ACCOUNT_PIN: "4321",
+            },
+        )
+
+    await hass.async_block_till_done()
+
+    assert qr_entry.data["password"] == "not-a-real-fresh-token"
+    assert qr_entry.data[CONF_CLIENT_IDENTIFIER] == "not-a-real-new-client-id"
+    for forbidden in (CONF_QR_PAYLOAD, CONF_QR_PIN, CONF_ACCOUNT_PIN, "account_id"):
+        assert forbidden not in qr_entry.data, f"{forbidden} was persisted"
+
+
+async def test_a_qr_code_from_another_account_is_refused_rather_than_applied(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The one reconnection input that can name a different child.
+
+    A password reconnection cannot change accounts: the address and the
+    username are fixed in the entry. A QR code carries its own account, and a
+    parent with children in two establishments has two apps to generate one
+    from. Applying the wrong one would keep this entry's devices, entity ids and
+    history and quietly point them at somebody else's child.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(account_id=f"{TRIMMED_URL}::47#not-a-real-signature"),
+    ):
+        done = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    assert done["type"] is FlowResultType.ABORT
+    assert done["reason"] == "wrong_account"
+    # And nothing was written: the entry still holds the credentials it had.
+    assert qr_entry.data["password"] == QR_ENTRY_DATA["password"]
+    assert (
+        qr_entry.data[CONF_CLIENT_IDENTIFIER] == QR_ENTRY_DATA[CONF_CLIENT_IDENTIFIER]
+    )
+
+
+async def test_a_re_enrolment_of_the_same_account_survives_a_rotated_signature(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The identity guard must not mistake a new session for a new account.
+
+    A parent resource's PRONOTE identifier is written ``46#<opaque blob>``. The
+    number is establishment-local and stable; the blob is undocumented, and
+    nothing promises it survives a re-enrolment. A guard comparing the whole
+    string would therefore fire on the *correct* QR code and tell a parent their
+    own account belongs to somebody else -- with no way out but deleting the
+    entry and losing its history, which is exactly the outcome the guard exists
+    to prevent.
+    """
+    rotated = f"{TRIMMED_URL}::46#a-different-signature-same-account"
+    assert rotated != qr_entry.unique_id
+
+    result = await qr_entry.start_reauth_flow(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(account_id=rotated),
+    ):
+        done = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+    await hass.async_block_till_done()
+
+    assert done["type"] is FlowResultType.ABORT
+    assert done["reason"] == "reauth_successful"
+
+
+async def test_the_same_resource_at_another_establishment_is_a_different_account(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The number alone is not the identity: it is local to one establishment.
+
+    Resource 46 exists at every school. Dropping the address from the
+    comparison to tolerate the rotating signature would make two unrelated
+    parents at two schools look like the same account -- the loose end of the
+    same trade-off, checked here so neither half can be relaxed alone.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(
+            account_id="https://autre.example.invalid/pronote/mobile.parent.html::46#s"
+        ),
+    ):
+        done = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    assert done["type"] is FlowResultType.ABORT
+    assert done["reason"] == "wrong_account"
+
+
+async def test_a_bad_payload_on_reconnection_never_reaches_the_school(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """Parsed before anything is sent, as on the enrolment form."""
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+        again = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: "not json at all", CONF_QR_PIN: "1234"},
+        )
+
+    assert again["type"] is FlowResultType.FORM
+    assert again["step_id"] == "reauth_qr"
+    assert again["errors"] == {CONF_QR_PAYLOAD: "invalid_qr_payload"}
+    assert probe.call_count == 0
+
+
+async def test_a_consumed_qr_code_on_reconnection_says_to_generate_a_new_one(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The form comes back, because a new QR code is one tap away."""
+    result = await qr_entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeQrInvalid(),
+    ):
+        again = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    assert again["type"] is FlowResultType.FORM
+    assert again["step_id"] == "reauth_qr"
+    assert again["errors"] == {"base": "invalid_qr"}
+    assert (again["description_placeholders"] or {})["url"] == TRIMMED_URL
+
+
+async def test_a_qr_reconnection_is_charged_for_the_two_logins_it_performs(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """It really is an enrolment, so it costs what an enrolment costs."""
+    guard = login_guard(hass)
+    before = guard.calls_today
+
+    result = await qr_entry.start_reauth_flow(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_qr_outcome(),
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    await hass.async_block_till_done()
+
+    assert guard.calls_today - before == 10
+
+
+async def test_a_reconnection_does_not_widen_the_children_being_followed(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """The defect ``_async_try_login`` documents, still live on the other path.
+
+    The probe returns ``children`` as ``(id, name)`` label pairs under the very
+    key that holds the user's *selection*. The enrolment path excludes it for
+    that reason; the reconnection path merged the whole outcome in, so a parent
+    following one of two children came back from any reconnection following
+    both -- silently, and with the second child's whole request budget.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="PRONOTE",
+        data={
+            CONF_PRONOTE_URL: TRIMMED_URL,
+            CONF_LOGIN_MODE: LoginMode.CREDENTIALS.value,
+            "username": "parent-under-test",
+            "password": "not-a-real-password",
+            CONF_CHILDREN: ["STUDENT-2"],
+        },
+        unique_id="demo.example.invalid|parent-under-test",
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reauth_flow(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_outcome(("STUDENT-1", "Enfant Un"), ("STUDENT-2", "Enfant Deux")),
+    ):
+        done = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"password": "corrected-not-real"}
+        )
+
+    await hass.async_block_till_done()
+
+    assert done["reason"] == "reauth_successful"
+    assert entry.data[CONF_CHILDREN] == ["STUDENT-2"]
 
 
 def test_the_flow_never_imports_pronotepy_to_be_added(

@@ -10,7 +10,7 @@ son domaine Home Assistant est `pronote_ng`.
 
 ---
 
-> **Un `.venv` local ne suffit plus pour les portails.** Home Assistant 2026.8
+> **Un `.venv` local ne suffit plus pour les portails.** Home Assistant 2026.9
 > exige Python **3.14.2**, et `pytest-homeassistant-custom-component` refuse de
 > s'installer sous 3.13 à partir de `0.13.317`. Un environnement local en 3.13
 > installe donc l'ancienne pile, et `mypy --strict` y vérifie le code contre une

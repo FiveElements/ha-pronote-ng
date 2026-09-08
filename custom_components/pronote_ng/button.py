@@ -28,11 +28,13 @@ if TYPE_CHECKING:
     from .coordinator import PronoteTierCoordinator
     from .models import Student
 
-#: One at a time. Entities on this platform *act*: they place a real write
-#: against the school's server. The limiter already serialises the wire under
-#: its own lock, but declaring it at the platform level costs nothing and is
-#: the layer Home Assistant itself honours -- zero here would let a script that
-#: ticks off six homework items fire six writes at once.
+#: One at a time. Not for the reason `todo.py` declares it -- nothing here
+#: writes to the school's server, as the module docstring says -- but because a
+#: press *mutates the scheduler* and wakes the master tick. Two presses
+#: admitted at once would raise two sets of tiers and race to start the same
+#: tick, and the collapsing that makes ten presses cost one batch would depend
+#: on which of them got there first. Serialising at the platform level is free
+#: given that design, and it is the layer Home Assistant itself honours.
 PARALLEL_UPDATES = 1
 
 

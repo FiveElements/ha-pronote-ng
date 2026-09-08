@@ -20,7 +20,7 @@
   <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&label=validate&logo=github" alt="Validate"></a>
   <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white" alt="Hassfest"></a>
   <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&label=HACS" alt="HACS"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2026.8.0%2B-41BDF5?logo=homeassistant&logoColor=white" alt="Home Assistant 2026.8.0 minimum">
+  <img src="https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?logo=homeassistant&logoColor=white" alt="Home Assistant 2026.9.0 minimum">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-green" alt="Licence MIT"></a>
 </p>
 
@@ -139,7 +139,7 @@ préfixe de toutes ses entités et de tous ses services.
 Copier `custom_components/pronote_ng/` dans le dossier `custom_components/` de
 votre configuration, puis redémarrer.
 
-Home Assistant **2026.8.0** minimum.
+Home Assistant **2026.9.0** minimum.
 
 ## Documentation
 

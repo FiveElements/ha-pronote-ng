@@ -117,6 +117,7 @@ STEP_CREDENTIALS: Final = "credentials"
 STEP_ENT: Final = "ent"
 STEP_CHILDREN: Final = "children"
 STEP_REAUTH_CONFIRM: Final = "reauth_confirm"
+STEP_REAUTH_QR: Final = "reauth_qr"
 
 
 def _ent_options() -> list[SelectOptionDict]:
@@ -192,6 +193,48 @@ REAUTH_SCHEMA: Final = vol.Schema(
         vol.Optional(CONF_ACCOUNT_PIN): _PASSWORD,
     }
 )
+
+
+#: Keys that must never reach a config entry, wherever the entry comes from.
+#: The QR payload is single-use and PRONOTE invalidates it on enrolment; its
+#: four-digit code and the account's two-factor PIN are never persisted (§8.1);
+#: `account_id` exists only long enough to set the unique id.
+#:
+#: One set rather than a literal per call site, because there were two call
+#: sites and only one list: the re-authentication path stripped the PIN and
+#: nothing else, so a QR re-enrolment would have persisted the payload it had
+#: just promised not to keep.
+_NEVER_PERSISTED: Final = frozenset(
+    {CONF_QR_PAYLOAD, CONF_QR_PIN, CONF_ACCOUNT_PIN, "account_id"}
+)
+
+
+def _account_identity(account_id: str | None) -> tuple[str, str]:
+    """The parts of an account id that identify it *stably*.
+
+    ``flow_login._account_id`` builds ``<establishment url>::<PRONOTE resource
+    N>``, and the ``N`` of a parent resource is regularly written
+    ``46#<signature>`` -- an establishment-local number followed by an opaque
+    blob. That blob is undocumented and is not reliably stable across
+    enrolments, so comparing the whole string would answer "is this the same
+    *session*" where the question is "is this the same *account*" -- and a
+    parent re-enrolling their own account from a fresh QR code would be told it
+    belongs to somebody else, with no way out but deleting the entry.
+
+    So the address and the number are compared and the signature is dropped.
+    ``<url>::46`` is still a real identity -- resource 46 at that establishment
+    -- and it cannot collide with a sibling, who carries a different number.
+
+    The stored ``unique_id`` is deliberately left alone: every existing entry
+    holds the full form, and narrowing it would orphan them.
+    """
+    url, _, resource = (account_id or "").rpartition("::")
+    return url, resource.partition("#")[0]
+
+
+def _same_account(existing_unique_id: str | None, account_id: Any) -> bool:
+    """Whether a fresh login landed on the account an entry already follows."""
+    return _account_identity(existing_unique_id) == _account_identity(str(account_id))
 
 
 def _probe(data: dict[str, Any]) -> dict[str, Any]:
@@ -389,7 +432,13 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         cleared before the attempt: a person retyping a password with the
         correction in hand is not an automatic retry and earns a clean slate
         (annexe B §3.2).
+
+        A QR-enrolled account never reaches the form below. It has no password
+        to correct -- see :meth:`async_step_reauth_qr`.
         """
+        if self._data.get(CONF_LOGIN_MODE) == LoginMode.QR_CODE.value:
+            return await self.async_step_reauth_qr()
+
         errors: dict[str, str] = {}
         entry = self._reauth_entry
 
@@ -409,16 +458,7 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
 
             outcome = await self._async_probe(self._data, errors)
             if outcome is not None:
-                # The PIN was used for this login and is dropped again on the
-                # way out: it exists in the entry only long enough to reload.
-                persisted = {
-                    key: value
-                    for key, value in {**self._data, **outcome}.items()
-                    if key != CONF_ACCOUNT_PIN
-                }
-                return self.async_update_reload_and_abort(
-                    entry, data=persisted, reason="reauth_successful"
-                )
+                return self._async_finish_reauth(entry, outcome)
 
         return self.async_show_form(
             step_id=STEP_REAUTH_CONFIRM,
@@ -427,6 +467,97 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "url": public_url(self._data.get(CONF_PRONOTE_URL))
             },
+        )
+
+    async def async_step_reauth_qr(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Re-enrol a QR account from a freshly generated QR code.
+
+        A token account cannot be repaired with a password, and it has none:
+        in token mode PRONOTE rotates ``jetonConnexionAppliMobile`` at every
+        login, so a token that went stale -- an interrupted login, a session
+        opened twice, a device revoked in the app -- is dead for good, and the
+        only thing that mints a new one is a new QR code. Showing such an
+        account the password form was offering a repair that could not work,
+        and the account's own two-factor PIN is asked for here too, so nothing
+        the old form could fix is lost by not showing it.
+
+        The device UUID is deliberately **reused** rather than regenerated:
+        PRONOTE lists enrolled devices per account, and a fresh UUID at every
+        reconnection would fill that list with copies of this Home Assistant.
+        """
+        errors: dict[str, str] = {}
+        entry = self._reauth_entry
+
+        if user_input is not None and entry is not None:
+            try:
+                payload = _parse_qr_payload(user_input[CONF_QR_PAYLOAD])
+            except (TypeError, ValueError):
+                errors[CONF_QR_PAYLOAD] = "invalid_qr_payload"
+            else:
+                # Before the attempt, for the reason `async_step_reauth_confirm`
+                # gives: a human pasting a QR code is not an automatic retry.
+                clear_login_penalties(self.hass, entry.entry_id)
+                self._data = {
+                    **dict(entry.data),
+                    CONF_LOGIN_MODE: LoginMode.QR_CODE.value,
+                    CONF_PRONOTE_URL: public_url(payload["url"]),
+                    CONF_QR_PAYLOAD: payload,
+                    CONF_QR_PIN: user_input[CONF_QR_PIN],
+                    CONF_UUID: entry.data.get(CONF_UUID) or uuid_module.uuid4().hex,
+                    CONF_DEVICE_NAME: user_input.get(CONF_DEVICE_NAME),
+                    CONF_ACCOUNT_PIN: user_input.get(CONF_ACCOUNT_PIN),
+                }
+
+                outcome = await self._async_probe(self._data, errors)
+                if outcome is not None:
+                    # A QR code is the one reconnection input that can name a
+                    # *different* account: a parent with two children in two
+                    # establishments has two apps to generate one from. Pasting
+                    # the wrong one would silently repoint this entry -- keeping
+                    # its devices, its entity ids and its history -- at somebody
+                    # else's child, so the identity is checked rather than
+                    # assumed.
+                    if not _same_account(entry.unique_id, outcome["account_id"]):
+                        return self.async_abort(reason="wrong_account")
+                    return self._async_finish_reauth(entry, outcome)
+
+        return self.async_show_form(
+            step_id=STEP_REAUTH_QR,
+            data_schema=QR_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "url": public_url(self._data.get(CONF_PRONOTE_URL))
+            },
+        )
+
+    def _async_finish_reauth(
+        self, entry: ConfigEntry, outcome: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Persist a successful reconnection and reload the entry.
+
+        ``children`` comes from the entry and never from the probe, for the
+        reason ``_async_try_login`` gives at length: the probe returns
+        ``(id, name)`` label pairs under the very key that holds the user's
+        *selection*, so merging them in replaced "follow this one child" with
+        "follow every child the account can see" -- silently, on every single
+        reconnection, along with the second child's whole request budget.
+
+        The PIN, and a QR payload if one was used, are dropped on the way out:
+        they exist in ``self._data`` only long enough to log in once.
+        """
+        merged = dict(self._data)
+        merged.update(
+            {key: value for key, value in outcome.items() if key != CONF_CHILDREN}
+        )
+        persisted = {
+            key: value
+            for key, value in merged.items()
+            if key not in _NEVER_PERSISTED and value is not None
+        }
+        return self.async_update_reload_and_abort(
+            entry, data=persisted, reason="reauth_successful"
         )
 
     # -- shared login plumbing ---------------------------------------------
@@ -499,9 +630,14 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         # QR enrolment performs two complete logins by construction, so it is
         # declared as two. Under-declaring here would spend the budget without
         # recording it, which is the defect this whole file just stopped having.
+        # The payload is part of the test, not just the mode: a QR-enrolled
+        # entry keeps `qr_code` for ever, but once the payload is gone it logs
+        # in through pronotepy's token mode, which is a single login. Charging
+        # two for it would spend a budget nothing used.
         cost = (
             REQUESTS_PER_LOGIN * 2
             if data.get(CONF_LOGIN_MODE) == LoginMode.QR_CODE.value
+            and data.get(CONF_QR_PAYLOAD)
             else REQUESTS_PER_LOGIN
         )
 
@@ -548,25 +684,14 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _async_create(self) -> ConfigFlowResult:
         """Create the entry, dropping the single-use and never-stored fields."""
+        # `children` is *not* in `_NEVER_PERSISTED`, and must not be: it holds
+        # the user's selection, which `PronoteAccount` reads to decide whose
+        # data to collect. It used to be excluded here, which is how the
+        # selection came to be discarded on every single install.
         data = {
             key: value
             for key, value in self._data.items()
-            # The QR payload is single-use and PRONOTE invalidates it on
-            # enrolment; its PIN and the account PIN are never persisted
-            # (§8.1). `account_id` was only needed to set the unique id.
-            #
-            # `children` is *not* in this list, and must not be: it holds the
-            # user's selection, which `PronoteAccount` reads to decide whose
-            # data to collect. It used to be excluded here, which is how the
-            # selection came to be discarded on every single install.
-            if key
-            not in (
-                CONF_QR_PAYLOAD,
-                CONF_QR_PIN,
-                CONF_ACCOUNT_PIN,
-                "account_id",
-            )
-            and value is not None
+            if key not in _NEVER_PERSISTED and value is not None
         }
         return self.async_create_entry(title=str(self._data["title"]), data=data)
 

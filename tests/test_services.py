@@ -28,8 +28,9 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 import pytest
 import voluptuous as vol
@@ -47,6 +48,7 @@ from custom_components.pronote_ng.const import (
     SERVICE_SEND_MESSAGE,
     Tier,
 )
+from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
 
 from .conftest import CHILDREN, REQUIRES_HASS
 from .fixtures.client import FakeThread
@@ -233,6 +235,79 @@ async def test_a_two_child_account_must_say_which_child(
     assert raised.value.translation_key == "student_required"
     assert raised.value.translation_placeholders is not None
     assert "Enfant Un" in raised.value.translation_placeholders["children"]
+
+
+async def test_a_service_that_was_deferred_fails_visibly(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """The same reasoning as the homework checkbox, on the other write path.
+
+    ``TierDeferred`` is a control-flow signal, and it is the right one for a
+    *scheduled* collection: the tier keeps its snapshot and comes back at the
+    next tick, so nothing needs to be said. It is the wrong one for a service
+    call, which somebody or some automation is waiting on: returning normally
+    would report success for an action that never reached the school.
+
+    So it is translated into an error that names the reason and roughly how
+    long to wait. `todo.py` does this conversion for the checkbox and
+    `services.py` for every service -- two call sites, one behaviour, and this
+    is the test for the second one.
+    """
+
+    async def _deferred(*_args: Any, **_kwargs: Any) -> Any:
+        raise TierDeferred(DeferReason.DAILY_CAP, 42.7)
+
+    with (
+        patch.object(account.session, "run", _deferred),
+        pytest.raises(HomeAssistantError) as raised,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_GET_ICAL_URL,
+            {"device_id": _child_device(hass, mock_entry, STUDENT_ONE)},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert raised.value.translation_key == "service_deferred"
+    assert raised.value.translation_placeholders == {
+        "reason": "daily_cap",
+        "seconds": "42",
+    }
+    # Truncated rather than rounded, and deliberately: "wait 42 seconds" and
+    # then being refused at 43 is worse than waiting a second longer than told.
+
+
+async def test_a_deferred_service_is_not_a_validation_error(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """The class of the error is part of the message, not an implementation
+    detail.
+
+    ``ServiceValidationError`` means "what you asked for is wrong" and Home
+    Assistant renders it as the caller's mistake. A deferral is the opposite:
+    the call was correct and the integration chose not to send it yet. Raising
+    the validation class would tell an automation's author to fix a call that
+    has nothing wrong with it -- so this asserts the *plain*
+    ``HomeAssistantError`` rather than accepting any subclass.
+    """
+
+    async def _deferred(*_args: Any, **_kwargs: Any) -> Any:
+        raise TierDeferred(DeferReason.QUIET_HOURS, 900.0)
+
+    with (
+        patch.object(account.session, "run", _deferred),
+        pytest.raises(HomeAssistantError) as raised,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_GET_IDENTITY,
+            {"device_id": _child_device(hass, mock_entry, STUDENT_ONE)},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert not isinstance(raised.value, ServiceValidationError)
 
 
 # ---------------------------------------------------------------------------

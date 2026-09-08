@@ -268,6 +268,32 @@ CONFIG_EN: dict[str, Any] = {
                 "account_pin": "Two-factor PIN",
             },
         },
+        "reauth_qr": {
+            "title": "Reconnect with a new QR code",
+            "description": (
+                "The connection to {url} was refused. This account was "
+                "enrolled from a QR code, so it has no password to correct: "
+                "PRONOTE issues a new access token at every login, and once "
+                "the stored one is refused the only way back in is a new QR "
+                "code.\n\nIn the PRONOTE mobile app, generate a fresh QR "
+                "code, choosing a four-digit code when asked, then paste its "
+                "content below. Nothing else about this account changes -- the "
+                "children you follow, your settings and your history are all "
+                "kept."
+            ),
+            "data": {
+                "qr_payload": "QR code content (JSON)",
+                "qr_pin": "Four-digit code",
+                "device_name": "Device name",
+                "account_pin": "Two-factor PIN (if your account uses one)",
+            },
+            "data_description": {
+                "account_pin": (
+                    "Used for this login only and never stored. You will be "
+                    "asked for it again if PRONOTE requires it."
+                ),
+            },
+        },
     },
     "error": {
         "invalid_auth": (
@@ -301,6 +327,13 @@ CONFIG_EN: dict[str, Any] = {
     "abort": {
         "already_configured": "This account is already configured.",
         "reauth_successful": "Reconnected.",
+        "wrong_account": (
+            "That QR code belongs to a different PRONOTE account, so it was "
+            "not applied: reconnecting this one with it would have pointed it "
+            "at somebody else's child while keeping this child's name and "
+            "history. Generate a QR code from the account this entry follows, "
+            "or add the other account separately."
+        ),
     },
 }
 
@@ -402,6 +435,32 @@ CONFIG_FR: dict[str, Any] = {
                 "account_pin": "Code PIN à deux facteurs",
             },
         },
+        "reauth_qr": {
+            "title": "Se reconnecter avec un nouveau QR code",
+            "description": (
+                "La connexion à {url} a été refusée. Ce compte a été enrôlé "
+                "par QR code : il n'a donc pas de mot de passe à corriger. "
+                "PRONOTE délivre un nouveau jeton d'accès à chaque connexion, "
+                "et lorsque celui qui est conservé est refusé, seul un nouveau "
+                "QR code permet de revenir.\n\nDans l'application mobile "
+                "PRONOTE, générez un nouveau QR code en choisissant un code à "
+                "quatre chiffres, puis collez son contenu ci-dessous. Rien "
+                "d'autre ne change : les enfants suivis, vos réglages et votre "
+                "historique sont conservés."
+            ),
+            "data": {
+                "qr_payload": "Contenu du QR code (JSON)",
+                "qr_pin": "Code à quatre chiffres",
+                "device_name": "Nom de l'appareil",
+                "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
+            },
+            "data_description": {
+                "account_pin": (
+                    "Utilisé pour cette connexion uniquement et jamais "
+                    "conservé. Il vous sera redemandé si PRONOTE l'exige."
+                ),
+            },
+        },
     },
     "error": {
         "invalid_auth": (
@@ -438,6 +497,13 @@ CONFIG_FR: dict[str, Any] = {
     "abort": {
         "already_configured": "Ce compte est déjà configuré.",
         "reauth_successful": "Reconnexion réussie.",
+        "wrong_account": (
+            "Ce QR code appartient à un autre compte PRONOTE : il n'a pas été "
+            "appliqué. Reconnecter cette entrée avec lui l'aurait fait pointer "
+            "vers l'enfant de quelqu'un d'autre en conservant le nom et "
+            "l'historique de celui-ci. Générez un QR code depuis le compte "
+            "que suit cette entrée, ou ajoutez l'autre compte séparément."
+        ),
     },
 }
 
