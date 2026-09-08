@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "PRONOTE",
-        "description": "Choisissez le mode de connexion. Le QR code de l'application mobile PRONOTE est le plus fiable : il enrôle ce Home Assistant comme appareil et évite de conserver votre mot de passe.",
+        "title": "Pronote Next Generation",
+        "description": "![Pronote Next Generation](https://raw.githubusercontent.com/FiveElements/ha-pronote-ng/main/custom_components/pronote_ng/brand/logo.png)\n\nChoisissez le mode de connexion. Le QR code de l'application mobile PRONOTE est le plus fiable : il enrôle ce Home Assistant comme appareil et évite de conserver votre mot de passe.",
         "menu_options": {
           "qr_code": "QR code de l'application mobile (recommandé)",
           "credentials": "Identifiant et mot de passe",
@@ -12,7 +12,7 @@
       },
       "qr_code": {
         "title": "Enrôler avec un QR code",
-        "description": "Dans l'application mobile PRONOTE, ouvrez le menu du compte et générez un QR code, puis collez son contenu ci-dessous avec le code à quatre chiffres que vous avez choisi. Le QR code n'est utilisable qu'une seule fois.",
+        "description": "Dans l'application mobile PRONOTE, ouvrez le menu du compte et générez un QR code, en choisissant un code à quatre chiffres lorsqu'il vous est demandé.\n\nL'application affiche le QR code sous forme d'image, alors que le champ ci-dessous attend le JSON qu'elle encode. Utilisez donc un lecteur de QR code — l'appareil photo de votre téléphone ou n'importe quelle application de scan — pour le lire, puis partagez ou copiez le texte obtenu et collez-le ci-dessous avec le même code à quatre chiffres.\n\nLe QR code n'est utilisable qu'une seule fois : regénérez-en un si cette tentative échoue.",
         "data": {
           "qr_payload": "Contenu du QR code (JSON)",
           "qr_pin": "Code à quatre chiffres",
