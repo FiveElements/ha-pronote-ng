@@ -1888,8 +1888,8 @@ exactement la version du tag — une intégration HACS dont le manifest diverge 
 tag s'installe une fois et ne se met plus jamais à jour.
 
 La matrice de test comporte deux lignes : la référence épinglée
-(`pytest-homeassistant-custom-component==0.13.354`, qui porte Home Assistant
-**2026.8.0**) qui **porte le portail de couverture**, et une ligne flottante
+(`pytest-homeassistant-custom-component==0.13.363`, qui porte Home Assistant
+**2026.9.0**) qui **porte le portail de couverture**, et une ligne flottante
 `latest` qui attrape une rupture amont tôt **sans bloquer** dessus.
 
 Le choix de l'épingle n'est pas « une version récente » mais **exactement le
@@ -2197,21 +2197,29 @@ opposée. Comme l'option n'est de toute façon pas atteignable, l'ambiguïté n'
 aucune conséquence observable aujourd'hui, mais il faudra la trancher avant de
 l'exposer.
 
-### 12.9 Le client durci n'est pas une sous-classe de `ParentClient`
+### 12.9 Le client durci n'hérite pas de `ParentClient` — divergence close
 
-La spécification §3.6 nomme la classe `_NoRefreshParentClient(pronotepy.ParentClient)`.
-Le code implémente `HardenedClient(pronotepy.Client)` — une classe unique qui
-gère l'élève **et** le parent — et explique pourquoi
-(`hardened_client.py:271-280`) : `ParentClient` est précisément la sous-classe
-qui porte le bug de récursion non bornée et celui de l'enfant perdu, et son
-`refresh()` n'est pas récupérable. Le comportement parent — liste d'enfants,
-enfant sélectionné, signature `membre` — est donc réimplémenté sur la base dont
-le `post()` est de toute façon remplacé.
+Cette divergence est **résolue**, et elle a été résolue dans le sens inverse de
+celui qu'on attend d'ordinaire : c'est la spécification qui a bougé, parce que
+c'est le code qui avait raison.
+
+La spécification §3.6 nommait une sous-classe
+`_NoRefreshParentClient(pronotepy.ParentClient)` surchargeant `post()`. Le code
+implémente `HardenedClient(pronotepy.Client)` — une classe unique qui gère
+l'élève **et** le parent — et l'écart n'était pas une commodité : `ParentClient`
+est précisément la sous-classe qui porte le bug de récursion non bornée et celui
+de l'enfant perdu. En hériter puis les neutraliser par surcharge laisse une
+méthode d'amont ajoutée plus tard les réintroduire sans que rien ne le signale ;
+réimplémenter la surface parent — liste d'enfants, `set_child()`, signature
+`membre` — sur `Client` les rend **structurellement inatteignables** plutôt que
+corrigés. Le §3.6 énonce désormais cette exigence, avec l'argument, et interdit
+explicitement la forme par héritage.
 
 Le confinement de `Period.instances`, que la spécification plaçait dans cette
 même sous-classe, vit dans un objet et un gestionnaire de contexte séparés
-(`_ConfinedRegistry` / `_period_registry_confined`), ce qui permet de le poser
-aussi sur le chemin d'enrôlement QR du flow de configuration.
+(`_ConfinedRegistry` / `_period_registry_confined`) — ce qui permet de le poser
+aussi sur le chemin d'enrôlement QR du flux de configuration, où il n'y a pas de
+sous-classe du tout.
 
 ### 12.10 La stratégie de session est devenue une option, avec une dégradation mesurée
 
@@ -2269,29 +2277,33 @@ La spécification, de son côté, ne mentionne Docker nulle part : ni image de
 test, ni `devcontainer`, ni `docker-compose`. Elle exige seulement qu'aucun test
 ne touche le réseau, ce que le dépôt respecte.
 
-### 12.13 La version de Home Assistant visée n'est pas celle qui est testée
+### 12.13 La version visée et la version testée coïncident désormais
+
+Cette divergence est **résolue**, et la façon dont elle l'a été vaut d'être
+notée : c'est un cas où l'écart documentaire cachait deux vrais défauts.
 
 `SPECIFICATION.md` déclare en en-tête viser **Home Assistant 2026.9 ou
-supérieur**. Le dépôt déclare un plancher de **2026.8.0** dans `hacs.json`, et
-`requirements_test.txt` l'épingle exactement :
-`pytest-homeassistant-custom-component==0.13.354` embarque Home Assistant
-2026.8.0.
+supérieur**. Le dépôt déclare maintenant le même plancher — **2026.9.0** dans
+`hacs.json` — et `requirements_test.txt` l'épingle exactement :
+`pytest-homeassistant-custom-component==0.13.363` embarque Home Assistant
+2026.9.0. Les trois chiffres sont le même, la matrice exécute celui-là, et la
+ligne flottante `latest` couvre l'autre bout de l'intervalle.
 
-L'écart s'est donc réduit à une version mineure, et il est délibéré : le
-plancher est ce que l'on **exécute** à chaque exécution de la CI, tandis que le
-chiffre de la spécification est la cible de conception. Un plancher plus haut
-que ce que la matrice teste serait une affirmation invérifiable ; un plancher
-plus bas ferait croire à une compatibilité que rien ne prouve.
+Le plancher était auparavant à 2026.2, puis à 2026.8. Chaque montée a été faite
+en **exécutant** le socle visé, pas en modifiant le chiffre — et les deux fois
+la seule exécution a trouvé un défaut produit qu'aucun portail ne voyait :
+`DeviceInfo.via_device` (le tuple, retiré au profit de `via_device_id`), qui
+faisait échouer l'ajout de six plateformes sur sept, et l'amplification par dix
+des demandes de rafraîchissement du planificateur. C'est la leçon du §11 sous sa
+forme la plus courte : **un plancher qu'on ne lance pas est une affirmation, pas
+un plancher.**
 
-Ce plancher n'est pas gratuit : à **2026.8**, le dossier `brand/` local est
-servi par le *frontend* — le mécanisme est apparu en 2026.3 (voir le
-commentaire de `BRAND_LOGO_URL` dans `const.py`) — donc toute instance
-supportée affiche la marque nativement. C'est ce qui rend envisageable le
-retrait de l'image markdown de la description de la première étape du flux, sous
-réserve d'une vérification visuelle.
-
-Reste que le chiffre annoncé dans la spécification et le chiffre publié aux
-utilisateurs par HACS ne sont pas le même, et c'est le second qui compte.
+Un effet de bord du plancher mérite d'être retenu : à partir de **2026.3**, le
+dossier `brand/` local est servi par le *frontend* (voir le commentaire de
+`BRAND_LOGO_URL` dans `const.py`), donc toute instance supportée affiche la
+marque nativement. C'est ce qui rend envisageable le retrait de l'image
+markdown de la description de la première étape du flux, sous réserve d'une
+vérification visuelle.
 
 ### 12.14 Sept blueprints, pas six
 
