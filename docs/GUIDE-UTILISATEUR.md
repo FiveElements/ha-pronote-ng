@@ -43,7 +43,7 @@ section de ce guide, lisez celle-là.
 
 | À préparer | Pourquoi |
 | --- | --- |
-| Home Assistant **2026.8.0** ou plus récent | L'intégration utilise des mécanismes qui n'existent pas avant cette version. |
+| Home Assistant **2026.9.0** ou plus récent | L'intégration utilise des mécanismes qui n'existent pas avant cette version. |
 | L'adresse de l'espace PRONOTE de l'établissement | Une adresse terminée par `eleve.html` ou `parent.html`. Nécessaire pour les modes « identifiants » et « ENT ». |
 | L'application mobile PRONOTE, installée et connectée | Nécessaire pour le mode QR code, qui est le mode recommandé. |
 | Le code PIN à deux facteurs du compte, s'il en a un | Il est demandé au moment de la connexion et **n'est jamais conservé**. Gardez-le accessible : il sera redemandé si PRONOTE l'exige de nouveau. |
@@ -164,6 +164,14 @@ l'intégration. Ils servent à cette connexion, une fois, puis sont oubliés. C'
 volontaire, et c'est la raison pour laquelle un formulaire de reconnexion existe
 (voir § [10](#10-dépannage)) : un secret que l'on refuse de garder est un secret
 qu'il faut savoir redemander.
+
+Ce qui est conservé, en revanche, c'est le **jeton d'appareil** que PRONOTE
+délivre à l'enrôlement — sans lui, l'accès serait perdu au premier
+redémarrage. Ce jeton est renouvelé à chaque connexion, et si celui qui est
+conservé devient caduc, il n'y a rien à corriger : Home Assistant vous demandera
+simplement de générer un nouveau QR code. C'est un enrôlement de plus, pas une
+réinstallation — les enfants suivis, les réglages et l'historique restent en
+place, et l'appareil déjà enrôlé n'est pas dupliqué dans la liste du compte.
 
 ### 2.3 Identifiant et mot de passe
 
@@ -1308,7 +1316,8 @@ Ces messages apparaissent dans **Paramètres → Système → Réparations**.
 | --- | --- | --- |
 | **Rien ne s'affiche après l'installation.** | Les catégories lentes n'ont pas encore collecté. Ou l'établissement ne publie pas ces données. Ou la première collecte a été reportée. | Attendez une heure : chaque catégorie a son rythme, et menus, équipe pédagogique et périodes closes ne passent qu'une fois par jour. Regardez « Dernière collecte » et « Prochaine collecte » sur l'appareil du compte. Appuyez sur **Rafraîchir**. Si une catégorie reste vide au bout d'une journée, l'établissement ne la publie probablement pas — de nombreux collèges ne publient ni menus, ni évaluations par compétences, ni vie scolaire. |
 | **Toutes les entités d'un enfant sont indisponibles.** | La connexion échoue, ou aucune donnée n'a jamais été collectée. | Regardez « État du limiteur » et les Réparations. Une entité qui n'a *jamais* eu de donnée est indisponible ; une entité qui en a eu garde sa valeur et se marque `stale`. |
-| **Home Assistant demande de se reconnecter.** | Mot de passe changé, jeton d'appareil perdu (arrêt brutal au mauvais moment), ou PRONOTE réclame le PIN à deux facteurs — que l'intégration ne conserve jamais. | Suivez le formulaire **Se reconnecter à PRONOTE** : saisissez un mot de passe corrigé, ou le PIN demandé. Ce code est utilisé une fois et jamais conservé. Une reconnexion réussie remet aussi les compteurs d'échec à zéro. |
+| **Home Assistant demande de se reconnecter** *(compte identifiant / mot de passe ou ENT)*. | Mot de passe changé, ou PRONOTE réclame le PIN à deux facteurs — que l'intégration ne conserve jamais. | Suivez le formulaire **Se reconnecter à PRONOTE** : saisissez un mot de passe corrigé, ou le PIN demandé. Ce code est utilisé une fois et jamais conservé. Une reconnexion réussie remet aussi les compteurs d'échec à zéro. |
+| **Home Assistant demande de se reconnecter** *(compte enrôlé par QR code)*. | Le jeton d'appareil a été refusé : PRONOTE en délivre un nouveau à chaque connexion, et celui qui était conservé est devenu caduc — arrêt brutal au mauvais moment, deux sessions ouvertes en même temps, ou appareil révoqué depuis l'application. | Le formulaire demande un **nouveau QR code**, et c'est la seule chose qui répare ce cas : un compte enrôlé par QR code n'a pas de mot de passe à corriger. Générez un QR code dans l'application mobile, collez son contenu et son code à quatre chiffres. Rien d'autre ne change : les enfants suivis, vos réglages et votre historique sont conservés. |
 | **« Trop de tentatives de connexion. »** | Trois échecs de connexion dans l'heure. L'intégration s'est arrêtée pour protéger l'adresse IP. | **Attendez et n'insistez pas.** Vérifiez le mot de passe hors de Home Assistant, puis reconnectez-vous une seule fois avec la bonne valeur. Ne montez pas « Échecs de connexion avant pause » : ce réglage est précisément ce qui vous protège. |
 | **Les données sont figées ; l'attribut `stale` vaut `true`.** | Heures calmes (comportement normal la nuit). Budget serré. Temporisation après une erreur serveur. Suspension des connexions. Établissement injoignable. | Lisez « État du limiteur » : il donne la cause en un mot, et son attribut `until` donne l'heure de reprise. « Heures calmes » la nuit est normal. « Bridé » signale un budget serré : allongez des intervalles. « Temporisation » signale un problème côté serveur : ça se résout tout seul. |
 | **Pas de photo de l'élève.** | L'établissement ne publie pas de photo pour cet élève. | C'est le cas le plus fréquent, et il n'y a rien à faire : l'entité **Photo** n'est même pas créée si PRONOTE ne déclare aucune photo. Si elle existe mais reste vide, elle sera retentée au prochain rechargement de l'intégration : la photo n'est cherchée qu'une fois, exprès, pour ne pas dépenser le budget quotidien sur une image inexistante. |
@@ -1329,7 +1338,12 @@ Ces messages apparaissent dans **Paramètres → Système → Réparations**.
   une collecte immédiate, sinon régler la cadence coûterait un tour de requêtes
   à chaque enregistrement.
 - **Se reconnecter** : le formulaire apparaît de lui-même quand PRONOTE refuse la
-  connexion. On peut aussi le provoquer par le menu **⋮** de l'intégration.
+  connexion. On peut aussi le provoquer par le menu **⋮** de l'intégration. Le
+  formulaire n'est pas le même selon le mode de connexion : un compte
+  identifiant / mot de passe ou ENT demande un mot de passe corrigé et le PIN à
+  deux facteurs ; un compte enrôlé par QR code demande **un nouveau QR code**,
+  parce qu'il n'a pas de mot de passe et que son jeton d'appareil, une fois
+  refusé, ne peut pas être réparé autrement.
 - **Recharger** : le menu **⋮** de l'intégration, **Recharger**. Utile après une
   mise à jour, ou pour retenter la récupération de la photo.
 

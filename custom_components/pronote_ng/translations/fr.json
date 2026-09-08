@@ -60,6 +60,19 @@
           "password": "Mot de passe",
           "account_pin": "Code PIN à deux facteurs"
         }
+      },
+      "reauth_qr": {
+        "title": "Se reconnecter avec un nouveau QR code",
+        "description": "La connexion à {url} a été refusée. Ce compte a été enrôlé par QR code : il n'a donc pas de mot de passe à corriger. PRONOTE délivre un nouveau jeton d'accès à chaque connexion, et lorsque celui qui est conservé est refusé, seul un nouveau QR code permet de revenir.\n\nDans l'application mobile PRONOTE, générez un nouveau QR code en choisissant un code à quatre chiffres, puis collez son contenu ci-dessous. Rien d'autre ne change : les enfants suivis, vos réglages et votre historique sont conservés.",
+        "data": {
+          "qr_payload": "Contenu du QR code (JSON)",
+          "qr_pin": "Code à quatre chiffres",
+          "device_name": "Nom de l'appareil",
+          "account_pin": "Code PIN à deux facteurs (si votre compte en a un)"
+        },
+        "data_description": {
+          "account_pin": "Utilisé pour cette connexion uniquement et jamais conservé. Il vous sera redemandé si PRONOTE l'exige."
+        }
       }
     },
     "error": {
@@ -74,7 +87,8 @@
     },
     "abort": {
       "already_configured": "Ce compte est déjà configuré.",
-      "reauth_successful": "Reconnexion réussie."
+      "reauth_successful": "Reconnexion réussie.",
+      "wrong_account": "Ce QR code appartient à un autre compte PRONOTE : il n'a pas été appliqué. Reconnecter cette entrée avec lui l'aurait fait pointer vers l'enfant de quelqu'un d'autre en conservant le nom et l'historique de celui-ci. Générez un QR code depuis le compte que suit cette entrée, ou ajoutez l'autre compte séparément."
     }
   },
   "options": {

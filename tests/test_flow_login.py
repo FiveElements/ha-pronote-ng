@@ -506,6 +506,91 @@ def test_qr_enrolment_confines_the_periods_the_login_registered(
     assert hasattr(client, "period_registry")
 
 
+def test_a_qr_account_without_its_payload_logs_in_through_the_token_mode(
+    client: FakeClient,
+    build: Any,
+) -> None:
+    """The crash a real parent hit, at the level where it happened.
+
+    §8.1 refuses to persist the single-use QR payload, so a QR-enrolled entry
+    carries ``login_mode: qr_code`` for the rest of its life with nothing
+    beside it. Every login after the enrolment one therefore arrives here with
+    the mode and no payload -- and the branch tested the mode alone, so
+    ``_qr_login`` reached for ``data[CONF_QR_PAYLOAD]`` and raised
+    ``KeyError: 'qr_payload'``. Unclassified by any of the six arms, it escaped
+    as an unexpected error and the re-authentication form said "unexpected
+    error, check the log" to the one person trying to repair the account.
+
+    What must happen instead is what the running integration already does with
+    the very same entry: hand the mode to ``build_client``, which maps
+    ``qr_code`` to ``pronotepy``'s token mode and logs in with the stored
+    rotated token.
+    """
+    described = probe_account(
+        {
+            CONF_LOGIN_MODE: LoginMode.QR_CODE.value,
+            CONF_PRONOTE_URL: URL,
+            "username": "not-a-real-login",
+            "password": "not-a-real-rotated-token",
+            CONF_UUID: "UUID-UNDER-TEST",
+            CONF_CLIENT_IDENTIFIER: "CLIENT-ID-UNDER-TEST",
+        }
+    )
+
+    assert build.call_count == 1
+    # The mode is passed through unchanged: `build_client` owns the mapping to
+    # `token`, and it is asserted there rather than duplicated here.
+    assert build.call_args.kwargs["login_mode"] == LoginMode.QR_CODE.value
+    assert build.call_args.kwargs["password"] == "not-a-real-rotated-token"
+    assert build.call_args.kwargs["uuid"] == "UUID-UNDER-TEST"
+    assert build.call_args.kwargs["client_identifier"] == "CLIENT-ID-UNDER-TEST"
+    assert described["account_id"] == f"{URL}::{client.info.id}"
+
+
+def test_a_qr_account_whose_payload_is_present_still_enrols(
+    client: FakeClient,
+    build: Any,
+) -> None:
+    """The other half of the same branch, so neither can be lost alone.
+
+    The two paths are one decision, and a fix that routed *everything* through
+    the token mode would have broken enrolment instead -- silently, because a
+    token login with a payload's contents fails at the server rather than in
+    Python.
+    """
+    with patch(
+        "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+        return_value=client,
+    ) as qr_login:
+        probe_account(_qr_data())
+
+    assert qr_login.call_count == 1
+    assert build.call_count == 0
+
+
+def test_an_empty_payload_is_treated_as_an_absent_one(
+    client: FakeClient,
+    build: Any,
+) -> None:
+    """``{}`` cannot enrol anything, so it takes the token path too.
+
+    ``qrcode_login`` pops ``jeton``, ``login`` and ``url`` out of the mapping;
+    handed an empty one it raises ``KeyError`` again, in a different place. The
+    truth condition is "is there a payload to enrol with", not "is the key
+    present".
+    """
+    probe_account(
+        {
+            CONF_LOGIN_MODE: LoginMode.QR_CODE.value,
+            CONF_PRONOTE_URL: URL,
+            CONF_QR_PAYLOAD: {},
+            "password": "not-a-real-rotated-token",
+        }
+    )
+
+    assert build.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # Closing the client, every way out
 # ---------------------------------------------------------------------------
