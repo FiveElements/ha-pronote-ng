@@ -492,3 +492,62 @@ async def test_a_snapshot_collected_for_another_child_is_refused(
     # And the first child's own snapshot is untouched by the refusal.
     assert coordinator.snapshot_for(STUDENT_ONE) is not None
     assert coordinator.snapshot_for(STUDENT_ONE).student_id == STUDENT_ONE
+
+
+async def test_no_tab_call_happens_outside_the_selection_it_belongs_to(
+    account: PronoteAccount, parent_client: FakeClient
+) -> None:
+    """The ordered form of the invariant, which the set form cannot express.
+
+    `test_every_child_is_selected_before_its_data_is_read` asserts the *set* of
+    selections, and a set is blind to the defect that matters: both children
+    could be selected, both tiers collected, and the pairing between them
+    crossed. Upstream makes that failure silent rather than loud --
+    `ParentClient.__init__` sets `_selected_child = self.children[0]`, so a
+    call placed with no selection in force answers for the first child instead
+    of raising (§7.1).
+
+    So this reads one interleaved journal of selections and server calls, and
+    checks the only property that rules the crossing out: every call is
+    preceded by a selection, and the child in force when a call was made is the
+    child whose snapshot the collection then published.
+
+    Asserted on a two-child account because with one child the property holds
+    vacuously -- which is precisely why the defect survives single-child
+    testing.
+    """
+    parent_client.journal.clear()
+
+    await account._async_collect(Tier.TIMETABLE)
+
+    journal = list(parent_client.journal)
+    assert journal, "collecting a tier placed no call at all"
+    assert journal[0][0] == "select", (
+        f"a call was placed before any child was selected: {journal[:3]}"
+    )
+
+    # Attribute every call to the selection that was in force when it happened.
+    in_force: str | None = None
+    calls_by_child: dict[str, list[str]] = {}
+    for kind, value in journal:
+        if kind == "select":
+            in_force = value
+            calls_by_child.setdefault(value, [])
+            continue
+        assert in_force is not None
+        calls_by_child[in_force].append(value)
+
+    expected = {student.id for student in account.students}
+    assert set(calls_by_child) == expected, (
+        "the collection selected children it does not follow, or skipped one"
+    )
+    for student_id, calls in calls_by_child.items():
+        assert calls, f"{student_id} was selected and then never read"
+
+    # And the snapshot each child ended up with was published under the same id
+    # the client was pointed at while its data was being fetched.
+    coordinator = account.coordinators[Tier.TIMETABLE]
+    for student_id in expected:
+        snapshot = coordinator.snapshot_for(student_id)
+        assert snapshot is not None, f"no timetable published for {student_id}"
+        assert snapshot.student_id == student_id

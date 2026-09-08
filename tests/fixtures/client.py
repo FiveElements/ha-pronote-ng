@@ -260,6 +260,14 @@ class FakeClient:
         self.credential_exports = 0
         #: Every ``set_child`` argument, in order.
         self.child_selections: list[str] = []
+        #: Selections *and* server calls in one sequence, which is the only way
+        #: their order is observable. Two separate ledgers can both look right
+        #: while the pairing between them is crossed -- and a crossed pairing is
+        #: exactly the defect worth testing for, because upstream's
+        #: ``ParentClient.__init__`` sets ``_selected_child = self.children[0]``
+        #: and a call made without a selection therefore answers for the first
+        #: child instead of failing.
+        self.journal: list[tuple[str, str]] = []
         self._child_payloads: dict[str, dict[str, Any]] = {
             child_id: protocol.parametres_utilisateur(
                 student_id=child_id,
@@ -339,6 +347,7 @@ class FakeClient:
             message = f"no child {child_id!r} on this account"
             raise KeyError(message)
         self.child_selections.append(child_id)
+        self.journal.append(("select", child_id))
         self._selected_child_id = child_id
         self.parametres_utilisateur = self._child_payloads[child_id]
         self.info = next(info for info in self._children if str(info.id) == child_id)
@@ -378,9 +387,19 @@ class FakeClient:
             return dict(answer(body))
         return answer
 
+    def _record(self, name: str, tab: int, body: Any = None) -> None:
+        """The single choke point for "this touched the server".
+
+        Every path that would place a request goes through here, so a helper
+        added later cannot reach the server without appearing in the journal --
+        which is what keeps the ordering assertions honest as the fake grows.
+        """
+        self.posts.append((name, tab, body))
+        self.journal.append(("post", name))
+
     def post(self, name: str, tab: int, body: Any = None) -> dict[str, Any]:
         """Record a signed post and answer from the canned table."""
-        self.posts.append((name, tab, body))
+        self._record(name, tab, body)
         return self._answer(name, body)
 
     # -- pure arithmetic, no request ---------------------------------------
@@ -395,12 +414,12 @@ class FakeClient:
 
     def discussions(self) -> list[FakeThread]:
         """The thread list -- one request in the real client."""
-        self.posts.append(("ListeMessagerie", 131, None))
+        self._record("ListeMessagerie", 131)
         return list(self.threads)
 
     def menus(self, start: dt.date, end: dt.date) -> list[FakeMenu]:
         """Menus between two dates."""
-        self.posts.append(("PageMenus", 10, {"start": start, "end": end}))
+        self._record("PageMenus", 10, {"start": start, "end": end})
         day = start
         out: list[FakeMenu] = []
         while day <= end:
@@ -410,12 +429,12 @@ class FakeClient:
 
     def get_teaching_staff(self) -> list[FakeStaffMember]:
         """The teaching staff."""
-        self.posts.append(("PageEquipePedagogique", 37, None))
+        self._record("PageEquipePedagogique", 37)
         return list(self.staff)
 
     def get_recipients(self) -> list[FakeRecipient]:
         """Who a new discussion may be addressed to."""
-        self.posts.append(("ListeRessourcesPourCommunication", 131, None))
+        self._record("ListeRessourcesPourCommunication", 131)
         return list(self.recipients)
 
     def new_discussion(
