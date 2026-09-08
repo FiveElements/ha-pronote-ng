@@ -210,7 +210,14 @@ CONFIG_EN: dict[str, Any] = {
                 "account_pin": "Two-factor PIN (if your account uses one)",
             },
             "data_description": {
+                "qr_pin": (
+                    "The one you chose in the app while generating the QR "
+                    "code. Not the account PIN below -- both are four digits, "
+                    "and they are different codes."
+                ),
                 "account_pin": (
+                    "The two-factor PIN set on the PRONOTE account itself, if "
+                    "it has one. Also four digits, and not the code above. "
                     "Used for this login only and never stored. You will be "
                     "asked for it again if PRONOTE requires it."
                 ),
@@ -288,7 +295,14 @@ CONFIG_EN: dict[str, Any] = {
                 "account_pin": "Two-factor PIN (if your account uses one)",
             },
             "data_description": {
+                "qr_pin": (
+                    "The one you chose in the app while generating the QR "
+                    "code. Not the account PIN below -- both are four digits, "
+                    "and they are different codes."
+                ),
                 "account_pin": (
+                    "The two-factor PIN set on the PRONOTE account itself, if "
+                    "it has one. Also four digits, and not the code above. "
                     "Used for this login only and never stored. You will be "
                     "asked for it again if PRONOTE requires it."
                 ),
@@ -311,6 +325,16 @@ CONFIG_EN: dict[str, Any] = {
         "invalid_qr": (
             "The QR code or its four-digit code was refused. A QR code can "
             "only be used once, so generate a new one in the app."
+        ),
+        "invalid_qr_auth": (
+            "PRONOTE refused this enrolment, and it is worth knowing what that "
+            "rules out: the QR code and its four-digit code were accepted -- a "
+            "wrong one of those is reported separately. What remains is the "
+            "account's two-factor PIN, which is a different four-digit code, "
+            "set on the PRONOTE account itself rather than chosen when "
+            "generating the QR code. Check that one before trying again: "
+            "repeatedly retrying a refused login is what gets an address "
+            "blocked."
         ),
         "invalid_qr_payload": (
             "That does not look like the content of a PRONOTE QR code. It "
@@ -377,9 +401,18 @@ CONFIG_FR: dict[str, Any] = {
                 "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
             },
             "data_description": {
+                "qr_pin": (
+                    "Celui que vous avez choisi dans l'application en générant "
+                    "le QR code. Pas le code PIN du compte ci-dessous : les "
+                    "deux font quatre chiffres, et ce sont deux codes "
+                    "différents."
+                ),
                 "account_pin": (
-                    "Utilisé pour cette connexion uniquement et jamais "
-                    "conservé. Il vous sera redemandé si PRONOTE l'exige."
+                    "Le code PIN à deux facteurs défini sur le compte PRONOTE "
+                    "lui-même, s'il en a un. Quatre chiffres aussi, et pas "
+                    "celui du dessus. Utilisé pour cette connexion uniquement "
+                    "et jamais conservé. Il vous sera redemandé si PRONOTE "
+                    "l'exige."
                 ),
             },
         },
@@ -455,9 +488,18 @@ CONFIG_FR: dict[str, Any] = {
                 "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
             },
             "data_description": {
+                "qr_pin": (
+                    "Celui que vous avez choisi dans l'application en générant "
+                    "le QR code. Pas le code PIN du compte ci-dessous : les "
+                    "deux font quatre chiffres, et ce sont deux codes "
+                    "différents."
+                ),
                 "account_pin": (
-                    "Utilisé pour cette connexion uniquement et jamais "
-                    "conservé. Il vous sera redemandé si PRONOTE l'exige."
+                    "Le code PIN à deux facteurs défini sur le compte PRONOTE "
+                    "lui-même, s'il en a un. Quatre chiffres aussi, et pas "
+                    "celui du dessus. Utilisé pour cette connexion uniquement "
+                    "et jamais conservé. Il vous sera redemandé si PRONOTE "
+                    "l'exige."
                 ),
             },
         },
@@ -480,6 +522,16 @@ CONFIG_FR: dict[str, Any] = {
             "Le QR code ou son code à quatre chiffres a été refusé. Un QR code "
             "n'est utilisable qu'une fois : générez-en un nouveau dans "
             "l'application."
+        ),
+        "invalid_qr_auth": (
+            "PRONOTE a refusé cet enrôlement, et ce que cela écarte vaut d'être "
+            "su : le QR code et son code à quatre chiffres ont été acceptés — "
+            "une erreur sur l'un des deux est signalée à part. Reste le code "
+            "PIN à deux facteurs du compte, qui est un autre code à quatre "
+            "chiffres, défini sur le compte PRONOTE lui-même et non choisi au "
+            "moment de générer le QR code. Vérifiez celui-là avant de "
+            "recommencer : réessayer en boucle une connexion refusée est "
+            "précisément ce qui fait bloquer une adresse."
         ),
         "invalid_qr_payload": (
             "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit "

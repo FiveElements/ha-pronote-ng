@@ -209,6 +209,55 @@ _NEVER_PERSISTED: Final = frozenset(
 )
 
 
+def _log_refusal(error: BaseException) -> None:
+    """Say *why* a login was refused, on this integration's own logger.
+
+    A classified failure used to log nothing at all -- only the unexpected ones
+    wrote a traceback -- so "PRONOTE refused these credentials" was the whole of
+    what a bug report could contain, and the four causes behind it were
+    indistinguishable. Diagnosing a real one meant guessing, twice in one day.
+
+    At DEBUG, because DEBUG is what a user turns on before reporting a bug, and
+    strictly more conservative than the ERROR-level traceback the unexpected arm
+    already writes unconditionally. The category is ours and the cause is
+    upstream's: `pronotepy` raises static messages here ("challenge decryption
+    failed", "invalid confirmation code"), which is exactly the distinction that
+    was missing.
+
+    What this must never become is `logging.getLogger("pronotepy")` at DEBUG:
+    `pronoteAPI.py` writes the hexadecimal of every request body there,
+    credentials included (§8.2).
+    """
+    cause = error.__cause__
+    _LOGGER.debug(
+        "the login was refused: %s(%s), caused by %s(%s)",
+        type(error).__name__,
+        error,
+        type(cause).__name__ if cause is not None else "nothing",
+        cause if cause is not None else "",
+    )
+
+
+#: Errors whose wording assumes a password, and what a QR step says instead.
+#:
+#: `invalid_auth` is shared by every step of the flow and tells the reader to
+#: check their password. On a QR step there is no password, so the message is
+#: worse than unhelpful: it points at the one thing that cannot be the cause.
+#: What *can* be, once PRONOTE has accepted the payload and its four-digit code
+#: -- a wrong one of those raises `QRCodeDecryptError`, which surfaces as
+#: `invalid_qr` -- is the account's two-factor PIN. That is a *different*
+#: four-digit code, and it sits in the same form, two fields below.
+_QR_ERROR_WORDING: Final = {"invalid_auth": "invalid_qr_auth"}
+
+
+@callback
+def _requalify_for_qr(errors: dict[str, str]) -> None:
+    """Re-word a shared error for a step that has no password."""
+    base = errors.get("base")
+    if base is not None and base in _QR_ERROR_WORDING:
+        errors["base"] = _QR_ERROR_WORDING[base]
+
+
 def _account_identity(account_id: str | None) -> tuple[str, str]:
     """The parts of an account id that identify it *stably*.
 
@@ -483,9 +532,12 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         and the account's own two-factor PIN is asked for here too, so nothing
         the old form could fix is lost by not showing it.
 
-        The device UUID is deliberately **reused** rather than regenerated:
-        PRONOTE lists enrolled devices per account, and a fresh UUID at every
-        reconnection would fill that list with copies of this Home Assistant.
+        The device UUID is deliberately **reused** rather than regenerated, and
+        that is a requirement rather than a preference: upstream documents the
+        parameter as "Unique ID for your application. Must not change between
+        logins" (``pronotepy.ClientBase.qrcode_login``). A fresh one would also
+        fill the account's enrolled-device list with copies of this Home
+        Assistant, but the contract is the reason.
         """
         errors: dict[str, str] = {}
         entry = self._reauth_entry
@@ -511,6 +563,7 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
 
                 outcome = await self._async_probe(self._data, errors)
+                _requalify_for_qr(errors)
                 if outcome is not None:
                     # A QR code is the one reconnection input that can name a
                     # *different* account: a parent with two children in two
@@ -595,6 +648,7 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         """Re-display the form the user came from, with its errors."""
         mode = self._data.get(CONF_LOGIN_MODE)
         if mode == LoginMode.QR_CODE.value:
+            _requalify_for_qr(errors)
             return self.async_show_form(
                 step_id=STEP_QR_CODE, data_schema=QR_SCHEMA, errors=errors
             )
@@ -650,13 +704,16 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             # Nothing was sent, so this is not an attempt and must not be
             # counted as one.
             errors["base"] = "rate_limited"
-        except ProbeInvalidCredentials:
+        except ProbeInvalidCredentials as error:
+            _log_refusal(error)
             guard.note_login(LoginOutcome.BAD_CREDENTIALS, requests_used=cost)
             errors["base"] = "invalid_auth"
-        except ProbeMfaRequired:
+        except ProbeMfaRequired as error:
+            _log_refusal(error)
             guard.note_login(LoginOutcome.MFA_REQUIRED, requests_used=cost)
             errors["base"] = "mfa_required"
-        except ProbeBootstrapFailed:
+        except ProbeBootstrapFailed as error:
+            _log_refusal(error)
             # Says the bootstrap failed and stops there. pronotepy infers an IP
             # suspension from `if "IP" in html` -- two capitals anywhere in the
             # page -- and telling somebody their home connection is banned
@@ -664,13 +721,15 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             # than saying nothing (§6.3).
             guard.note_login(LoginOutcome.BOOTSTRAP, requests_used=cost)
             errors["base"] = "bootstrap_failed"
-        except ProbeQrInvalid:
+        except ProbeQrInvalid as error:
             # A single-use payload that PRONOTE has already consumed. Charged
             # to the credentials guard, because from the server's point of view
             # it is a refused authentication like any other.
+            _log_refusal(error)
             guard.note_login(LoginOutcome.BAD_CREDENTIALS, requests_used=cost)
             errors["base"] = "invalid_qr"
-        except (TimeoutError, OSError):
+        except (TimeoutError, OSError) as error:
+            _log_refusal(error)
             guard.note_login(LoginOutcome.TRANSPORT, requests_used=cost)
             errors["base"] = "cannot_connect"
         except Exception:
