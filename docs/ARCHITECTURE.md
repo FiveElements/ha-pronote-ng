@@ -2128,7 +2128,7 @@ désormais tous — avec, au passage, les douze attributs de contexte réellemen
   simplement pas une annulation, ce qu'il était rapporté comme étant
   (`const.py:387-390`).
 
-Corollaire côté automatisations : `device_trigger.py:58-73` expose **quatorze**
+Corollaire côté automatisations : `device_trigger.py:60-75` expose **quatorze**
 types de déclencheur, dont ces deux-là.
 
 Ce qui reste à surveiller n'est plus l'annexe mais la **duplication** : la même
