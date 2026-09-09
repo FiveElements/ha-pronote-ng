@@ -69,6 +69,17 @@ def _next_key(existing: Sequence[Record]) -> str:
     return _KEY_FORMAT.format(number=max(used, default=0) + 1)
 
 
+def is_minted(value: str) -> bool:
+    """Whether ``value`` is one of our keys rather than PRONOTE's identifier.
+
+    The registry repair needs it to tell a row it has already fixed from a row
+    still carrying a rotated identifier -- including the key of a child who has
+    since left the account, which is still ours and must never be re-pointed at
+    somebody else.
+    """
+    return _KEY_NUMBER.match(value) is not None
+
+
 def pair(
     stored: Sequence[Mapping[str, str]],
     announced: Sequence[tuple[str, str]],

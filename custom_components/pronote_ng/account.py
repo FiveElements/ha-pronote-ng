@@ -34,7 +34,7 @@ from homeassistant.helpers import (
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from .child_keys import pair
+from .child_keys import is_minted, pair
 from .const import (
     CONF_ACCOUNT_PIN,
     CONF_CHILD_KEYS,
@@ -428,17 +428,148 @@ class PronoteAccount:
         entry_id = self.entry.entry_id
         rows = er.async_entries_for_config_entry(entities, entry_id)
 
+        unclaimed: list[str] = []
         for resource_id, minted in self._child_keys.items():
             if resource_id == minted:
                 continue
-            self._async_adopt_device(devices, entry_id, resource_id, minted)
-            self._async_adopt_entities(entities, rows, entry_id, resource_id, minted)
+            moved = self._async_adopt_device(devices, entry_id, resource_id, minted)
+            if self._async_adopt_entities(
+                entities, rows, entry_id, resource_id, minted
+            ):
+                moved = True
+            if not moved:
+                unclaimed.append(minted)
+
+        if unclaimed:
+            self._async_adopt_rotated_rows(entities, devices, entry_id, rows, unclaimed)
+
+    @callback
+    def _async_adopt_rotated_rows(
+        self,
+        entities: er.EntityRegistry,
+        devices: dr.DeviceRegistry,
+        entry_id: str,
+        rows: list[er.RegistryEntry],
+        unclaimed: list[str],
+    ) -> None:
+        """Adopt rows whose identifier PRONOTE no longer announces.
+
+        This is the case the repair exists for, and the first version missed
+        it. It looked up ``<entry_id>_<the identifier announced now>`` -- so it
+        worked only while the identifier had *not* rotated since the rows were
+        created, which is precisely when there is nothing to repair. On the
+        instance that motivated the fix the identifier had rotated, no row
+        matched, and 56 entities were created beside the 56 already there: the
+        defect performed deliberately. The test that was supposed to cover this
+        used the identifier the fake account announces, so it never rotated
+        anything.
+
+        The rows are found through the **devices** and not by splitting a
+        ``unique_id``: a resource identifier may itself contain an underscore
+        (``46#_KlUc...`` was one of the three observed), so there is no safe
+        separator to split on. A child device carries exactly
+        ``<entry_id>_<identifier>`` and nothing more, which is unambiguous. The
+        account device is ``<entry_id>`` alone and cannot be mistaken for one.
+
+        Only ever with a **single** unmatched child. With siblings there is no
+        sound way to say which orphaned generation belonged to which child --
+        twins share a name -- and guessing would hand one pupil's history to
+        another. Their rows are left alone and said so.
+        """
+        # Candidates first, and the order matters: on a fresh install every
+        # child has no rows yet, so `unclaimed` is every child and a message
+        # about an unrepairable registry would greet an installation with
+        # nothing whatever to repair. No candidate means no history, which is
+        # the ordinary case and says nothing.
+        #
+        # A candidate is an identifier that is neither one the account
+        # announces now nor a key of ours -- including the key of a child who
+        # has left, which stays ours for ever and must never be handed on.
+        known = set(self._child_keys) | set(self._child_keys.values())
+        prefix = f"{entry_id}_"
+        candidates = [
+            (device, identifier.removeprefix(prefix))
+            for device in dr.async_entries_for_config_entry(devices, entry_id)
+            for domain, identifier in device.identifiers
+            if domain == DOMAIN
+            and identifier.startswith(prefix)
+            and identifier.removeprefix(prefix) not in known
+            and not is_minted(identifier.removeprefix(prefix))
+        ]
+        if not candidates:
+            return
+
+        if len(unclaimed) != 1:
+            _LOGGER.warning(
+                "%d children have no registry rows under the identifier the "
+                "account announces now, and %d orphaned generation(s) are "
+                "present. That is repairable for one child and not for "
+                "several: nothing in the registry says which generation "
+                "belonged to which child, and a wrong guess would move one "
+                "pupil's history onto another. The previous entities keep "
+                "their last value and stop updating; the new ones work. "
+                "Re-point your dashboards at the new entities, or delete the "
+                "stale devices and start from the new set",
+                len(unclaimed),
+                len(candidates),
+            )
+            return
+
+        minted = unclaimed[0]
+
+        # The newest, when an instance carries several dead generations: an
+        # older one was already superseded by the one after it, so the last
+        # PRONOTE created is the one whose entities the dashboards were built
+        # on. Measured on the live instance the two generations were two hours
+        # apart, and the newer one held exactly the entities every badge and
+        # automation referenced.
+        #
+        # By creation time and **not** by name, which was the first idea and
+        # does not work: the integration names both generations from PRONOTE,
+        # so `default_name` was byte-identical on both: only the rename the
+        # user had applied to the older one differed. Matching on the name
+        # would have had to choose between two equal candidates, and twins
+        # share a name in any case.
+        newest = max(device.created_at for device, _ in candidates)
+        latest = [pair for pair in candidates if pair[0].created_at == newest]
+        if len(latest) > 1:
+            # Two generations created in the same instant is not something a
+            # real server does; it does happen under a frozen test clock, and
+            # it would happen to anyone restoring a hand-edited registry.
+            # Picking one would be a coin toss over which set of entities a
+            # dashboard keeps, so it is left alone and said out loud.
+            _LOGGER.warning(
+                "%d orphaned generations for %s share the same creation time, "
+                "so there is nothing to prefer between them. Leaving them "
+                "alone rather than choosing one: their entities keep their "
+                "last value and stop updating, while the new ones work. "
+                "Delete the stale devices from the device page to settle it",
+                len(latest),
+                minted,
+            )
+            return
+        _, legacy = latest[0]
+        _LOGGER.warning(
+            "the identifier PRONOTE announces for %s is not the one its %d "
+            "existing entities were created under -- the identifier rotated, "
+            "which is expected and is what the minted key exists to absorb. "
+            "Re-pointing those rows in place rather than creating a second "
+            "set; every entity_id, custom name, area and label is kept",
+            minted,
+            sum(1 for row in rows if row.unique_id.startswith(f"{prefix}{legacy}_")),
+        )
+        self._async_adopt_device(devices, entry_id, legacy, minted)
+        self._async_adopt_entities(entities, rows, entry_id, legacy, minted)
 
     @callback
     def _async_adopt_device(
         self, devices: dr.DeviceRegistry, entry_id: str, resource_id: str, minted: str
-    ) -> None:
-        """Move one child device onto its minted identifier."""
+    ) -> bool:
+        """Move one child device onto its minted identifier.
+
+        Returns whether it moved one, because the caller needs to know that
+        nothing matched in order to look for a rotated identifier.
+        """
         was = (DOMAIN, f"{entry_id}_{resource_id}")
         now = (DOMAIN, f"{entry_id}_{minted}")
         # `async_get_device_by_identifier` and not `async_get_device`: the
@@ -448,7 +579,7 @@ class PronoteAccount:
         # question anyway, since two accounts may follow the same child.
         device = devices.async_get_device_by_identifier(was, entry_id)
         if device is None:
-            return
+            return False
         taken = devices.async_get_device_by_identifier(now, entry_id)
         if taken is not None:
             if taken.id != device.id:
@@ -461,12 +592,14 @@ class PronoteAccount:
                     "and can be deleted from the device page",
                     minted,
                 )
-            return
+            # Already carried by this very device: adopted on an earlier start.
+            return taken.id == device.id
         devices.async_update_device(device.id, new_identifiers={now})
         _LOGGER.info(
             "adopted the existing device for %s, keeping its name, area and labels",
             minted,
         )
+        return True
 
     @callback
     def _async_adopt_entities(
@@ -476,8 +609,12 @@ class PronoteAccount:
         entry_id: str,
         resource_id: str,
         minted: str,
-    ) -> None:
-        """Rewrite the unique id of every entity of one child, in place."""
+    ) -> int:
+        """Rewrite the unique id of every entity of one child, in place.
+
+        Returns how many rows moved, for the same reason the device helper
+        does: none moving is what says the identifier has rotated.
+        """
         was = f"{entry_id}_{resource_id}_"
         now = f"{entry_id}_{minted}_"
         adopted = 0
@@ -506,6 +643,7 @@ class PronoteAccount:
                 adopted,
                 minted,
             )
+        return adopted
 
     def student_id_for_key(self, key: str) -> str | None:
         """Turn a minted key back into the identifier PRONOTE announced.
