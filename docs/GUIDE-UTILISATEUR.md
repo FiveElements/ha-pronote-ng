@@ -1043,6 +1043,11 @@ font le travail délicat — remise à l'échelle des notes, filtrage des jours 
 cours, distinction entre absence et retard — et ne vous demandent que de choisir
 un élève et une action de notification.
 
+Le tableau ci-dessous les résume. **Chaque réglage est expliqué, et chaque piège
+nommé, dans [Les sept blueprints, en détail](BLUEPRINTS.md)** — à lire avant de
+remplir un formulaire, et surtout avant de conclure qu'un blueprint ne se
+déclenche pas.
+
 | Blueprint | Ce qu'il fait |
 | --- | --- |
 | **PRONOTE - Réveil adaptatif** | Déclenche un réveil (lumière, radio, synthèse vocale, notification) à l'heure calculée pour le premier cours du prochain jour de classe. Ne fait rien les jours sans cours ni pendant les vacances. Réglages : écart supplémentaire, heure plancher (« Pas avant »), heure plafond (« Pas après »), et un capteur « Jour de classe » optionnel. |
@@ -1757,6 +1762,7 @@ disparaît au redémarrage.
 | Document | Pour qui |
 | --- | --- |
 | `README.md` | Présentation du projet |
+| `docs/BLUEPRINTS.md` | Chaque réglage des sept blueprints, et le piège que chacun évite |
 | `docs/ARCHITECTURE.md` | Développeurs : comment c'est construit |
 | `docs/annexe-b-rate-limit.md` | Le détail du limiteur de débit, si le § 8 vous a donné envie de creuser |
 | `docs/MIGRATION-AUTOMATISATIONS.md` | Vous arrivez de l'intégration `pronote` et vos automatisations sont déjà écrites |
