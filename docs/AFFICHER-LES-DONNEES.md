@@ -349,7 +349,7 @@ passe, et un mot de passe n'a rien à faire dans un état d'entité que n'import
 quel utilisateur de Home Assistant peut lire. Ces trois données s'obtiennent par
 un appel de service, décrit au § 5.1 du guide.
 
-**Ce que PRONOTE envoie et que l'intégration ne republie pas.** Deux données
+**Ce que PRONOTE envoie et que l'intégration ne republie pas.** Trois données
 sont décodées puis retenues, et il est plus utile de le savoir que de les
 chercher :
 
@@ -360,6 +360,13 @@ chercher :
   colore par matière choisit donc ses couleurs elle-même, et doit les prendre
   dans les variables de thème plutôt que de les écrire en dur, sinon elle casse
   en thème sombre.
+- **Les libellés d'un plat de cantine**, et c'est le cas le plus lourd des
+  trois. PRONOTE envoie pour chaque plat une liste de libellés portant un nom et
+  une couleur — c'est là qu'apparaîtraient un régime ou un allergène. Ils sont
+  décodés par la bibliothèque, puis **abandonnés** : l'intégration ne garde que
+  le nom du plat, donc les six listes de plats sont des listes de chaînes. Rien
+  ne permet aujourd'hui d'afficher un régime à côté d'un plat, et l'absence a
+  des conséquences hors écran.
 - **Le volume horaire d'une absence.** `sensor.<é>_absences` porte un **nombre
   d'absences**, sans unité, et non un nombre d'heures. Le volume n'existe que
   dans les éléments de `items`, sous la forme d'une **chaîne** écrite par
