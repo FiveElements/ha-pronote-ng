@@ -4,6 +4,24 @@ Relecture de `SPECIFICATION.md`, `annexe-a-entites.md`, `annexe-b-rate-limit.md`
 vérifiée contre `pronotepy` 2.15.6. Les références `fichier:ligne` ont été lues,
 pas supposées. Aucun appel réseau n'a été émis.
 
+!!! warning "Les fichiers cités ici ne sont pas dans ce dépôt"
+
+    `clients.py`, `dataClasses.py` et `pronoteAPI.py` sont des fichiers de
+    **`pronotepy`**, la bibliothèque tierce, et non du code de l'intégration —
+    les chercher sous `custom_components/pronote_ng/` est vain. Partout ailleurs
+    dans la documentation, un nom de fichier nu désigne un module de
+    l'intégration et un chemin préfixé (`tests/conftest.py`, `scripts/`) désigne
+    le reste du dépôt ; ce document est la seule exception, et elle est entière.
+
+    Deuxième réserve, plus lourde : ces numéros de ligne sont ceux de
+    **`pronotepy` 2.15.6**. Le dépôt épingle 2.15.7 depuis `59df926`, et cette
+    version a changé l'échange de défi — donc une partie de ces plages ne tombe
+    plus au bon endroit dans la version réellement installée. Les arguments, eux,
+    restent valables : ils ont été retenus et se retrouvent dans
+    `hardened_client.py`, qui documente chaque divergence qu'il corrige. Ce
+    document est une **archive de revue**, à lire pour le raisonnement, pas comme
+    une carte du code d'amont.
+
 Verdict global : l'objectif du §1 est le bon, et la hiérarchie « entité primitive
 > `event` > `device_trigger` » est la meilleure décision du document. Les six
 décisions tiennent toutes **sauf la n° 2**, mais cinq ont des trous d'exécution
