@@ -2,10 +2,11 @@
   <img src="docs/assets/logo.png" alt="Pronote NG" width="180">
 </p>
 
-<h1 align="center">Pronote NG</h1>
+<h1 align="center">Pronote NG — Intégration PRONOTE pour Home Assistant</h1>
 
 <p align="center">
-  <strong>Intégration Home Assistant pour PRONOTE — seconde génération.</strong>
+  <strong>PRONOTE dans Home Assistant : emploi du temps, devoirs, notes,
+  absences, cantine — en entités, en automatisations et en cartes.</strong>
 </p>
 
 <p align="center">
@@ -14,6 +15,8 @@
   <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">Guide de l'utilisateur</a>
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/">Architecture</a>
+  ·
+  <a href="#installation">Installation</a>
 </p>
 
 <p align="center">
@@ -23,6 +26,91 @@
   <img src="https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?logo=homeassistant&logoColor=white" alt="Home Assistant 2026.9.0 minimum">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-green" alt="Licence MIT"></a>
 </p>
+
+**Pronote NG est une intégration Home Assistant pour PRONOTE.** Elle connecte
+votre compte PRONOTE — élève ou parent, directement ou via un ENT — à Home
+Assistant, et publie l'emploi du temps, les devoirs, les notes et les moyennes,
+les absences et les retards, les évaluations par compétences, les menus de la
+cantine, les actualités et les discussions sous forme d'entités ordinaires.
+
+Ces entités s'affichent dans un tableau de bord et se déclenchent dans une
+automatisation comme n'importe quelle autre : réveiller plus tôt un jour de
+contrôle, annoncer les devoirs du soir, prévenir d'une absence en cours. Aucun
+*template* Jinja n'est nécessaire pour les usages courants — c'est l'objectif
+qui a dicté la conception.
+
+## Ce que vous obtenez dans Home Assistant
+
+- 📅 **Emploi du temps** — aujourd'hui, demain, la semaine, plus un agenda
+- 📝 **Devoirs** — avec une liste de tâches cochable
+- 🎓 **Notes et moyennes** — dernière note, moyennes par matière, bulletin
+- 📊 **Évaluations par compétences** — avec leur niveau de maîtrise
+- 🚨 **Absences, retards et punitions** — y compris l'absence en cours
+- 🍽️ **Menus de la cantine** — service par service
+- 📰 **Actualités et discussions** — avec les non-lus
+- 👨‍👩‍👧 **Comptes parents multi-enfants** — un appareil par enfant, une seule session
+- 🔐 **Connexion par QR code** — le mode recommandé, sans mot de passe conservé
+- 🤖 **Automatisations sans template** — 14 déclencheurs, 10 conditions, 4 actions
+- 🧩 **Sept blueprints** prêts à importer, en français et en anglais
+- 🎨 **Dix cartes Lovelace** dédiées, dans un dépôt séparé
+- 🛡️ **Un limiteur de requêtes** au centre du design, parce que PRONOTE
+  sanctionne une adresse IP
+
+## Installation
+
+L'intégration s'appelle **Pronote NG** et son domaine Home Assistant est
+**`pronote_ng`** : c'est le nom du dossier sous `custom_components/`, et le
+préfixe de toutes ses entités et de tous ses services.
+
+### HACS (dépôt personnalisé)
+
+1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
+2. Ajouter `https://github.com/FiveElements/ha-pronote-ng`, catégorie
+   *Intégration*.
+3. Installer **Pronote NG**, puis redémarrer Home Assistant.
+4. *Paramètres → Appareils et services → Ajouter une intégration → PRONOTE*.
+
+### Manuellement
+
+Copier `custom_components/pronote_ng/` dans le dossier `custom_components/` de
+votre configuration, puis redémarrer.
+
+Home Assistant **2026.9.0** minimum.
+
+## Les dix cartes Lovelace
+
+Dix cartes Lovelace faites pour cette intégration — élève, prochain cours,
+vue journée, emploi du temps, devoirs, notes, évaluations, cantine, vie
+scolaire, limiteur — vivent dans **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)**
+([documentation](https://fiveelements.github.io/ha-pronote-ng-cards/)). Elles
+sont optionnelles : l'intégration publie des états primitifs, donc les cartes
+intégrées de Home Assistant suffisent pour l'essentiel — voyez
+[`docs/AFFICHER-LES-DONNEES.md`](docs/AFFICHER-LES-DONNEES.md), qui couvre les
+deux chemins.
+
+Elles se configurent avec **l'appareil de l'enfant**, jamais avec un identifiant
+d'entité : les identifiants dérivent du nom affiché de l'enfant et changent
+silencieusement s'il est renommé, tandis que la clé technique d'une entité est
+stable dans toutes les langues.
+
+![Trois des dix cartes : prochain cours, devoirs et vie scolaire](docs/assets/apercu-cartes.svg)
+
+*Illustration synthétique. Aucune capture d'écran réelle ne peut entrer
+dans ce dépôt : elle porterait le prénom de l'enfant et le nom de
+l'établissement.*
+
+## Ce que ça protège
+
+PRONOTE sanctionne une **adresse IP**, pas seulement un compte. Le limiteur
+(`custom_components/pronote_ng/ratelimit.py`) est donc au centre du design :
+trois couches — espacement minimal, seau à jetons, plafond journalier — plus
+deux compteurs de connexion, tous **débités à l'admission** sous un verrou,
+jamais à la sortie. Un login coûte cinq à sept requêtes et la poignée de main
+est lente ; facturé au retour, il laisse une fenêtre de plusieurs secondes
+pendant laquelle un second appelant lit un budget intact.
+
+Le budget par défaut est d'environ **180 requêtes par jour** pour un enfant,
+contre ≈ 423 dans la première version de la spécification.
 
 ## Les points forts
 
@@ -88,7 +176,7 @@ exige **100 %** sur les quatre modules où une erreur ne produit aucun symptôme
 visible — le limiteur, l'ordonnanceur, la passerelle et le détecteur de
 changements.
 
-## Ce que ça fait
+## Le détail : entités, services, automatisations
 
 - **Sept plateformes d'entités** : `sensor`, `binary_sensor`, `calendar`,
   `todo`, `image`, `event`, `button` — emploi du temps, devoirs, notes et
@@ -106,56 +194,6 @@ changements.
 - **Trois modes de connexion** : QR code (recommandé), identifiants directs,
   ENT.
 - **Comptes parents multi-enfants**, chaque enfant étant un appareil distinct.
-
-## Ce que ça protège
-
-PRONOTE sanctionne une **adresse IP**, pas seulement un compte. Le limiteur
-(`custom_components/pronote_ng/ratelimit.py`) est donc au centre du design :
-trois couches — espacement minimal, seau à jetons, plafond journalier — plus
-deux compteurs de connexion, tous **débités à l'admission** sous un verrou,
-jamais à la sortie. Un login coûte cinq à sept requêtes et la poignée de main
-est lente ; facturé au retour, il laisse une fenêtre de plusieurs secondes
-pendant laquelle un second appelant lit un budget intact.
-
-Le budget par défaut est d'environ **180 requêtes par jour** pour un enfant,
-contre ≈ 423 dans la première version de la spécification.
-
-## Installation
-
-L'intégration s'appelle **Pronote NG** et son domaine Home Assistant est
-**`pronote_ng`** : c'est le nom du dossier sous `custom_components/`, et le
-préfixe de toutes ses entités et de tous ses services.
-
-### HACS (dépôt personnalisé)
-
-1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
-2. Ajouter `https://github.com/FiveElements/ha-pronote-ng`, catégorie
-   *Intégration*.
-3. Installer **Pronote NG**, puis redémarrer Home Assistant.
-4. *Paramètres → Appareils et services → Ajouter une intégration → PRONOTE*.
-
-### Manuellement
-
-Copier `custom_components/pronote_ng/` dans le dossier `custom_components/` de
-votre configuration, puis redémarrer.
-
-Home Assistant **2026.9.0** minimum.
-
-### Les cartes, dans un dépôt séparé
-
-Neuf cartes Lovelace faites pour cette intégration — élève, prochain cours,
-emploi du temps, devoirs, notes, évaluations, cantine, vie scolaire, limiteur —
-vivent dans **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)**
-([documentation](https://fiveelements.github.io/ha-pronote-ng-cards/)). Elles
-sont optionnelles : l'intégration publie des états primitifs, donc les cartes
-intégrées de Home Assistant suffisent pour l'essentiel — voyez
-[`docs/AFFICHER-LES-DONNEES.md`](docs/AFFICHER-LES-DONNEES.md), qui couvre les
-deux chemins.
-
-Elles se configurent avec **l'appareil de l'enfant**, jamais avec un identifiant
-d'entité : les identifiants dérivent du nom affiché de l'enfant et changent
-silencieusement s'il est renommé, tandis que la clé technique d'une entité est
-stable dans toutes les langues.
 
 ## Documentation
 
