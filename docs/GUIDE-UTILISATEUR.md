@@ -1029,6 +1029,13 @@ journée. À 80 % du plafond, Home Assistant ouvre un signalement de réparation
 
 ## 9. Automatisations
 
+**Vous venez de l'intégration `pronote` ?** Ce paragraphe explique comment
+écrire une automatisation ; il ne dit pas comment déplacer celles que vous avez
+déjà. Pour ça, lisez
+[Migrer ses automatisations](MIGRATION-AUTOMATISATIONS.md) — en particulier
+avant de retirer l'ancienne intégration, car c'est ce retrait, et non
+l'installation de Pronote NG, qui casse vos automatisations existantes.
+
 ### 9.1 Les sept blueprints livrés
 
 Sept modèles d'automatisation en français sont fournis avec l'intégration. Ils
@@ -1752,6 +1759,7 @@ disparaît au redémarrage.
 | `README.md` | Présentation du projet |
 | `docs/ARCHITECTURE.md` | Développeurs : comment c'est construit |
 | `docs/annexe-b-rate-limit.md` | Le détail du limiteur de débit, si le § 8 vous a donné envie de creuser |
+| `docs/MIGRATION-AUTOMATISATIONS.md` | Vous arrivez de l'intégration `pronote` et vos automatisations sont déjà écrites |
 
 Pour signaler un problème :
 <https://github.com/FiveElements/ha-pronote-ng/issues>, en joignant le fichier de

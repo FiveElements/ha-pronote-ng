@@ -59,6 +59,7 @@ theme:
 nav:
   - Accueil: index.md
   - Guide de l'utilisateur: GUIDE-UTILISATEUR.md
+  - "Migrer depuis pronote": MIGRATION-AUTOMATISATIONS.md
   - Architecture: ARCHITECTURE.md
   - Spécification:
       - Spécification v2: SPECIFICATION.md
