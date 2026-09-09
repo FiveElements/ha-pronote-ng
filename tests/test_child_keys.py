@@ -10,7 +10,8 @@ pointing at the dead ones, and nothing logged anywhere.
 
 The pairing half of these tests needs no Home Assistant, deliberately: it is
 the part that has to be exhaustive, and it therefore also runs in the HA-free
-half of the suite.
+half of the suite -- the half that can be run natively on Windows, where the
+adoption class below is skipped for want of the harness.
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ from custom_components.pronote_ng.const import (
     CHILD_RESOURCE_ID,
     DOMAIN,
 )
+
+from .conftest import REQUIRES_HASS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -181,17 +184,19 @@ class TestPairingChildren:
         assert keys["46#aaa"].startswith("child-")
 
 
-pytest.importorskip(
-    "homeassistant",
-    reason="the registry adoption needs the HA harness; the pairing above does not",
-)
-
+# `importorskip` was wrong here and the mistake is worth naming: on Windows
+# `homeassistant` imports perfectly well, so it skipped nothing. What is absent
+# there is the *harness* -- the plugin that provides `hass` -- and the tests
+# below then errored on a missing fixture rather than being skipped, which
+# aborted the HA-free half of the suite. `REQUIRES_HASS` is the marker the rest
+# of the suite uses, and a skip mark is consulted before any fixture is built.
 from homeassistant.helpers import (  # noqa: E402
     device_registry as dr,
     entity_registry as er,
 )
 
 
+@REQUIRES_HASS
 class TestAdoptingEntitiesCreatedBeforeTheKeys:
     """The promise the user guide makes: the migration keeps your dashboard.
 

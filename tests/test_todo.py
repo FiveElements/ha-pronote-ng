@@ -44,7 +44,7 @@ from custom_components.pronote_ng.const import (
 from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
 from custom_components.pronote_ng.todo import PARALLEL_UPDATES, async_setup_entry
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, HAS_HASS_HARNESS, REQUIRES_HASS
 from .fixtures import protocol
 from .fixtures.client import FakeClient
 
@@ -58,6 +58,21 @@ if TYPE_CHECKING:
     from custom_components.pronote_ng.todo import PronoteHomeworkTodoList
 
 pytestmark = REQUIRES_HASS
+
+if not HAS_HASS_HARNESS:  # pragma: no cover - the Windows path only
+    # The marker above is not enough for *this* module, and that is the whole
+    # reason for the skip. `writes_on` parametrises indirectly, and pytest
+    # resolves an indirect parameter against the test's fixture closure at
+    # **collection** time -- before any skip mark is consulted. Without the
+    # harness that closure cannot be built, so this module raises a collection
+    # error, and one collection error aborts the whole run: the HA-free half
+    # documented as runnable on Windows could not be run at all, including the
+    # four modules held at 100 %.
+    pytest.skip(
+        "the todo platform needs the Home Assistant harness; this module is "
+        "collected only where it can run",
+        allow_module_level=True,
+    )
 
 STUDENT_ONE, STUDENT_TWO = (child_id for child_id, _name in CHILDREN)
 
