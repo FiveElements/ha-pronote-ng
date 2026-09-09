@@ -37,12 +37,13 @@ les cartes intégrées suffisent.
 
 ## La bibliothèque de cartes Pronote NG
 
-Neuf cartes Lovelace faites pour cette intégration, dans un dépôt séparé :
+Dix cartes Lovelace faites pour cette intégration, dans un dépôt séparé :
 **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)**
-— [documentation](https://fiveelements.github.io/ha-pronote-ng-cards/).
+— [documentation](https://fiveelements.github.io/ha-pronote-ng-cards/), une
+page par carte.
 
-Élève · Prochain cours · Emploi du temps · Devoirs · Notes · Évaluations ·
-Cantine · Vie scolaire · Limiteur.
+Élève · Prochain cours · Vue journée · Emploi du temps · Devoirs · Notes ·
+Évaluations · Cantine · Vie scolaire · Limiteur.
 
 **Ce qu'il faut savoir avant d'installer.** Elles se configurent avec
 **l'appareil de l'enfant**, jamais avec un identifiant d'entité — y compris la
