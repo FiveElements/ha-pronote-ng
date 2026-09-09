@@ -91,6 +91,17 @@ Attention : cette invocation désactive aussi le garde-fou réseau du plugin.
 N'écrivez jamais un test qui sortirait sur le réseau, et vérifiez toujours vos
 changements avec la suite complète avant d'ouvrir une PR.
 
+Cette moitié est fragile d'une façon qu'il faut connaître, parce qu'une seule
+erreur de collecte avorte **tout** le lot — y compris les modules qui n'ont
+aucun besoin de Home Assistant. `REQUIRES_HASS` suffit dans le cas courant : un
+marqueur de saut est consulté avant qu'aucune fixture ne soit construite. Il ne
+suffit pas si le module paramètre en `indirect=True`, car pytest résout un
+paramètre indirect contre la fermeture de fixtures **à la collecte**, avant tout
+marqueur ; un tel module doit se sauter au niveau du module
+(`pytest.skip(..., allow_module_level=True)`), comme `test_todo.py`. Et
+`importorskip("homeassistant")` ne remplace ni l'un ni l'autre : sous Windows ce
+paquet s'importe parfaitement, c'est le *harnais* qui manque.
+
 Pour la suite complète, passez par Docker :
 
 ```bash
