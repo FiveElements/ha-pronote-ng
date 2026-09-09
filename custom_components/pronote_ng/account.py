@@ -725,7 +725,14 @@ class PronoteAccount:
             # has none yet. The tier still has to be settled, or its `boosted`
             # flag survives every tick and the "raised for exactly one tick"
             # invariant quietly stops holding.
-            self.scheduler.defer(tier, self.limiter.retry_delay())
+            #
+            # `mark_failed` and not `defer`, because "produced nothing" is a
+            # failure however politely it arrived: a bare deferral by one
+            # back-off base is shorter than the master tick, so a tier in this
+            # state was retried at every tick for as long as it lasted. The
+            # floor lives in `mark_failed`, which is the only difference
+            # between the two.
+            self.scheduler.mark_failed(tier, self.limiter.retry_delay())
             return
 
         self.scheduler.mark_collected(tier)

@@ -341,6 +341,88 @@ def test_a_failure_is_treated_as_a_deferral(clock: FakeClock) -> None:
     assert scheduler.due() == []
 
 
+def test_a_tier_that_keeps_failing_is_not_retried_faster_than_its_interval(
+    clock: FakeClock,
+) -> None:
+    """The defect this floor exists for, in the numbers it was found in.
+
+    The teaching-team collection is unavailable on some establishments, so the
+    `static` tier failed every time. The limiter's back-off is account-wide and
+    every other tier succeeding resets it, so `retry_delay()` stayed at one
+    back-off base -- about thirty seconds, which is inside the five-minute
+    master tick. A tier declaring **one** collection a day was therefore
+    attempted 288 times a day, and annexe B's budget for it was wrong by that
+    factor, with nothing failing to say so.
+    """
+    scheduler = build(clock, one(Tier.STATIC, 1440, Priority.LOW))
+    scheduler.mark_failed(Tier.STATIC, 30.0)
+
+    # The next master tick, and the fifty after it.
+    clock.advance(5 * 60)
+    assert scheduler.due() == []
+    clock.advance(4 * 3600)
+    assert scheduler.due() == []
+
+    # A quarter of its own interval: four attempts a day, not 288.
+    clock.advance(2 * 3600 + 1)
+    assert scheduler.due() == [Tier.STATIC]
+
+
+def test_a_failure_still_waits_as_long_as_the_limiter_asked(
+    clock: FakeClock,
+) -> None:
+    """The floor raises a delay that is too short; it never lowers one.
+
+    A limiter answering with a long hold knows something the interval does not
+    -- the daily cap is spent, say -- so the floor must be a minimum and not a
+    replacement. It stays bounded by the interval, which is `defer`'s job.
+    """
+    scheduler = build(clock, one(Tier.STATIC, 1440, Priority.LOW))
+    scheduler.mark_failed(Tier.STATIC, 12 * 3600)
+
+    clock.advance(6 * 3600 + 1)
+    assert scheduler.due() == [], "the floor was used in place of a longer hold"
+
+    clock.advance(6 * 3600)
+    assert scheduler.due() == [Tier.STATIC]
+
+
+def test_a_throttled_tier_is_not_slowed_by_the_failure_floor(
+    clock: FakeClock,
+) -> None:
+    """The asymmetry between `defer` and `mark_failed` is the point.
+
+    A tier the limiter merely held back has to return the moment the budget
+    allows: flooring that too would spend somebody's refresh press on a
+    collection that never happened and then stay silent for three quarters of
+    an hour. Only a tier that produced nothing is asking for a rate its
+    interval never promised.
+    """
+    scheduler = build(clock, one(Tier.MARKS, 180, Priority.NORMAL))
+    scheduler.mark_collected(Tier.MARKS)
+    scheduler.request([Tier.MARKS])
+    scheduler.defer(Tier.MARKS, 60.0)
+
+    clock.advance(61)
+    scheduler.request([Tier.MARKS])
+
+    assert scheduler.due() == [Tier.MARKS]
+
+
+def test_marking_an_unknown_tier_failed_is_ignored(clock: FakeClock) -> None:
+    """The floor needs a plan to take a share of, and may not assume one.
+
+    `reconfigure` can drop a tier between a batch starting and its failure
+    being recorded, and a scheduler that raised there would turn one tier's
+    failure into the whole tick's.
+    """
+    scheduler = build(clock, one(Tier.TIMETABLE, 15, Priority.HIGH))
+
+    scheduler.mark_failed(Tier.HISTORY, 300)
+
+    assert scheduler.due() == [Tier.TIMETABLE]
+
+
 def test_deferring_an_unknown_tier_is_ignored(clock: FakeClock) -> None:
     """Same tolerance as ``request``, for the same reason."""
     scheduler = build(clock, one(Tier.TIMETABLE, 15, Priority.HIGH))

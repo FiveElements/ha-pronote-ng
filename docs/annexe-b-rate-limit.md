@@ -498,6 +498,31 @@ Un bouton de rafraîchissement obtient une priorité relevée pour le prochain
 battement — il n'obtient pas de dérogation, et il ne court-circuite pas
 l'espacement.
 
+**Exigence.** Un palier qui n'a **rien produit** n'est pas réessayé plus de
+quatre fois dans son propre intervalle.
+
+Le repli du §4 ne peut pas porter cette règle : il compte les échecs
+*consécutifs du compte* et revient à zéro dès qu'un autre palier réussit. Il ne
+dit donc rien d'un palier qui échoue pour une raison qui n'appartient qu'à lui —
+un établissement qui ne publie pas d'équipe pédagogique, par exemple. Un tel
+palier était reporté d'une seule base de repli, environ trente secondes, ce qui
+est **inférieur au battement maître** : un palier déclarant une collecte par
+jour était tenté à chaque battement, 288 fois par jour, et le budget que lui
+donne le §5.3 était faux du même facteur, sans que rien n'échoue pour le dire.
+
+Le plancher vaut donc `intervalle / 4`. C'est un minimum et non un
+remplacement : une attente plus longue demandée par le limiteur est respectée,
+et le plafond de l'intervalle exigé au §2.4 continue de s'appliquer par-dessus.
+Quatre plutôt qu'une parce qu'un échec passager mérite un nouvel essai avant
+demain.
+
+**Exigence.** Un palier simplement **reporté** n'est pas concerné par ce
+plancher. Reporter et échouer sont deux situations distinctes et ne doivent pas
+recevoir la même réponse : un palier que le limiteur a retenu doit revenir dès
+que le budget le permet. L'y appliquer dépenserait une pression sur le bouton de
+rafraîchissement pour une collecte qui n'a pas eu lieu, puis garderait le
+silence pendant les trois quarts de l'intervalle.
+
 **Exigence.** Le limiteur ne connaît ni PRONOTE ni Home Assistant. Il prend une
 horloge injectable et rend des décisions. C'est ce qui le rend testable à 100 %
 sans réseau ni instance, comme l'exige le §11 de la spécification.
@@ -549,6 +574,8 @@ nommément, parce qu'ils sont ceux qui échouent en production :
 | Lot de `burst_size` appels | passe sans attente |
 | Lot de `burst_size + 1` | le dernier attend le remplissage |
 | Attente supérieure à `max_wait` | palier reporté, pas d'exception |
+| Palier à 1 440 min en échec, repli à zéro | réessayé 4 fois par jour, pas 288 |
+| Palier reporté par le limiteur pour 60 s | revient au bout de 60 s, sans plancher |
 | Plafond du jour à 80 % | paliers `normale` et `basse` reportés |
 | Plafond du jour atteint | seul `critique` passe |
 | Passage de minuit | compteur du jour remis à zéro, seau inchangé |

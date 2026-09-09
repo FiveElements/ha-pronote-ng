@@ -36,6 +36,17 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 SECONDS_PER_MINUTE: Final = 60.0
 
+#: How many times a tier that produced *nothing* may be retried inside one of
+#: its own intervals. The limiter's back-off is account-wide and resets as soon
+#: as any other tier succeeds, so a tier failing for a reason of its own -- an
+#: establishment that publishes no teaching team, say -- never accrues any. It
+#: was therefore deferred by one back-off base, about thirty seconds, which is
+#: inside the five-minute master tick: a tier declaring one collection a day
+#: was attempted at every tick, 288 times, and annexe B's budget for it was
+#: wrong by that factor. Four rather than one because a transient failure
+#: deserves a retry before tomorrow.
+_RETRIES_PER_INTERVAL: Final = 4.0
+
 
 @dataclass(frozen=True, slots=True)
 class TierPlan:
@@ -318,7 +329,27 @@ class FetchScheduler:
         )
 
     def mark_failed(self, tier: Tier, retry_after: float) -> None:
-        """Treat a failure like a deferral: retry later, keep the snapshot."""
+        """Treat a failure like a deferral: retry later, keep the snapshot.
+
+        Unlike a plain deferral, a failure is floored at a share of the tier's
+        own interval. The two are asked for by different situations and must
+        not be answered alike: a *deferred* tier was refused by the limiter and
+        has to come back the moment the budget allows, which is why
+        :meth:`defer` honours the delay it is handed and clamps it only from
+        above. A *failing* tier is asking to be retried at a rate its own
+        interval never promised, and the limiter cannot say so on its behalf --
+        its back-off counts the account's consecutive failures, which any other
+        tier succeeding resets.
+
+        Without the floor, a tier collected once a day was retried at every
+        five-minute tick for as long as it kept failing. See
+        :data:`_RETRIES_PER_INTERVAL`.
+        """
+        plan = self._plans.get(tier)
+        if plan is not None:
+            retry_after = max(
+                retry_after, plan.interval_seconds / _RETRIES_PER_INTERVAL
+            )
         self.defer(tier, retry_after)
 
     def request(self, tiers: Iterable[Tier] | None = None) -> None:
