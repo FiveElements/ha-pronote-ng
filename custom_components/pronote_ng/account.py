@@ -99,6 +99,7 @@ if TYPE_CHECKING:
 
     from homeassistant.config_entries import ConfigEntry
 
+    from .coordinator import TierData
     from .delta import DeltaEvent
 
 _LOGGER: Final = logging.getLogger(__name__)
@@ -178,11 +179,6 @@ class PronoteAccount:
             clock=time.monotonic,
             now=self.gateway.now,
         )
-        # An options save reloads the entry, which builds a new scheduler whose
-        # every deadline is unset -- making all ten tiers immediately due. The
-        # previous schedule is handed across the reload through `hass.data`, so
-        # nudging one interval no longer costs a login plus a full batch (§7.3).
-        self.scheduler.import_state(_saved_schedule(hass).get(entry.entry_id, {}))
         self.executor = SerialExecutor(entry.entry_id, self._read_timeout)
         self.session = SessionManager(
             entry_id=entry.entry_id,
@@ -206,6 +202,36 @@ class PronoteAccount:
         self.coordinators: dict[Tier, PronoteTierCoordinator] = {
             tier: PronoteTierCoordinator(hass, entry, tier) for tier in Tier
         }
+
+        # An options save reloads the entry, which builds a new scheduler whose
+        # every deadline is unset -- making all ten tiers immediately due. The
+        # previous schedule is handed across the reload through `hass.data`, so
+        # nudging one interval no longer costs a login plus a full batch (§7.3).
+        #
+        # The schedule travels with the data it describes, and **only** with
+        # it. Handing across a deadline while the coordinators came back empty
+        # is what left every child entity `unavailable` on a live instance: the
+        # new scheduler believed the tiers were fresh, `due()` returned
+        # nothing, and the batch that ran was a batch of nothing -- for a whole
+        # tier interval, which is twenty-four hours for `menus`, `static` and
+        # `history`. Inside quiet hours the limiter could not refill them
+        # either, so a reload at 22:10 emptied the dashboard until 06:00.
+        #
+        # So a tier whose snapshot came back keeps its deadline, and a tier
+        # without data is due immediately. That invariant is the whole point,
+        # and it is enforced here rather than in the scheduler because only the
+        # account can see the coordinators -- `scheduler.py` knows nothing of
+        # Home Assistant and must keep knowing nothing.
+        restored = self._restore_snapshots(_saved_snapshots(hass).get(entry.entry_id))
+        self.scheduler.import_state(
+            {
+                name: instant
+                for name, instant in _saved_schedule(hass)
+                .get(entry.entry_id, {})
+                .items()
+                if name in restored
+            }
+        )
 
         self._selected_children: tuple[str, ...] = tuple(
             entry.data.get(CONF_CHILDREN) or ()
@@ -296,6 +322,35 @@ class PronoteAccount:
             self._async_tick(), name=f"{DOMAIN} first collection"
         )
 
+    def _restore_snapshots(
+        self, carried: Mapping[Tier, TierData] | None
+    ) -> frozenset[str]:
+        """Refill the coordinators from a reload, and say which tiers came back.
+
+        Returns tier *names*, because that is the key
+        :meth:`FetchScheduler.export_state` uses and comparing the two in one
+        vocabulary is what keeps the pair honest.
+
+        A tier is only reported as restored when it actually carries a
+        snapshot: an empty mapping is not data, and reporting it would restore
+        that tier's deadline and leave its entities unavailable -- the exact
+        defect this method exists to remove.
+
+        The values are the same objects, not copies: snapshots are frozen DTOs
+        (§2.2), so there is nothing to protect them from, and the mapping
+        itself is copied because the coordinator mutates it.
+        """
+        if not carried:
+            return frozenset()
+        restored: set[str] = set()
+        for tier, data in carried.items():
+            coordinator = self.coordinators.get(tier)
+            if coordinator is None or not data:
+                continue
+            coordinator.data = dict(data)
+            restored.add(str(tier))
+        return frozenset(restored)
+
     async def async_unload(self) -> None:
         """Stop the heartbeat and release the session.
 
@@ -308,6 +363,13 @@ class PronoteAccount:
             self._unsub_tick()
             self._unsub_tick = None
         _saved_schedule(self.hass)[self.entry.entry_id] = self.scheduler.export_state()
+        # Exported together with the schedule, because the two are only sound
+        # together: see `_restore_snapshots`.
+        _saved_snapshots(self.hass)[self.entry.entry_id] = {
+            tier: dict(coordinator.data)
+            for tier, coordinator in self.coordinators.items()
+            if coordinator.data
+        }
         limiter_state_store(self.hass)[self.entry.entry_id] = (
             self.limiter.export_state()
         )
@@ -1220,6 +1282,30 @@ def _saved_schedule(hass: HomeAssistant) -> dict[str, dict[str, float]]:
     meaningful within one process because the values are monotonic.
     """
     store: dict[str, dict[str, float]] = hass.data.setdefault(f"{DOMAIN}_schedule", {})
+    return store
+
+
+def _saved_snapshots(hass: HomeAssistant) -> dict[str, dict[Tier, TierData]]:
+    """Per-entry tier snapshots, kept across a reload.
+
+    The companion of :func:`_saved_schedule`, and deliberately the same shape
+    of storage: ``hass.data``, never the config entry and never disk. Two
+    reasons, and the second is the one that matters. It is runtime state with
+    no business being persisted; and a snapshot restored from disk after a
+    restart would be data of unknown age presented as current, which is the
+    one thing this integration works hardest never to do -- ``fetched_at`` and
+    the staleness rule exist precisely so that "I know, but it is old" is said
+    out loud rather than implied.
+
+    Within one process the pairing is sound: the entry unloads, the snapshots
+    are set aside, the entry sets up again microseconds later, and the data is
+    exactly as old as it says it is. Across a real restart this store is empty,
+    every tier is therefore due, and the first collection runs -- which is what
+    a restart should do.
+    """
+    store: dict[str, dict[Tier, TierData]] = hass.data.setdefault(
+        f"{DOMAIN}_snapshots", {}
+    )
     return store
 
 

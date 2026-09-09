@@ -523,6 +523,40 @@ que le budget le permet. L'y appliquer dépenserait une pression sur le bouton d
 rafraîchissement pour une collecte qui n'a pas eu lieu, puis garderait le
 silence pendant les trois quarts de l'intervalle.
 
+**Exigence.** Un palier qui n'a **jamais** produit d'instantané pour un enfant
+collecte en priorité `critical`, et passe donc devant les heures creuses. C'est
+la seule dispense, et elle est celle que le §2.4 accorde déjà à la connexion
+elle-même.
+
+La raison est le §2.5 de la spécification : une entité `unavailable` casse les
+automatisations, elle ne se contente pas d'être vide. Sans cette dispense, une
+instance redémarrée à 23h00 — ou installée à 23h00 — ne publiait **rien** avant
+06h00 et donnait toutes les apparences d'une intégration cassée, au moment
+précis où quelqu'un la regarde.
+
+Elle s'auto-limite, et c'est ce qui la rend acceptable : dès que le palier
+détient un instantané, la dispense cesse de s'appliquer. C'est donc un lot par
+palier et par enfant, jamais une exemption permanente. Un palier qui **échoue**
+reste sans donnée mais ne s'emballe pas : le plancher `intervalle / 4` ci-dessus
+borne ses reprises, et le maintien de repli est évalué **avant** la branche des
+heures creuses, donc il s'applique aussi à lui.
+
+**Exigence.** L'horaire et la donnée traversent un rechargement **ensemble**, ou
+ni l'un ni l'autre. Transmettre l'échéance d'un palier dont l'instantané n'a pas
+survécu est le défaut qui a vidé un tableau de bord réel : le nouvel
+ordonnanceur croyait les paliers frais, `due()` ne rendait rien, et les entités
+sont restées `unavailable` pendant tout un intervalle — vingt-quatre heures pour
+`menus`, `static` et `history`, et jusqu'à 06h00 pendant les heures creuses,
+où le limiteur ne pouvait pas les regarnir. Un palier sans donnée est donc dû
+immédiatement, quelle que soit l'échéance héritée.
+
+Les instantanés voyagent dans `hass.data` et **jamais** sur disque. Un
+instantané relu depuis le disque après un redémarrage serait une donnée d'âge
+inconnu présentée comme courante, ce que `fetched_at` et la règle de péremption
+existent précisément pour éviter. Dans un même processus l'appariement est sain ;
+après un vrai redémarrage le magasin est vide, tous les paliers sont donc dus, et
+la première collecte a lieu — ce qu'un redémarrage doit faire.
+
 **Exigence.** Le limiteur ne connaît ni PRONOTE ni Home Assistant. Il prend une
 horloge injectable et rend des décisions. C'est ce qui le rend testable à 100 %
 sans réseau ni instance, comme l'exige le §11 de la spécification.
@@ -593,6 +627,9 @@ nommément, parce qu'ils sont ceux qui échouent en production :
 | `Erreur.G = 22` | **n'entre pas** dans le repli, journalisé comme bug |
 | Succès après cinq échecs | compteur d'échecs à zéro immédiatement |
 | Entrée en heures creuses pendant un lot | le lot en cours se termine, le suivant est reporté |
+| Palier sans instantané en heures creuses | collecte en `critical`, la dispense cesse dès qu'il en a un |
+| Rechargement, instantané retiré de la transmission | palier redemandé malgré l'échéance héritée |
+| Rechargement, instantané conservé | palier **non** redemandé, §7.3 tenu |
 | Deux comptes simultanés | compteurs indépendants, exécuteurs indépendants |
 | Gigue | bornée dans `[0,5 ; 1,5] × nominal`, testée avec un générateur figé |
 

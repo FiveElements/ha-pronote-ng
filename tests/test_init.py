@@ -37,11 +37,15 @@ from custom_components.pronote_ng import async_remove_config_entry_device
 from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
     DOMAIN,
+    FUNC_MENUS,
+    FUNC_TIMETABLE,
     ISSUE_ACCOUNT_UNREADABLE,
     ISSUE_BOOTSTRAP_FAILED,
     OPT_TIER_ENABLED,
     SERVICE_GET_RATE_LIMIT_STATUS,
     SERVICE_REFRESH,
+    TIER_PRIORITY,
+    Priority,
     Tier,
 )
 from custom_components.pronote_ng.hardened_client import BootstrapUnavailable
@@ -49,6 +53,7 @@ from custom_components.pronote_ng.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
 )
+from custom_components.pronote_ng.tiers import collect_tier
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
@@ -701,3 +706,168 @@ async def test_the_account_device_cannot_be_deleted(
     assert parent is not None, "the account device is missing from the fixture"
 
     assert await async_remove_config_entry_device(hass, mock_entry, parent) is False
+
+
+class TestWhatSurvivesAReload:
+    """A reload must never leave an entity empty.
+
+    This is a defect that reached a live instance. An options save reloads the
+    config entry; the reload handed the *schedule* across but built fresh,
+    empty coordinators. The new scheduler therefore believed every tier was
+    freshly collected, `due()` returned nothing, and the batch that ran was a
+    batch of nothing -- so every child entity read `unavailable` for a whole
+    tier interval, which is twenty-four hours for `menus`, `static` and
+    `history`. Inside quiet hours the limiter refused to refill them at all, so
+    a reload at 22:10 emptied the dashboard until 06:00.
+    """
+
+    async def test_the_data_survives_so_no_entity_goes_empty(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The fix, stated as the user-visible promise rather than a mechanism.
+
+        Asserted on the state machine and not on the coordinators, because
+        "the entity has a value" is the thing that was broken; a test that
+        checked `coordinator.data` could pass with the entity still
+        unavailable.
+        """
+        # Read from `translations/en.json` rather than derived from the
+        # translation key: the suffix comes from the *name*, and guessing
+        # it is the mistake that put eleven identifiers that do not exist
+        # into annexe A.
+        entity_id = "sensor.enfant_un_timetable_this_week"
+        before = hass.states.get(entity_id)
+        assert before is not None
+        assert before.state not in ("unavailable", "unknown")
+
+        await hass.config_entries.async_reload(account.entry.entry_id)
+        await hass.async_block_till_done()
+
+        after = hass.states.get(entity_id)
+        assert after is not None
+        assert after.state == before.state
+
+    async def test_a_tier_whose_data_did_not_survive_is_due_again(
+        self,
+        hass: HomeAssistant,
+        account: PronoteAccount,
+        parent_client: FakeClient,
+    ) -> None:
+        """The invariant: no data means due, whatever the schedule claims.
+
+        The schedule and the data are only sound *together*. This drops one
+        tier's snapshot from the hand-off while leaving its deadline in place
+        -- exactly the shape the defect had -- and requires the scheduler to
+        ignore that deadline. Without the pairing the tier would sit idle,
+        holding nothing, until its interval elapsed.
+        """
+        from custom_components.pronote_ng.account import (
+            _saved_schedule,
+            _saved_snapshots,
+        )
+
+        entry_id = account.entry.entry_id
+        before = len(parent_client.posted_names)
+        await hass.config_entries.async_unload(entry_id)
+        await hass.async_block_till_done()
+
+        # The schedule remembers every tier; the data forgets the timetable.
+        inherited = _saved_schedule(hass)[entry_id]
+        assert str(Tier.TIMETABLE) in inherited
+        assert str(Tier.MENUS) in inherited
+        _saved_snapshots(hass)[entry_id].pop(Tier.TIMETABLE)
+
+        await hass.config_entries.async_setup(entry_id)
+        await hass.async_block_till_done()
+
+        account = hass.data[DOMAIN][entry_id]
+
+        # Collected again, because it had nothing. The snapshot is the proof:
+        # it was dropped from the hand-off above, so its only possible source
+        # is a fresh request placed despite the inherited deadline.
+        assert account.snapshot(Tier.TIMETABLE, CHILDREN[0][0]) is not None
+
+        # The control, and the reason this is not simply "re-collect
+        # everything on reload": `menus` kept its data, so it kept its
+        # deadline and was never asked for. §7.3 -- tuning the cadence must
+        # not cost a round of requests -- still holds.
+        #
+        # Asserted on the requests actually placed rather than on
+        # `last_collected`, because the suite freezes the clock: a tier
+        # re-collected under a frozen clock records the very instant it
+        # inherited, so the two are indistinguishable by value. `posts` is
+        # the ground truth for what went to the wire.
+        placed = parent_client.posted_names[before:]
+        assert FUNC_TIMETABLE[0] in placed
+        assert FUNC_MENUS[0] not in placed
+
+    async def test_an_empty_carry_restores_nothing_and_claims_nothing(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A tier carried as an empty mapping is not data.
+
+        Reporting it as restored would hand its deadline back and strand its
+        entities -- the defect, reintroduced through the door marked "we did
+        carry something for that tier".
+        """
+        assert account._restore_snapshots(None) == frozenset()
+        assert account._restore_snapshots({Tier.TIMETABLE: {}}) == frozenset()
+
+    async def test_a_tier_with_no_data_collects_ahead_of_quiet_hours(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The half of the fix a reload cannot cover: a cold restart.
+
+        After a real restart the hand-off store is empty, so every tier is due
+        -- but during quiet hours the limiter refuses everything below
+        `critical`, and an instance restarted at 23:00 published nothing at all
+        until 06:00. §2.5 is explicit that an unavailable entity breaks
+        automations rather than merely looking empty, and the first collection
+        is precisely the one somebody is watching for.
+
+        `critical` is not a new hole: it is the priority the login itself uses,
+        and the quiet-hours branch of `RateLimiter.admit` already exempts it.
+        """
+        del hass
+        student_id = CHILDREN[0][0]
+        recorded: list[Priority] = []
+        original = account.session.run
+
+        async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
+            recorded.append(priority)
+            return await original(name, priority, fn, **kwargs)
+
+        # A tier that has never produced anything, which is what a cold
+        # restart leaves behind.
+        account.coordinators[Tier.MENUS].data = {}
+        with patch.object(account.session, "run", spy):
+            await collect_tier(account, Tier.MENUS, student_id)
+
+        assert recorded == [Priority.CRITICAL]
+
+    async def test_a_tier_that_already_has_data_keeps_its_own_priority(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The dispensation is one batch per tier, not a standing exemption.
+
+        This is the assertion that keeps the previous one honest. If the
+        priority did not fall back once a snapshot exists, `menus` would
+        outrank quiet hours every night for the rest of the year -- which is
+        the opposite of what quiet hours are for.
+        """
+        del hass
+        student_id = CHILDREN[0][0]
+        assert account.snapshot(Tier.MENUS, student_id) is not None
+
+        recorded: list[Priority] = []
+        original = account.session.run
+
+        async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
+            recorded.append(priority)
+            return await original(name, priority, fn, **kwargs)
+
+        with patch.object(account.session, "run", spy):
+            await collect_tier(account, Tier.MENUS, student_id)
+
+        assert recorded == [TIER_PRIORITY[Tier.MENUS]]
+        assert TIER_PRIORITY[Tier.MENUS] is not Priority.CRITICAL
