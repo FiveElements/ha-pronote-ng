@@ -168,6 +168,34 @@ async def async_unload_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> 
     return unloaded
 
 
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,  # noqa: ARG001 -- required by the integration contract
+    entry: PronoteConfigEntry,
+    device: dr.DeviceEntry,
+) -> bool:
+    """Whether the user may delete this device from the device page.
+
+    Without this hook Home Assistant hides the delete button and answers the
+    WebSocket call with "Config entry does not support device removal". That
+    was the state when §10.5 of the user guide, and the release notes of
+    v0.0.10, both told the reader to delete the stale child device: an
+    instruction the code made impossible. The button is the whole remedy
+    offered for a generation the repair deliberately leaves alone, so its
+    absence turned a documented cleanup into a dead end.
+
+    A **child** device may be removed. If the child is still followed the
+    entry recreates it on the next reload, which is Home Assistant's normal
+    behaviour for a device that is still there and costs nothing; if it is a
+    superseded generation, this is the only way to be rid of it.
+
+    The **account** device may not. Every child declares it as `via_device`,
+    so removing it would leave the children pointing at a parent that no
+    longer exists -- the exact state that once flattened the device tree until
+    the next restart.
+    """
+    return (DOMAIN, entry.entry_id) not in device.identifiers
+
+
 async def async_reload_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> None:
     """Apply an options change by reloading, without a restart (§7.3).
 

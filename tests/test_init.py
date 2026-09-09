@@ -33,6 +33,7 @@ from homeassistant.helpers import (
 from pronotepy.exceptions import CryptoError, MFAError, PronoteAPIError
 import pytest
 
+from custom_components.pronote_ng import async_remove_config_entry_device
 from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
     DOMAIN,
@@ -653,3 +654,50 @@ async def test_a_batch_with_nothing_due_is_still_counted(
     await account._async_tick()
 
     assert account.completed_ticks == before + 1
+
+
+async def test_a_stale_child_device_can_be_deleted(
+    hass: HomeAssistant,
+    account: PronoteAccount,
+    mock_entry: MockConfigEntry,
+) -> None:
+    """The guide's only remedy for a superseded generation is the delete button.
+
+    Without `async_remove_config_entry_device` Home Assistant hides that
+    button and refuses the call with "Config entry does not support device
+    removal". §10.5 and the v0.0.10 release notes both told the reader to
+    delete the stale device, so the documentation promised something the code
+    made impossible -- found by trying to follow my own instructions on a live
+    instance and being refused.
+    """
+    del account
+    devices = dr.async_get(hass)
+    stale = devices.async_get_or_create(
+        config_entry_id=mock_entry.entry_id,
+        identifiers={(DOMAIN, f"{mock_entry.entry_id}_46#SUPERSEDED")},
+        name="Enfant Un",
+    )
+
+    assert await async_remove_config_entry_device(hass, mock_entry, stale) is True
+
+
+async def test_the_account_device_cannot_be_deleted(
+    hass: HomeAssistant,
+    account: PronoteAccount,
+    mock_entry: MockConfigEntry,
+) -> None:
+    """Every child declares it as `via_device`.
+
+    Removing it would leave the children pointing at a parent that no longer
+    exists, which is the state that once flattened the whole device tree until
+    the next restart. Allowing everything would have been the shorter hook and
+    would have shipped that.
+    """
+    del account
+    devices = dr.async_get(hass)
+    parent = devices.async_get_device_by_identifier(
+        (DOMAIN, mock_entry.entry_id), mock_entry.entry_id
+    )
+    assert parent is not None, "the account device is missing from the fixture"
+
+    assert await async_remove_config_entry_device(hass, mock_entry, parent) is False

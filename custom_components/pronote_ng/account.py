@@ -727,15 +727,35 @@ class PronoteAccount:
             # nothing logged anywhere. `config_flow._account_identity` already
             # learned that lesson for the *account* id and drops the signature
             # before comparing; nobody carried it here.
+            # Two sentences of this message were written before the minted
+            # keys existed and became false with them: the previous
+            # generation's entities *are* still updated, because their
+            # identity no longer contains the rotating identifier, and
+            # re-selecting is not a fix -- it would store the identifier
+            # PRONOTE announces today, which rotates again at the next
+            # session and brings the reader straight back here. A peer session
+            # read the old wording during an incident and came within one step
+            # of acting on it, which is what an instruction that has outlived
+            # its cause costs.
+            #
+            # What remains true is narrower and is the part worth saying: the
+            # *selection* cannot survive a rotation, because it is stored as
+            # resource identifiers. A parent who followed one child of two
+            # therefore has both followed again after a rotation, with
+            # entities appearing for the one they had excluded.
             _LOGGER.warning(
                 "none of the %d selected children match the %d the account "
-                "now announces, so all of them are followed. PRONOTE resource "
+                "now announces, so all %d are followed. PRONOTE resource "
                 "identifiers are not stable between sessions, so this is "
-                "expected to happen and is recovered from -- but it also means "
-                "the entities of the previously followed children are no "
-                "longer updated. Re-select the children in the options to "
-                "settle the selection on what the account announces today",
+                "expected and is recovered from: the entities keep their "
+                "identity and keep updating, and there is nothing to repair. "
+                "The one consequence is that a narrower selection has lapsed "
+                "-- if you had chosen not to follow a child, it is followed "
+                "again now. Re-selecting in the options restores that for "
+                "this session but not beyond it, because the selection is "
+                "stored as the identifiers that rotate",
                 len(self._selected_children),
+                len(available),
                 len(available),
             )
         return chosen or available
