@@ -81,6 +81,12 @@ PARIS = ZoneInfo("Europe/Paris")
 #: tests something different every morning.
 SCHOOL_DAY = datetime(2026, 3, 12, 8, 0, tzinfo=PARIS)
 
+#: How many drain cycles the `account` fixture will spend waiting for the first
+#: collection batch. Generous because it costs nothing when the batch is already
+#: finished -- the loop exits on the first check -- and because the alternative
+#: to a bound is a hung suite rather than a failed test.
+_BATCH_DRAIN_ATTEMPTS = 50
+
 #: Two children on one parent account. Two rather than one throughout, because
 #: most defects in the collection loop are invisible with one: a tier that
 #: forgets ``set_child``, a snapshot keyed by tier instead of by student, a
@@ -303,7 +309,33 @@ if HAS_HASS_HARNESS:
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
             await hass.async_block_till_done()
 
-            yield mock_entry.runtime_data
+            account: PronoteAccount = mock_entry.runtime_data
+            # Wait for the *first batch* and not merely for the loop to go
+            # quiet. Set-up schedules the batch as a task, and one
+            # `async_block_till_done` is not a guarantee that it finished: a
+            # tier's work crosses the single-worker executor and back, so a
+            # continuation can be created after the drain has decided there is
+            # nothing pending. On an idle machine the batch always won that
+            # race; under CPU contention it did not, and the symptom was a
+            # single test failing -- the *first* in its module, whose drain
+            # competes with pytest importing that module -- with the
+            # lowest-priority tier's entity `unavailable` because its snapshot
+            # had not landed yet.
+            #
+            # Every entity test in this suite assumes the first collection has
+            # happened, so the guarantee belongs here rather than in the one
+            # test that happened to expose its absence. Waiting on the tick
+            # lock, and not on any tier having data, is deliberate: tests that
+            # break a tier on purpose must still get past this line.
+            for _ in range(_BATCH_DRAIN_ATTEMPTS):
+                if not account._tick_lock.locked():
+                    break
+                await hass.async_block_till_done()
+            else:  # pragma: no cover - a batch that never ends is a defect
+                pytest.fail("the first collection batch never finished")
+            await hass.async_block_till_done()
+
+            yield account
 
             if mock_entry.state is ConfigEntryState.LOADED:
                 await hass.config_entries.async_unload(mock_entry.entry_id)
