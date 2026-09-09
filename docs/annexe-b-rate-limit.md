@@ -218,6 +218,28 @@ d'attributs `Start({…})`**. Même dans ce cas, la réparation ne nomme pas la
 cause. L'état `ip_suspended` de la v1 est supprimé : un état que l'intégration ne
 peut pas établir de façon fiable ne doit pas exister dans son vocabulaire.
 
+**Pourquoi cette exigence, plutôt qu'une détection simplement plus fine.** Le
+coût d'une cause fausse n'est pas symétrique. « La connexion n'a pas pu être
+établie » fait chercher : on vérifie le mot de passe, on ouvre PRONOTE dans un
+navigateur, on attend une heure. « Votre adresse est bannie » fait **renoncer**,
+et fait porter l'accusation à l'établissement. Une intégration qui se trompe
+dans le premier sens coûte du temps ; dans le second, elle fait abandonner une
+installation qui fonctionnait. C'est pourquoi la règle n'est pas « détecter
+mieux » mais « nommer le symptôme et énumérer les causes », et elle se généralise
+bien au-delà du cas de l'adresse IP.
+
+**Et cette exigence est tenue par deux tests, pas seulement écrite.** La
+divergence dans `hardened_client.py` est une **suppression**, ce qui est
+invisible à la lecture : quelqu'un comparant le code à celui d'amont verra un
+contrôle manquant et sera tenté de le rétablir.
+`test_a_page_without_a_start_block_is_a_bootstrap_condition`
+(`tests/test_hardened_client.py`) exige `"IP" not in str(error)` sur plusieurs
+pages inutilisables ; `test_the_two_capitals_upstream_reads_as_a_ban_are_ignored`
+pose trois mots français ordinaires contenant les lettres `IP` sur une page
+saine et vérifie qu'aucun ne produit de suspension. Le second existe pour
+**expliquer le contrôle absent** à qui diffe, et non seulement pour couvrir une
+branche.
+
 ---
 
 ## 4. Repli exponentiel
