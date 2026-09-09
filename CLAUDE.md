@@ -189,6 +189,33 @@ Two entity behaviours in `entity.py`:
   data or the snapshot aged past `stale_after` × its tier's interval; in between
   it keeps its value and flags its age. A `numeric_state` trigger on an entity
   that flaps to `unavailable` and back fires spuriously.
+
+  Those are **two questions asked separately**, and merging them cost a live
+  instance its whole dashboard. `PronoteEntity.available` asks
+  `snapshot is not None` first; `FetchScheduler.is_stale` only ever answers the
+  second, about **age**, and must return `False` for a tier with no recorded
+  collection — there is no age to have exceeded. Answering `True` there looks
+  obviously right ("no collection, nothing to keep") and is a trap, because
+  `PronoteAccount._async_collect` calls `coordinator.publish` — which is what
+  notifies the entities — and `scheduler.mark_collected` only after the loop
+  over the students. Every entity is therefore told its data arrived during the
+  one instant when its tier holds a snapshot and no age, and each wrote itself
+  `unavailable` on the very push that delivered it, with nothing left to
+  re-render. Measured: ten tiers collected, nineteen entities across seven
+  tiers stayed empty holding data. The entities in `CLOCK_DRIVEN_KEYS` repaired
+  themselves, which is why `timetable` and `homework` looked healthy and
+  `marks`, `news` and `menus` waited a full tier interval — twenty-four hours,
+  or 06:00 with quiet hours on. The same defect had been showing up in CI as
+  one flaky run in twenty on the lowest-priority tier.
+
+  Two corollaries worth knowing before you debug this class of symptom. Home
+  Assistant publishes **no** `extra_state_attributes` on an entity that is
+  `unavailable`, so a missing `fetched_at` or `stale` is a restatement of the
+  word `unavailable` and never evidence about what the coordinator holds —
+  read `calls_by_tier` and `age_seconds` from `diagnostics.py` instead. And
+  `unknown` *carrying* `fetched_at` is a different, healthy state: the entity
+  is fed and the value legitimately does not exist, which is the ordinary case
+  for `menu_today` on a day with no menu.
 - **Clock-driven re-evaluation.** Entities whose state depends on the *time*
   ("in class", "next lesson", "absence in progress") schedule
   `async_track_point_in_time` at their next known transition, or they would be
