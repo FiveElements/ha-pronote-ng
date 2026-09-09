@@ -2,7 +2,7 @@
 
 Four upstream behaviours make the plain client unusable behind a rate limiter
 that claims to be the only path to the network. All four are verified against
-pronotepy 2.15.6.
+pronotepy 2.15.7.
 
 **1. It re-authenticates behind the caller's back.** ``ClientBase.post``
 catches *every* ``PronoteAPIError`` except ``ExpiredObject``, calls
@@ -268,8 +268,24 @@ def _patched_communication(
         _TIMEOUTS.value = previous
 
 
-def _log_identification(response: Mapping[str, Any]) -> None:
-    """Log the three flags that decide whether a login can possibly succeed.
+def _shape(value: str) -> str:
+    """Describe a credential without disclosing it.
+
+    Three facts, and they are the three the key agreement turns on: how long it
+    is, whether lowercasing it would change it, and whether it looks like an
+    opaque hexadecimal identifier rather than something a human typed. None of
+    them narrows the value usefully -- a length and a character class leave the
+    search space astronomically large -- and without them the failure below
+    cannot be told apart from a wrong token.
+    """
+    hexish = bool(value) and all(char in "0123456789abcdefABCDEF" for char in value)
+    return f"{len(value)}ch/lower={value == value.lower()}/hex={hexish}"
+
+
+def _log_identification(
+    response: Mapping[str, Any], username: str, password: str, login_mode: str
+) -> None:
+    """Log what decides whether a login can possibly succeed.
 
     This exists because upstream's own diagnostic is unusable here.
     ``pronotepy.clients`` has no logger of its own -- ``clients.log is
@@ -280,18 +296,21 @@ def _log_identification(response: Mapping[str, Any]) -> None:
     attach to a public issue.
 
     So the client reads the response it already holds, and logs only what
-    decides the key agreement in ``ClientBase._login``:
+    decides the key agreement in ``ClientBase._login``, which is::
 
-    * ``modeCompMdp`` -- when true, upstream lowercases the password *before*
-      hashing it. Harmless for a human password; destructive for a token or a
-      QR code's ``jeton``, which are case-sensitive. A login that fails at the
-      challenge with a correct token looks exactly like a wrong one.
-    * ``modeCompLog`` -- the same for the username.
+        key = username[.lower()] + SHA256(alea + password[.lower()]).upper()
+
+    * ``modeCompLog`` -- when true, upstream lowercases the *username* before
+      putting it in the key.
+    * ``modeCompMdp`` -- the same for the password.
     * ``alea`` -- the salt prefixed to the password before the SHA-256. Its
-      presence changes the key; only whether it is there and how long it is are
-      recorded.
+      presence changes the key, so "absent" and "empty" are recorded apart.
+    * the two credentials' *shapes*, because a case-folding flag only matters
+      if the value it folds actually has an upper-case character in it. Without
+      that, reading ``modeCompLog=1`` says nothing about whether it did any
+      harm -- which is the difference between a cause and a coincidence.
 
-    Never the ``challenge`` and never the credentials: the point of this
+    Never the ``challenge`` and never a credential's content: the point of this
     function is to make the pronotepy logger unnecessary, not to reproduce it.
     """
     try:
@@ -302,11 +321,15 @@ def _log_identification(response: Mapping[str, Any]) -> None:
 
     alea = data.get("alea") or ""
     _LOGGER.debug(
-        "identification: modeCompLog=%s modeCompMdp=%s alea=%s(%d chars) keys=%s",
+        "identification: mode=%s modeCompLog=%s modeCompMdp=%s alea=%s(%d chars) "
+        "login=%s token=%s keys=%s",
+        login_mode,
         data.get("modeCompLog"),
         data.get("modeCompMdp"),
         "present" if alea else "absent",
         len(str(alea)),
+        _shape(username),
+        _shape(password),
         sorted(data),
     )
 
@@ -406,7 +429,12 @@ class HardenedClient(pronotepy.Client):
 
         result: dict[str, Any] = self.communication.post(function_name, post_data)
         if function_name == "Identification":
-            _log_identification(result)
+            # Read before the key is derived, because everything the failure
+            # turns on is in this one response and nothing else ever shows it.
+            username = str(getattr(self, "username", "") or "")
+            password = str(getattr(self, "password", "") or "")
+            mode = str(getattr(self, "login_mode", "") or "")
+            _log_identification(result, username, password, mode)
         return result
 
     def refresh(self) -> None:

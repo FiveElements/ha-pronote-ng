@@ -10,7 +10,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/FiveElements/ha-pronote-ng/issues",
   "requirements": [
-    "pronotepy==2.15.6"
+    "pronotepy==2.15.7"
   ],
-  "version": "0.0.7"
+  "version": "0.0.8"
 }

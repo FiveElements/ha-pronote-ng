@@ -92,7 +92,7 @@ URL = "https://demo.example.invalid/pronote/parent.html"
 QR_PAYLOAD = {
     # Hexadecimal, and that is not cosmetic: `qrcode_login` runs
     # `bytes.fromhex` on both of these before it does anything else
-    # (pronotepy 2.15.6, `clients.py:184-185`), so a payload that is not
+    # (pronotepy 2.15.7, `clients.py:184-185`), so a payload that is not
     # hex is rejected by `_parse_qr_payload` and never reaches the probe.
     # A fixture written in prose was therefore testing a shape the code
     # now refuses. Visibly fictional all the same, per CONTRIBUTING §1.1.

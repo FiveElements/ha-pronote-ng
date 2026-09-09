@@ -8,7 +8,23 @@
 # which is the only failure mode a version floor has. The matrix in
 # validate.yml tests the floating latest alongside it, tolerating its failure.
 pytest-homeassistant-custom-component==0.13.363
-pronotepy==2.15.6
+
+# 2.15.7, and the two-week gap before this bump is the whole argument for
+# watching this pin.
+#
+# PRONOTE 2026.2.5.6 changed the challenge exchange: `challenge` stopped being
+# an AES blob to decrypt, un-alea and re-encrypt, and became a plain string to
+# encrypt as it stands. pronotepy 2.15.7 (2026-09-03) is three lines in
+# `ClientBase._login` doing exactly that, under a commit named `fix
+# compatibility with PRONOTE 2026.2.5.6`.
+#
+# Against a school already on 26.2.5, 2.15.6 therefore fails *every* login --
+# every mode, not only QR, since `_login` is common to all of them -- and it
+# fails as `CryptoError("Decryption failed while trying to un pad")`, to which
+# upstream appends "probably the qr code has expired" whenever the mode is
+# `qr_code`. That message is a guess, not a finding, and it cost most of a day:
+# no key derivation can unpad a string that was never ciphertext.
+pronotepy==2.15.7
 ruff==0.14.4
 mypy==1.18.2
 pytest-cov

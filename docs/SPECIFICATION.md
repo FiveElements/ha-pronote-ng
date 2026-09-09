@@ -4,13 +4,13 @@
 | --- | --- |
 | **Domaine** | `pronote` |
 | **Cible** | Home Assistant 2026.9 ou supérieur |
-| **Dépendance** | `pronotepy == 2.15.6` (épinglée) |
+| **Dépendance** | `pronotepy == 2.15.7` (épinglée) |
 | **Distribution** | HACS, dépôt personnalisé |
 | **Statut** | Spécification — version 2, 8 septembre 2026 |
 
 > **Révision v2.** Cette version intègre la revue contradictoire consignée dans
 > [`revue-contradictoire-v1.md`](revue-contradictoire-v1.md), dont chaque
-> affirmation porteuse a été revérifiée dans la source de `pronotepy` 2.15.6.
+> affirmation porteuse a été revérifiée dans la source de `pronotepy` 2.15.7.
 > Les changements substantiels : la stratégie de session est inversée (§6.5), la
 > règle de détection des changements devient double (§2.2), un client durci
 > devient prérequis (§3.6), les paliers passent de treize à dix (§5.2), et le
@@ -1535,7 +1535,7 @@ de faire : chacune coûte quelque chose, et il faut savoir ce qu'on achète.
 
 La revue contradictoire de [`revue-contradictoire-v1.md`](revue-contradictoire-v1.md)
 a porté sur six décisions soumises et sept points non soumis. Chacune de ses
-affirmations porteuses a été revérifiée dans la source de `pronotepy` 2.15.6 :
+affirmations porteuses a été revérifiée dans la source de `pronotepy` 2.15.7 :
 **quatorze sur quatorze se confirment**, et aucune erreur n'a été trouvée dans
 la revue.
 

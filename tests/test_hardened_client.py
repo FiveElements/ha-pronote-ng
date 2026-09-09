@@ -1311,7 +1311,10 @@ def test_the_flags_that_decide_the_key_are_logged(
     caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
 
     hardened_client._log_identification(
-        _identification(modeCompLog=True, modeCompMdp=True, alea="abc", challenge="ff")
+        _identification(modeCompLog=True, modeCompMdp=True, alea="abc", challenge="ff"),
+        "STUDENT-1",
+        "0badc0de",
+        "qr_code",
     )
 
     assert "modeCompLog=True" in caplog.text
@@ -1331,7 +1334,9 @@ def test_an_absent_salt_is_reported_as_absent_and_not_as_empty(
     """
     caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
 
-    hardened_client._log_identification(_identification(modeCompLog=False))
+    hardened_client._log_identification(
+        _identification(modeCompLog=False), "student-1", "0badc0de", "normal"
+    )
 
     assert "alea=absent(0 chars)" in caplog.text
 
@@ -1352,7 +1357,10 @@ def test_the_challenge_and_the_credentials_are_never_logged(
     secret = "SENTINEL-CHALLENGE-DO-NOT-LEAK"
 
     hardened_client._log_identification(
-        _identification(modeCompLog=False, modeCompMdp=False, challenge=secret)
+        _identification(modeCompLog=False, modeCompMdp=False, challenge=secret),
+        secret,
+        secret,
+        "normal",
     )
 
     assert secret not in caplog.text
@@ -1374,6 +1382,36 @@ def test_a_response_of_the_wrong_shape_says_so_instead_of_raising(
     """
     caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
 
-    hardened_client._log_identification({"unexpected": "shape"})
+    hardened_client._log_identification(
+        {"unexpected": "shape"}, "student-1", "0badc0de", "normal"
+    )
 
     assert "no data section" in caplog.text
+
+
+def test_the_credential_shapes_are_logged_without_the_credentials(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Reading ``modeCompLog=1`` is not enough to know it did any harm.
+
+    A case-folding flag only matters if the value it folds has an upper-case
+    character in it, so the log carries each credential's length, whether
+    lowercasing would change it, and whether it looks like an opaque
+    hexadecimal identifier. That is the difference between a cause and a
+    coincidence -- and none of the three narrows the value usefully, which is
+    why they are the only three.
+    """
+    caplog.set_level(logging.DEBUG, logger=hardened_client.__name__)
+    secret = "SENTINEL-LOGIN-DO-NOT-LEAK"
+
+    hardened_client._log_identification(
+        _identification(modeCompLog=True, modeCompMdp=False),
+        secret,
+        "0badc0de",
+        "qr_code",
+    )
+
+    assert secret not in caplog.text
+    assert f"login={len(secret)}ch/lower=False/hex=False" in caplog.text
+    assert "token=8ch/lower=True/hex=True" in caplog.text
+    assert "mode=qr_code" in caplog.text

@@ -1133,7 +1133,7 @@ def _parse_qr_payload(raw: str) -> dict[str, Any]:
     # Presence is not enough, and the gap was expensive. `qrcode_login` does
     # `bytes.fromhex(qr_code["login"])` and the same for `jeton` **before** the
     # `try` that turns a decryption failure into `QRCodeDecryptError`
-    # (pronotepy 2.15.6, `clients.py:184-191`). A truncated or mangled hex
+    # (pronotepy 2.15.7, `clients.py:184-191`). A truncated or mangled hex
     # string therefore raises a bare `ValueError` from inside upstream, which is
     # not a `PronoteAPIError`, escapes every classified arm of the probe, and
     # lands in the last-resort `except Exception`.

@@ -23,7 +23,7 @@ DOMAIN: Final = "pronote_ng"
 # ---------------------------------------------------------------------------
 # Protocol surface
 # ---------------------------------------------------------------------------
-# Tab identifiers, verified against pronotepy 2.15.6. Two of these were wrong in
+# Tab identifiers, verified against pronotepy 2.15.7. Two of these were wrong in
 # specification v1 and are called out here so a future reader does not "fix"
 # them back: reading the news feed is `PageActualites` (clients.py:856), while
 # `SaisieActualites` is the *write* used by Information.mark_as_read

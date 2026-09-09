@@ -69,7 +69,7 @@ cette intégration découle de ce fait : une seule voie vers le réseau, un
 budget compté, et une comptabilité de l'authentification séparée de celle des
 requêtes.
 
-La dépendance amont est `pronotepy==2.15.6`, épinglée exactement
+La dépendance amont est `pronotepy==2.15.7`, épinglée exactement
 (`custom_components/pronote_ng/manifest.json`). Le pin n'est pas de la
 prudence rituelle : la moitié des décisions de la passerelle et du client
 durci reposent sur des détails de comportement vérifiés dans cette version
@@ -136,7 +136,7 @@ flowchart TB
     HC["hardened_client.py · client durci et transport"]
   end
 
-  PY["pronotepy 2.15.6"]
+  PY["pronotepy 2.15.7"]
   NET["Serveur PRONOTE de l etablissement"]
 
   CE --> ACC
@@ -1171,7 +1171,7 @@ et elle doit signifier que l'école l'a dite.
 ### 6.4 Le client durci
 
 `hardened_client.py` n'est pas une option mais un **prérequis**, pour quatre
-comportements amont vérifiés contre `pronotepy` 2.15.6 et énumérés en tête de
+comportements amont vérifiés contre `pronotepy` 2.15.7 et énumérés en tête de
 fichier (`hardened_client.py:1-41`) :
 
 1. **Il se ré-authentifie derrière le dos de l'appelant.** `ClientBase.post`

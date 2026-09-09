@@ -2,7 +2,7 @@
 
 Référence de [`SPECIFICATION.md`](SPECIFICATION.md). Chaque ligne indique
 l'entité, son état, ses attributs, le palier qui l'alimente et l'origine de la
-donnée dans `pronotepy` 2.15.6.
+donnée dans `pronotepy` 2.15.7.
 
 Conventions de lecture :
 
