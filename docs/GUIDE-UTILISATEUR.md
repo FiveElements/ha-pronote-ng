@@ -498,9 +498,23 @@ liste de ses messages (auteur et date, pas le corps du message).
 Chaque attribut est une liste de noms de plats : `first_meal` pour l'entrée,
 `main_meal` pour le plat principal, `side_meal` pour l'accompagnement,
 `other_meal` pour ce qui ne rentre dans aucune de ces cases, puis le fromage et
-le dessert. L'attribut `is_lunch` indique s'il s'agit bien du déjeuner :
-l'intégration privilégie le déjeuner, et se rabat sur n'importe quel repas du
-jour s'il n'y en a pas.
+le dessert.
+
+**`is_lunch` n'est pas un détail, et ses trois valeurs disent trois choses.**
+« Menu du jour » sert le **déjeuner** s'il en existe un, et sinon **n'importe
+quel repas publié ce jour-là** — un dîner d'internat, un goûter. Le repas servi
+n'est donc pas toujours celui de midi, et l'attribut est le seul à le dire :
+
+| `is_lunch` | Ce que c'est |
+| --- | --- |
+| `true` | le déjeuner, celui qu'on attendait |
+| `false` | un autre repas du jour, faute de déjeuner publié |
+| `null` | rien n'est publié ce jour-là (voir `published` ci-dessous) |
+
+Conséquence directe : un message ou une carte qui annonce « au menu **ce midi** »
+peut énoncer quelque chose de faux. Si l'intitulé compte, testez `is_lunch`
+plutôt que de le supposer — et notez que `false` et `null` sont deux situations
+différentes qu'un test de véracité confond.
 
 Les menus ne sont relus qu'une fois par jour, ce qui est amplement suffisant, et
 beaucoup d'établissements n'en publient pas du tout.
