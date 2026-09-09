@@ -183,6 +183,16 @@ cet enfant. Beaucoup d'établissements n'en publient pas, et l'entité est alors
 tout simplement absente — ce n'est pas une panne. Quand elle existe, la carte
 **Image** l'affiche.
 
+**Une carte Image vide n'est pas non plus une panne.** L'entité peut exister et
+ne rien rendre : la photo est cherchée **une seule fois** par rechargement de
+l'intégration, et si l'adresse fournie par le serveur est injoignable — cela
+arrive — l'entité reste vide jusqu'au prochain rechargement. Une seule tentative
+est délibéré : réessayer à chaque affichage du tableau de bord dépenserait le
+budget quotidien sur une image qui n'existe pas. Si la photo vous manque,
+rechargez l'intégration (§ 10.4 du guide) ; ne cherchez pas un réglage, il n'y en
+a pas. C'est aussi pourquoi cette entité reste *disponible* dès que PRONOTE
+annonce une photo, qu'elle finisse par en rendre une ou non.
+
 ---
 
 ## Une valeur périmée a l'air actuelle
