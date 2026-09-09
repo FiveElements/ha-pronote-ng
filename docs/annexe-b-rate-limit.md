@@ -430,7 +430,16 @@ Le lot maximal se contente d'être le lot qui exerce le mécanisme de sacrifice.
 Enfin, agrandir la capacité serait le mauvais remède : un seau beaucoup plus
 grand resterait plein en permanence et annulerait le lissage qui est sa raison
 d'être. Le bon réglage, si un établissement se montrait tatillon, est
-d'échelonner les paliers quotidiens — ce que `history_periods` permet déjà.
+d'échelonner les paliers quotidiens.
+
+**Une réserve sur ce remède, à lever avant de s'en servir.** `history_periods`
+est le levier naturel — borner le nombre de périodes closes suivies borne le
+palier le plus lourd — et il est **inatteignable depuis l'interface** :
+`config_flow.py` ne l'expose dans aucune de ses trois sections d'options, si
+bien que seul un utilisateur qui édite `.storage` à la main peut le régler
+(ARCHITECTURE § 12.8, où sa sémantique est également ambiguë). Tant que ce
+n'est pas corrigé, ce paragraphe décrit un réglage que personne ne peut
+appliquer, et il faut le lire ainsi.
 
 ### 5.6 Sensibilité
 
@@ -445,6 +454,28 @@ d'échelonner les paliers quotidiens — ce que `history_periods` permet déjà.
 
 La première ligne est la borne haute du risque : même dans le pire cas du
 paramètre inconnu, on reste sous les 487 requêtes du modèle v1 corrigé.
+
+**La dernière ligne, elle, est la seule du tableau qui se périme toute seule, et
+dans le sens qui sous-estime.** `REQUESTS_PER_BATCH[Tier.HISTORY]` vaut **8**,
+et son commentaire dit d'où sortent ces huit : **quatre requêtes par période
+close** — `DernieresNotes` 198, `PageBulletins`, `PagePresence` 19 et
+`DernieresEvaluations` 201 — pour **deux** périodes closes. Ce facteur deux est
+une constante : l'estimateur ne compte les périodes de personne, et
+`periods_for(Tier.HISTORY)` n'y apparaît pas.
+
+Or `periods_for` suit **toutes** les périodes closes, sans plafond. Un
+établissement qui publie plusieurs découpages de la même année — trimestres et
+semestres — en annonce jusqu'à huit, donc sept closes en fin d'année, donc
+**vingt-huit requêtes par jour là où l'estimation en compte huit**. Le total
+affiché à l'utilisateur est juste en début d'année scolaire et le sous-estime
+d'une vingtaine de requêtes en fin d'année. La marge de ×10 encaisse l'écart
+sans difficulté — ce n'est pas un risque de sanction, c'est une estimation qui
+cesse d'être vraie sans que rien ne le signale, et c'est précisément ce que la
+phrase ci-dessous s'engage à éviter.
+
+Conséquence pour qui lit les capteurs de diagnostic : `calls_today` monte
+lentement de mois en mois à réglages constants, et **c'est normal**. Chaque
+trimestre qui se ferme ajoute quatre requêtes quotidiennes définitives.
 
 Les chiffres de cette section ne sont pas recalculés à la main : ils sortent de
 `options.estimate_daily_requests()`, la fonction que l'interface de
