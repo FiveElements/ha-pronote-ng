@@ -53,8 +53,10 @@ if TYPE_CHECKING:
     from homeassistant.helpers.typing import ConfigType
 
 #: One trigger per event type, not per entity. A user thinking "a room
-#: changed" should not have to know that four different changes share one
-#: ``event`` entity (annexe A §4).
+#: changed" should not have to know that six different changes share one
+#: ``event`` entity (annexe A §4) -- and the count was itself wrong here,
+#: which is the argument for the trigger list: `LESSON_EVENT_TYPES` is the
+#: only place that knows how many there are.
 TRIGGER_TYPES: Final = (
     EVENT_GRADE_ADDED,
     EVENT_HOMEWORK_ADDED,
