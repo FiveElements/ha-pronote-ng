@@ -1386,6 +1386,7 @@ Ces messages apparaissent dans **Paramètres → Système → Réparations**.
 | **Un service refuse d'agir sur le compte.** | *« Ce compte suit plusieurs enfants… Ciblez l'appareil de l'enfant plutôt que celui du compte. »* | Choisissez l'appareil de l'enfant. L'appareil du compte n'est accepté comme raccourci que s'il n'y a qu'un enfant. |
 | **Un déclencheur d'appareil ne se déclenche jamais.** | Vous avez ciblé l'appareil du compte au lieu de celui de l'enfant. Ou la catégorie concernée est désactivée. Ou l'établissement ne publie pas cette donnée. | Ciblez l'appareil de l'enfant : le compte ne propose aucun déclencheur. Vérifiez que la catégorie est activée dans « Intervalles de collecte ». |
 | **Une automatisation s'est déclenchée en masse après un redémarrage.** | Ce ne devrait pas arriver : aucun évènement n'est émis lors de la première collecte après un démarrage. | Si cela se produit, signalez-le. |
+| **Deux appareils apparaissent pour le même enfant.** | La trace d'un défaut réparé : PRONOTE change le numéro qui identifie un enfant, et l'intégration s'en servait pour nommer ses entités. Le jour où il a changé, un second appareil est apparu. | L'appareil dont les entités ne bougent plus se supprime sans risque. Voir § [10.5](#105-deux-appareils-pour-un-seul-enfant). |
 
 ### 10.4 Comment recharger ou reconfigurer
 
@@ -1403,6 +1404,41 @@ Ces messages apparaissent dans **Paramètres → Système → Réparations**.
   refusé, ne peut pas être réparé autrement.
 - **Recharger** : le menu **⋮** de l'intégration, **Recharger**. Utile après une
   mise à jour, ou pour retenter la récupération de la photo.
+
+### 10.5 Deux appareils pour un seul enfant
+
+Sur certaines installations, la liste des appareils montre **deux** appareils
+pour le même enfant : un dont les entités se mettent à jour, un dont les entités
+restent figées à leur dernière valeur. C'est la trace d'un défaut réparé, et
+l'appareil figé se supprime sans risque.
+
+**Ce qui s'est passé.** PRONOTE identifie chaque enfant par un numéro de son
+côté, et ce numéro **change** — il est lié à la session, pas à l'élève.
+L'intégration s'en servait pour nommer ses entités ; le jour où le numéro a
+changé, elle a cru découvrir un nouvel enfant et a créé un second appareil avec
+un jeu complet d'entités. L'ancien est resté, sans plus rien pour l'alimenter.
+Depuis, l'intégration attribue elle-même une clé à chaque enfant et ne dépend
+plus du numéro de PRONOTE, donc le dédoublement ne peut plus se produire.
+
+**Lequel supprimer.** Celui dont les entités ne bougent plus. Deux façons de le
+reconnaître à coup sûr :
+
+- ouvrez une de ses entités et regardez **Dernière modification** : sur
+  l'appareil mort, elle date d'avant la mise à jour ;
+- l'appareil vivant est celui que « Prochain cours » et « Cours du jour »
+  suivent au fil de la journée.
+
+**Ce que la suppression ne casse pas.** Vos tableaux de bord et vos
+automatisations pointent sur l'appareil vivant, pas sur le mort — c'est celui
+qui porte les identifiants d'entité d'origine. La mise à jour a réécrit les
+identifiants internes **sur place** : les identifiants d'entité, l'appareil, les
+noms que vous avez donnés, les pièces et les étiquettes sont conservés. Rien à
+refaire côté cartes ni côté automatisations.
+
+**Si vous hésitez**, ne supprimez rien et prenez une sauvegarde d'abord : un
+appareil figé ne consomme aucune requête et ne dérange que la liste des
+appareils. L'intégration ne le supprime pas d'elle-même, précisément parce que
+c'est à vous de décider ce qui disparaît de votre registre.
 
 ---
 
