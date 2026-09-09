@@ -1,0 +1,183 @@
+# Retour de l'école -- pronote_ng
+#
+# Ce qu'elle fait : exécute l'action de votre choix quand les cours de l'élève
+# se terminent, et sait dire si la journée s'arrête plus tôt que prévu parce
+# que des cours ont été annulés.
+#
+# Sur quoi elle s'appuie : le capteur horodaté « Fin des cours » (clé
+# `end_of_lessons`, `sensor.py:_end_of_day`) est passé directement en `at:`
+# d'un déclencheur `time` du cœur. Aucune arithmétique d'heure en Jinja : le
+# capteur exclut déjà les cours annulés et les cours dont l'élève est dispensé
+# (`sensor.py:_teaching_lessons`), donc son horodatage est l'heure de sortie
+# réelle et non celle de la grille.
+#
+# Le piège évité, et c'est l'objet de ce blueprint : « la journée finit plus
+# tôt » n'est pas la même chose que « un cours a été annulé ». Une dispense
+# décale la fin prévue exactement comme une annulation, et un test
+# `scheduled_end != state` annoncerait donc une annulation le jour où le cours
+# a bien lieu -- l'élève n'est simplement pas tenu d'y être. La condition
+# native ci-dessous porte donc sur `canceled_after`, qui compte les cours
+# ANNULÉS finissant après l'heure de sortie retenue
+# (`sensor.py:_end_of_day_attributes`).
+#
+# Le second piège évité : les jours sans cours, le capteur n'a pas de valeur et
+# vaut `unknown` ; un déclencheur `time` ignore `unknown`, donc rien ne s'arme
+# et rien ne se produit. Il n'y a aucun calendrier à écrire ni de test « est-on
+# en vacances ? ».
+#
+# Home Assistant n'offre aucun mécanisme de traduction des blueprints : la
+# version anglaise de ce même blueprint est ../en/end_of_day.yaml. La
+# duplication est assumée (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Retour de l'école
+  description: >-
+    Exécute une action à la fin des cours de l'élève : notification, ouverture
+    du portail, chauffage de la chambre, message vocal. L'heure vient du
+    capteur « Fin des cours », qui a déjà retiré les cours annulés et les
+    dispenses : c'est l'heure de sortie réelle, pas celle de la grille. Vous
+    pouvez restreindre l'automatisation aux journées écourtées par une
+    annulation -- et ce test-là est fiable, parce qu'il compte les annulations
+    au lieu de comparer deux horaires. L'automatisation ne fait rien les jours
+    sans cours et en vacances : le capteur n'a alors pas de valeur, et un
+    déclencheur horaire sans valeur ne s'arme pas.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.9.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/end_of_day.yaml
+  input:
+    eleve:
+      name: Élève
+      icon: mdi:account-school
+      input:
+        end_of_lessons_sensor:
+          name: Capteur « Fin des cours »
+          description: >-
+            L'entité `end_of_lessons` de l'élève. Attention : l'identifiant
+            d'entité dépend de la langue d'installation de Home Assistant
+            (`..._fin_des_cours` en français, `..._end_of_lessons` en
+            anglais), c'est pourquoi ce blueprint le fait choisir au lieu de le
+            coder en dur. La liste propose tous les capteurs horodatés de
+            l'intégration : prenez bien celui de la fin des cours, pas
+            « Prochain cours », « Fin de matinée » ni « Prochain réveil ».
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+                device_class: timestamp
+    reglages:
+      name: Réglages
+      icon: mdi:tune
+      collapsed: true
+      input:
+        offset:
+          name: Écart
+          description: >-
+            S'ajoute à l'heure de fin des cours. Négatif pour partir avant la
+            sonnerie, positif pour laisser le temps du trajet, zéro pour suivre
+            exactement le capteur.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+              allow_negative: true
+        only_when_shortened:
+          name: Seulement les journées écourtées par une annulation
+          description: >-
+            Activez pour ne rien faire les jours normaux et n'agir que quand au
+            moins un cours a été annulé après l'heure de sortie retenue. Le
+            test porte sur le nombre d'annulations et non sur l'écart entre la
+            fin prévue et la fin réelle : une dispense décale la fin prévue
+            sans qu'aucun cours soit annulé, et comparer les deux horaires
+            annoncerait une annulation ce jour-là.
+          default: false
+          selector:
+            boolean:
+        earliest_time:
+          name: Pas avant
+          description: >-
+            Garde-fou : un emploi du temps aberrant ne doit pas déclencher
+            l'action au milieu de la nuit.
+          default: "10:00:00"
+          selector:
+            time:
+        latest_time:
+          name: Pas après
+          description: >-
+            Garde-fou symétrique : passée cette heure, un retour de classe
+            n'est plus vraisemblable.
+          default: "22:00:00"
+          selector:
+            time:
+    retour:
+      name: Retour
+      icon: mdi:home-import-outline
+      input:
+        arrival_action:
+          name: Action à la fin des cours
+          description: >-
+            Ce qu'il faut faire : envoyer une notification, ouvrir le portail,
+            allumer le chauffage de la chambre... Les variables `title` et
+            `message` sont disponibles ; `message` dit l'heure de sortie et, le
+            cas échéant, combien de cours ont été annulés.
+          selector:
+            action:
+
+# `single` : la fin des cours arrive une fois par jour, et deux exécutions
+# simultanées n'ont aucun sens. Une valeur explicite vaut mieux qu'un défaut
+# implicite.
+mode: single
+
+triggers:
+  - alias: À l'heure de fin des cours publiée par l'intégration
+    trigger: time
+    at:
+      entity_id: !input end_of_lessons_sensor
+      offset: !input offset
+
+conditions:
+  - alias: Dans la plage horaire autorisée
+    condition: time
+    after: !input earliest_time
+    before: !input latest_time
+  # L'option est fausse par défaut, donc la branche `or` laisse passer toutes
+  # les journées sans que l'utilisateur ait à comprendre la condition. Quand
+  # elle est vraie, seul `canceled_after` décide -- et jamais une comparaison
+  # d'horaires, qui confondrait une dispense avec une annulation.
+  - alias: Journée écourtée par une annulation, si l'option est activée
+    condition: or
+    conditions:
+      - condition: template
+        value_template: "{{ not only_when_shortened }}"
+      - condition: numeric_state
+        entity_id: !input end_of_lessons_sensor
+        attribute: canceled_after
+        above: 0
+
+variables:
+  only_when_shortened: !input only_when_shortened
+  end_sensor: !input end_of_lessons_sensor
+  # Les seuls templates du fichier, et ils ne servent qu'à composer un texte :
+  # aucun déclencheur ni condition native ne sait mettre en forme une heure.
+  # Les trois attributs sont publiés par le capteur lui-même
+  # (`sensor.py:_end_of_day_attributes`).
+  end_at: >-
+    {{ (states(end_sensor) | as_datetime | as_local).strftime('%H:%M')
+       if states(end_sensor) not in ['unknown', 'unavailable'] else '?' }}
+  canceled_after: "{{ state_attr(end_sensor, 'canceled_after') | int(0) }}"
+  last_subject: "{{ state_attr(end_sensor, 'subject') or 'cours' }}"
+  title: Fin des cours
+  message: >-
+    Sortie à {{ end_at }} après {{ last_subject }}.
+    {%- if canceled_after | int > 0 %}
+    {{ canceled_after }} cours annulé{{ 's' if canceled_after | int > 1 }}
+    ensuite.
+    {%- endif %}
+
+actions:
+  - alias: Exécuter l'action choisie
+    sequence: !input arrival_action

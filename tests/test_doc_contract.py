@@ -24,6 +24,8 @@ import pytest
 
 from custom_components.pronote_ng import const
 
+from .conftest import REQUIRES_HASS
+
 #: Every event type the integration can fire, by constant name. Collected from
 #: the module rather than typed out, so a new ``EVENT_`` constant joins the
 #: vocabulary automatically and cannot be silently excluded from the check.
@@ -92,3 +94,58 @@ def test_every_event_type_the_code_can_fire_is_documented_somewhere() -> None:
     named = frozenset(re.findall(r"`([a-z_]+)`", prose)) & ALL_EVENT_TYPES
 
     assert ALL_EVENT_TYPES - named == frozenset()
+
+
+@REQUIRES_HASS
+def test_every_entity_appears_in_the_annexe_a_catalogue() -> None:
+    """An entity nobody documented is an entity nobody can find.
+
+    Annexe A is the catalogue a reader consults to learn what exists, and
+    until this test nothing checked that its identifiers were real. They were
+    not: **eleven** of them named entities that do not exist -- a
+    ``_moyennes`` that is ``_moyennes_par_matiere``, an ``_etat_limiteur``
+    that is ``_etat_du_limiteur``, a ``bride`` that is ``collectes_bridees``
+    and moved device on top. That defect is invisible in the worst way. Home
+    Assistant does not reject an unknown entity id in an automation: the
+    trigger simply never fires, and a reader who copied the catalogue
+    concludes the integration is broken.
+
+    The check runs over the **whole** ``entity`` map of ``fr.json``, not over
+    ``sensor.py``'s two tuples: the translations are already keyed by domain,
+    so buttons, binary sensors and the account's own entities cost nothing
+    extra to cover -- and five of the eleven lived precisely outside those
+    tuples.
+
+    Names are looked up in French and transliterated by Home Assistant's own
+    ``slugify`` rather than by a local re-implementation, because the accent
+    handling is exactly where this project's two repositories have already
+    disagreed once. Re-implementing it here would test the guess.
+
+    Only the presence of the suffix in backticks is asserted -- not the prose,
+    not the attribute columns. The reverse direction is deliberately not
+    checked: the annexe legitimately mentions per-period variants and other
+    non-translated identifiers, and an heuristic for those would become a list
+    of exceptions.
+    """
+    import json
+
+    from homeassistant.util import slugify
+
+    root = Path(__file__).resolve().parents[1]
+    entities = json.loads(
+        (root / "custom_components/pronote_ng/translations/fr.json").read_text(
+            encoding="utf-8"
+        )
+    )["entity"]
+    catalogue = (DOCS / "annexe-a-entites.md").read_text(encoding="utf-8")
+
+    missing = sorted(
+        f"{domain}.<é>_{slugify(entry['name'])} ({domain}/{key})"
+        for domain, keys in entities.items()
+        for key, entry in keys.items()
+        if "name" in entry and f"_{slugify(entry['name'])}`" not in catalogue
+    )
+
+    assert not missing, (
+        "these entities exist and annexe A does not list them: " + ", ".join(missing)
+    )

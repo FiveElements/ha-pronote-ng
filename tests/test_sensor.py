@@ -355,3 +355,286 @@ class TestWhenTheGapIsTooShortToBeLunch:
 
         assert state is not None
         assert state.state == "unknown"
+
+
+class TestTheNextCancellation:
+    """One filter for the state and the list, so they cannot disagree.
+
+    The state is the start of the next cancelled lesson that is not over yet;
+    `items` is every such lesson. Both use `end > now`, deliberately: two
+    filters would drift, and a card would then show a list whose first entry
+    is not the entity's own state.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """Four slots: a cancellation already over, two to come, one exemption."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-OVER",
+                    start=_day(7),
+                    end=_day(7, 30),
+                    place=0,
+                    duration=1,
+                    subject="Anglais",
+                    canceled=True,
+                ),
+                protocol.lesson(
+                    identifier="LESSON-NEXT",
+                    start=_day(10),
+                    end=_day(11),
+                    place=4,
+                    duration=2,
+                    subject="Mathématiques",
+                    canceled=True,
+                ),
+                protocol.lesson(
+                    identifier="LESSON-LATER",
+                    start=_day(14),
+                    end=_day(15),
+                    place=12,
+                    duration=2,
+                    subject="Histoire",
+                    canceled=True,
+                ),
+                protocol.lesson(
+                    identifier="LESSON-EXEMPT",
+                    start=_day(16),
+                    end=_day(17),
+                    place=16,
+                    duration=2,
+                    subject="Sport",
+                    exempted=True,
+                ),
+            ]
+        )
+        return client
+
+    async def test_the_state_is_the_start_of_the_next_one(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A timestamp, so an automation triggers without reading `items`."""
+        del account
+        state = hass.states.get("sensor.enfant_un_next_cancellation")
+
+        assert state is not None
+        assert dt_util.parse_datetime(state.state) == datetime(
+            2026, 3, 12, 10, 0, tzinfo=PARIS
+        )
+        assert state.attributes["subject"] == "Mathématiques"
+        assert state.attributes["end"] == "2026-03-12T11:00:00+01:00"
+
+    async def test_a_cancellation_already_over_is_in_neither_the_state_nor_the_list(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The single filter, checked on both outputs at once.
+
+        The 07:00 slot was cancelled and has finished; reporting it would make
+        the entity announce a cancellation nobody can still act on.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_next_cancellation")
+
+        assert state is not None
+        starts = [item["start"] for item in state.attributes["items"]]
+        assert starts == [
+            "2026-03-12T10:00:00+01:00",
+            "2026-03-12T14:00:00+01:00",
+        ]
+        assert all("07:00" not in start for start in starts)
+
+    async def test_an_exemption_is_not_reported_as_a_cancellation(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The lesson happens; this child is simply not required at it.
+
+        Announcing it as cancelled would tell a parent the class was called
+        off, which is a different fact with a different consequence.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_next_cancellation")
+
+        assert state is not None
+        subjects = [item["subject"] for item in state.attributes["items"]]
+        assert "Sport" not in subjects
+
+
+class TestWhenTheAfternoonWasCalledOff:
+    """Why the child comes home early, without a template.
+
+    `end_of_lessons` answers *when*, cancellations already removed. These two
+    attributes answer *why*, and they are two because one would lie: an
+    exemption moves the timetabled end just as a cancellation does, so
+    `scheduled_end != state` is not "a class was called off". The test for
+    that reading is `canceled_after > 0`.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """8-12 held, 14-15 cancelled, 15-17 cancelled."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(8),
+                    end=_day(12),
+                    place=0,
+                    duration=8,
+                    subject="Mathématiques",
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(14),
+                    end=_day(15),
+                    place=12,
+                    duration=2,
+                    subject="Histoire",
+                    canceled=True,
+                ),
+                protocol.lesson(
+                    identifier="LESSON-C",
+                    start=_day(15),
+                    end=_day(17),
+                    place=14,
+                    duration=4,
+                    subject="Anglais",
+                    canceled=True,
+                ),
+            ]
+        )
+        return client
+
+    async def test_the_state_still_ignores_the_cancelled_lessons(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The attributes are added beside the state, not in place of it.
+
+        An automation that triggers on the homecoming must keep working
+        untouched; the new attributes are for the notification it sends.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_lessons")
+
+        assert state is not None
+        assert dt_util.parse_datetime(state.state) == datetime(
+            2026, 3, 12, 12, 0, tzinfo=PARIS
+        )
+        assert state.attributes["subject"] == "Mathématiques"
+
+    async def test_the_timetabled_end_and_the_count_of_what_was_dropped(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A count, not a boolean: two cancelled hours is not one."""
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_lessons")
+
+        assert state is not None
+        assert state.attributes["scheduled_end"] == "2026-03-12T17:00:00+01:00"
+        assert state.attributes["canceled_after"] == 2
+
+
+class TestWhenTheChildIsMerelyExempted:
+    """The case that makes `canceled_after` worth publishing separately.
+
+    A day whose last slot is an exemption has a timetabled end later than its
+    state and **nothing** cancelled. A consumer deriving "a class was called
+    off" from `scheduled_end != state` would announce a cancellation here, on
+    a day the class is being taught -- a claim a parent acts on once and never
+    trusts again.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """8-12 held, then 14-16 taught but not required of this child."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(8),
+                    end=_day(12),
+                    place=0,
+                    duration=8,
+                    subject="Mathématiques",
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(14),
+                    end=_day(16),
+                    place=12,
+                    duration=4,
+                    subject="Sport",
+                    exempted=True,
+                ),
+            ]
+        )
+        return client
+
+    async def test_the_timetabled_end_moves_but_nothing_was_cancelled(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """`scheduled_end` differs from the state and `canceled_after` is zero."""
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_lessons")
+
+        assert state is not None
+        assert dt_util.parse_datetime(state.state) == datetime(
+            2026, 3, 12, 12, 0, tzinfo=PARIS
+        )
+        assert state.attributes["scheduled_end"] == "2026-03-12T16:00:00+01:00"
+        assert state.attributes["canceled_after"] == 0
+
+
+class TestWhenTheWholeDayIsCancelled:
+    """No lesson is attended, so the state is unknown -- and that is not enough.
+
+    Every slot cancelled is exactly the day a parent must be told about, and
+    the entity used to publish no attribute at all in that case, leaving the
+    fact reachable only through a template over `lessons`. With no retained
+    end, every cancellation counts as being after it.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """Two slots, both cancelled."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(8),
+                    end=_day(10),
+                    place=0,
+                    duration=4,
+                    subject="Mathématiques",
+                    canceled=True,
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(10),
+                    end=_day(12),
+                    place=4,
+                    duration=4,
+                    subject="Histoire",
+                    canceled=True,
+                ),
+            ]
+        )
+        return client
+
+    async def test_the_day_reports_its_timetable_and_counts_every_slot(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Unknown state, but the two attributes still carry the day."""
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_lessons")
+
+        assert state is not None
+        assert state.state == "unknown"
+        assert state.attributes["scheduled_end"] == "2026-03-12T12:00:00+01:00"
+        assert state.attributes["canceled_after"] == 2
+        # No lesson closes the day, so there is nothing to name.
+        assert "subject" not in state.attributes

@@ -35,6 +35,7 @@ SENSORS: list[tuple[str, str, str]] = [
     ("next_lesson", "Next lesson", "Prochain cours"),
     ("end_of_lessons", "End of lessons", "Fin des cours"),
     ("morning_end", "End of morning", "Fin de matinée"),
+    ("next_cancellation", "Next cancellation", "Prochaine annulation"),
     ("next_wake_up", "Wake-up time", "Prochain réveil"),
     ("next_test", "Next test", "Prochain contrôle"),
     ("lessons_today", "Lessons today", "Cours du jour"),

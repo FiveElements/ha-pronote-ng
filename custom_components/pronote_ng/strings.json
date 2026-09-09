@@ -205,6 +205,9 @@
       "morning_end": {
         "name": "End of morning"
       },
+      "next_cancellation": {
+        "name": "Next cancellation"
+      },
       "next_wake_up": {
         "name": "Wake-up time"
       },

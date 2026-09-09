@@ -1,0 +1,180 @@
+# Home from school -- pronote_ng
+#
+# What it does: runs an action of your choice when the student's lessons end,
+# and can tell whether the day is finishing early because lessons were called
+# off.
+#
+# What it relies on: the "End of lessons" timestamp sensor (key
+# `end_of_lessons`, `sensor.py:_end_of_day`) is handed straight to a core
+# `time` trigger's `at:`. No Jinja time arithmetic: the sensor already drops
+# cancelled lessons and lessons the student is exempted from
+# (`sensor.py:_teaching_lessons`), so its timestamp is the real leaving time
+# rather than the one on the timetable.
+#
+# The trap this blueprint exists to avoid: "the day ends early" is not the same
+# fact as "a lesson was cancelled". An exemption moves the timetabled end
+# exactly as a cancellation does, so a `scheduled_end != state` test would
+# announce a cancellation on a day the lesson is being taught -- the student is
+# simply not required at it. The native condition below therefore tests
+# `canceled_after`, which counts the **cancelled** lessons ending after the
+# retained leaving time (`sensor.py:_end_of_day_attributes`).
+#
+# The second trap avoided: on a day with no lessons the sensor has no value and
+# reads `unknown`; a `time` trigger ignores `unknown`, so nothing arms and
+# nothing happens. There is no calendar to write and no "are we on holiday?"
+# test.
+#
+# Home Assistant offers no translation mechanism for blueprints: the French
+# version of this same blueprint is ../fr/end_of_day.yaml. The duplication is
+# deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Home from school
+  description: >-
+    Runs an action when the student's lessons end: a notification, the gate,
+    the bedroom heating, a spoken announcement. The time comes from the "End of
+    lessons" sensor, which has already removed cancelled lessons and
+    exemptions, so it is the real leaving time and not the timetabled one. You
+    can restrict the automation to days cut short by a cancellation -- and that
+    test is trustworthy, because it counts cancellations instead of comparing
+    two times. The automation does nothing on days with no lessons or during
+    the holidays: the sensor then has no value, and a time trigger with no
+    value never arms.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.9.0
+  source_url: https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/en/end_of_day.yaml
+  input:
+    student:
+      name: Student
+      icon: mdi:account-school
+      input:
+        end_of_lessons_sensor:
+          name: "\"End of lessons\" sensor"
+          description: >-
+            The student's `end_of_lessons` entity. Note: the entity id depends
+            on the language Home Assistant was installed in
+            (`..._end_of_lessons` in English, `..._fin_des_cours` in French),
+            which is why this blueprint asks you to pick it rather than
+            hard-coding it. The list offers every timestamp sensor of the
+            integration: take the end-of-lessons one, not "Next lesson", "End
+            of morning" or "Next wake-up".
+          selector:
+            entity:
+              filter:
+                integration: pronote_ng
+                domain: sensor
+                device_class: timestamp
+    settings:
+      name: Settings
+      icon: mdi:tune
+      collapsed: true
+      input:
+        offset:
+          name: Offset
+          description: >-
+            Added to the end-of-lessons time. Negative to act before the bell,
+            positive to allow for the journey, zero to follow the sensor
+            exactly.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+              allow_negative: true
+        only_when_shortened:
+          name: Only on days cut short by a cancellation
+          description: >-
+            Turn on to do nothing on ordinary days and act only when at least
+            one lesson was cancelled after the retained leaving time. The test
+            is on the number of cancellations and not on the gap between the
+            timetabled and the real end: an exemption moves the timetabled end
+            with nothing cancelled, and comparing the two times would announce
+            a cancellation on such a day.
+          default: false
+          selector:
+            boolean:
+        earliest_time:
+          name: Not before
+          description: >-
+            A guard rail: an absurd timetable must not run the action in the
+            middle of the night.
+          default: "10:00:00"
+          selector:
+            time:
+        latest_time:
+          name: Not after
+          description: >-
+            The symmetrical guard rail: past this hour, coming home from school
+            is no longer plausible.
+          default: "22:00:00"
+          selector:
+            time:
+    arrival:
+      name: Arrival
+      icon: mdi:home-import-outline
+      input:
+        arrival_action:
+          name: Action at the end of lessons
+          description: >-
+            What to do: send a notification, open the gate, warm the bedroom...
+            The `title` and `message` variables are available; `message` gives
+            the leaving time and, where applicable, how many lessons were
+            cancelled.
+          selector:
+            action:
+
+# `single`: the end of lessons happens once a day, and two simultaneous runs
+# make no sense. An explicit value beats an implicit default.
+mode: single
+
+triggers:
+  - alias: At the end-of-lessons time published by the integration
+    trigger: time
+    at:
+      entity_id: !input end_of_lessons_sensor
+      offset: !input offset
+
+conditions:
+  - alias: Within the allowed hours
+    condition: time
+    after: !input earliest_time
+    before: !input latest_time
+  # The option defaults to false, so the `or` branch lets every day through
+  # without the user having to understand the condition. When it is true only
+  # `canceled_after` decides -- never a comparison of times, which would
+  # mistake an exemption for a cancellation.
+  - alias: Day cut short by a cancellation, if the option is on
+    condition: or
+    conditions:
+      - condition: template
+        value_template: "{{ not only_when_shortened }}"
+      - condition: numeric_state
+        entity_id: !input end_of_lessons_sensor
+        attribute: canceled_after
+        above: 0
+
+variables:
+  only_when_shortened: !input only_when_shortened
+  end_sensor: !input end_of_lessons_sensor
+  # The only templates in the file, and they compose text and nothing else: no
+  # native trigger or condition can format a time. All three attributes are
+  # published by the sensor itself (`sensor.py:_end_of_day_attributes`).
+  end_at: >-
+    {{ (states(end_sensor) | as_datetime | as_local).strftime('%H:%M')
+       if states(end_sensor) not in ['unknown', 'unavailable'] else '?' }}
+  canceled_after: "{{ state_attr(end_sensor, 'canceled_after') | int(0) }}"
+  last_subject: "{{ state_attr(end_sensor, 'subject') or 'lessons' }}"
+  title: End of lessons
+  message: >-
+    Out at {{ end_at }} after {{ last_subject }}.
+    {%- if canceled_after | int > 0 %}
+    {{ canceled_after }} lesson{{ 's' if canceled_after | int > 1 }}
+    cancelled afterwards.
+    {%- endif %}
+
+actions:
+  - alias: Run the chosen action
+    sequence: !input arrival_action

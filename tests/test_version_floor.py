@@ -12,7 +12,7 @@ platforms out of seven; and a tenfold amplification of refresh requests.
 
 The problem this module addresses is the other half of that: the number is
 written down in **seventeen** files. ``hacs.json`` declares it, the pin encodes
-it, ``validate.yml``'s gated row repeats it, and fourteen blueprints each carry
+it, ``validate.yml``'s gated row repeats it, and sixteen blueprints each carry
 a ``min_version``. Nothing made them agree. A blueprint left at the old floor
 imports happily onto an instance the integration cannot run on, and the
 failure surfaces as an automation whose entities do not exist -- which reads as
@@ -144,19 +144,20 @@ def test_every_blueprint_requires_the_floor_and_not_an_older_one(
     assert metadata["min_version"] == _declared_floor()
 
 
-def test_the_blueprints_are_the_fourteen_the_repository_ships() -> None:
+def test_the_blueprints_are_the_sixteen_the_repository_ships() -> None:
     """Guards the parametrisation above against silently covering nothing.
 
-    Seven blueprints in two languages. A glob that stopped matching -- a moved
+    Eight blueprints in two languages. A glob that stopped matching -- a moved
     directory, a renamed extension -- would turn every assertion above into
     zero assertions, and the suite would go green having checked nothing.
     """
     found = sorted(path.stem for path in BLUEPRINTS.rglob("*.yaml"))
 
-    assert len(found) == 14, found
+    assert len(found) == 16, found
     assert sorted(set(found)) == [
         "absence_alert",
         "canteen_menu",
+        "end_of_day",
         "homework_reminder",
         "lesson_canceled",
         "new_grade",

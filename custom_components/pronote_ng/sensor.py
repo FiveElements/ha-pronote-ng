@@ -170,12 +170,116 @@ def _end_of_day(facts: TimetableFacts, account: PronoteAccount) -> StateValue:
 def _end_of_day_attributes(
     facts: TimetableFacts, account: PronoteAccount
 ) -> dict[str, Any]:
-    """Which lesson closes the day, and whether its end was inferred."""
-    today = _teaching_lessons(_lessons_on(facts, account.gateway.today()))
-    if not today:
+    """Which lesson closes the day, and what the day was *supposed* to be.
+
+    The state answers "when does this child come home", cancellations already
+    removed, and that is the only fact an automation needs. But a parent who
+    is told 15:00 on a day timetabled to 17:00 wants to know *why*, and the
+    two attributes here answer it without a template walking ``lessons``:
+
+    ``scheduled_end`` is the end the day would have had with every slot
+    counted -- cancellations and exemptions included. ``canceled_after``
+    counts the **cancelled** lessons ending after the state.
+
+    They are two attributes and not one because ``scheduled_end != state``
+    does not mean "something was cancelled": an exemption moves the scheduled
+    end too, and so does a lesson the child is simply not required at. A
+    consumer that wants "the child comes home early because a class was
+    called off" must test ``canceled_after > 0``. Deriving it from the
+    difference would announce a cancellation on a day nothing was cancelled,
+    which is the sort of claim a parent acts on once and never trusts again.
+
+    ``canceled_after`` is a count and not a boolean on purpose: two cancelled
+    afternoon lessons and one are different days, and a count still answers
+    the boolean question.
+    """
+    scheduled = _lessons_on(facts, account.gateway.today())
+    if not scheduled:
         return {}
-    last = max(today, key=lambda lesson: lesson.end)
-    return {"subject": last.subject, "end_inferred": last.end_inferred}
+    attended = _teaching_lessons(scheduled)
+    last = max(attended, key=lambda lesson: lesson.end) if attended else None
+
+    attributes: dict[str, Any] = {}
+    if last is not None:
+        attributes["subject"] = last.subject
+        attributes["end_inferred"] = last.end_inferred
+    attributes["scheduled_end"] = max(lesson.end for lesson in scheduled).isoformat()
+    # No retained end at all -- every slot of the day is cancelled or
+    # exempted -- makes every cancellation "after" it, which is the reading a
+    # parent needs on exactly that day.
+    attributes["canceled_after"] = sum(
+        1
+        for lesson in scheduled
+        if lesson.canceled and (last is None or lesson.end > last.end)
+    )
+    return attributes
+
+
+def _pending_cancellations(
+    facts: TimetableFacts, account: PronoteAccount
+) -> list[Lesson]:
+    """Cancelled lessons that are not over yet, in chronological order.
+
+    One filter -- ``end > now`` -- serves both the state and the ``items``
+    attribute, and that is deliberate rather than incidental: two filters
+    would eventually disagree, and a card would then show a list whose first
+    entry is not the entity's own state. The accepted consequence is that
+    *during* a cancelled slot the state is slightly in the past, which is
+    correct ("this cancellation is still current") and is documented in
+    annexe A rather than papered over.
+
+    ``canceled`` only, never ``exempted``. An exemption is not a
+    cancellation: the lesson happens, this child is simply not required at
+    it, and announcing it as cancelled would tell a parent the class was
+    called off.
+
+    Read from the de-duplicated ``lessons`` and not ``all_lessons``: what the
+    timetable *shows* for a slot is what the family experiences, so a
+    cancelled entry superseded by a replacement is not a free slot.
+
+    The window is the collected one -- the whole timetable week, not today --
+    on purpose, and consistently with ``next_lesson``: a cancellation two days
+    out is exactly the one a parent wants notice of, and clipping it to today
+    would make the entity go blank every evening.
+    """
+    now = account.gateway.now()
+    return sorted(
+        (lesson for lesson in facts.lessons if lesson.canceled and lesson.end > now),
+        key=lambda lesson: lesson.start,
+    )
+
+
+def _next_cancellation(facts: TimetableFacts, account: PronoteAccount) -> StateValue:
+    """Start of the next cancelled lesson that has not finished."""
+    pending = _pending_cancellations(facts, account)
+    return pending[0].start if pending else None
+
+
+def _next_cancellation_attributes(
+    facts: TimetableFacts, account: PronoteAccount
+) -> dict[str, Any]:
+    """The next cancellation in detail, and every later one as a list."""
+    pending = _pending_cancellations(facts, account)
+    if not pending:
+        return {}
+    first = pending[0]
+    return {
+        "subject": first.subject,
+        "end": first.end.isoformat(),
+        "classroom": first.classroom,
+        "end_inferred": first.end_inferred,
+        # For a card. The state remains the route an automation takes: it is a
+        # timestamp, so no template has to walk this list (§1).
+        "items": [
+            {
+                "subject": lesson.subject,
+                "start": lesson.start.isoformat(),
+                "end": lesson.end.isoformat(),
+                "classroom": lesson.classroom,
+            }
+            for lesson in pending
+        ],
+    }
 
 
 def _midday_break(
@@ -1095,6 +1199,13 @@ PRIMITIVE_SENSORS: Final[tuple[PronoteSensorDescription, ...]] = (
         attributes_fn=_morning_end_attributes,
     ),
     PronoteSensorDescription(
+        key="next_cancellation",
+        tier=Tier.TIMETABLE,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_next_cancellation,
+        attributes_fn=_next_cancellation_attributes,
+    ),
+    PronoteSensorDescription(
         key="next_wake_up",
         tier=Tier.TIMETABLE,
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -1315,6 +1426,13 @@ CLOCK_DRIVEN_KEYS: Final = frozenset(
     {
         "next_lesson",
         "end_of_lessons",
+        # Its whole filter is `end > now`, so it stops being the *next*
+        # cancellation at an instant the timetable tier knows nothing about --
+        # and that tier runs every fifteen minutes at best.
+        "next_cancellation",
+        # Same family as `end_of_lessons`: a timestamp taken from today's
+        # lessons, which stops being today's at midnight.
+        "morning_end",
         "next_wake_up",
         "next_test",
         "next_punishment",
