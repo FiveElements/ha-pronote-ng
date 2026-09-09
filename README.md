@@ -18,7 +18,7 @@
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
   ·
-  <a href="https://github.com/FiveElements/ha-pronote-ng/issues">🐛 Signaler un problème </a>
+  <a href="https://github.com/FiveElements/ha-pronote-ng/issues/new/choose">🐛 Signaler un problème</a>
 
 </p>
  
@@ -52,7 +52,7 @@
  - 14 déclencheurs d'appareil
 - 10 conditions
 - 4 actions
-- 7 blueprints prêts à l'emploi
+- [7 blueprints prêts à l'emploi](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/)
 - des blueprints disponibles en français et en anglais
 
  Aucune programmation en YAML n'est nécessaire pour les automatisations courantes.
@@ -92,31 +92,42 @@
 
 ---
 
- # 🚀 Installation
+ ## 🚀 Installation
 
- ## Avec HACS
+ ### Avec HACS
 
- Pronote NG peut être installé avec [HACS](<https://www.hacs.xyz/>) comme dépôt personnalisé.
+ Pronote NG s'installe avec [HACS](https://www.hacs.xyz/) comme dépôt personnalisé.
 
- 1. Ouvrez **HACS → Intégrations**
-2. Ouvrez le menu **⋮**
-3. Sélectionnez **Dépôts personnalisés**
-4. Ajoutez :
+**1. Ajouter le dépôt à HACS et télécharger l'intégration**
 
-```
-https://github.com/FiveElements/ha-pronote-ng
-```
+[![Ouvrir ce dépôt dans HACS sur votre Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=FiveElements&repository=ha-pronote-ng&category=integration)
 
- 5. Sélectionnez la catégorie **Intégration**
-6. Installez **Pronote NG**
-7. Redémarrez Home Assistant
-8. Allez dans **Paramètres → Appareils et services**
-9. Cliquez sur **Ajouter une intégration**
-10. Recherchez **PRONOTE**
+ Ce bouton ouvre **votre** Home Assistant sur la fiche du dépôt dans HACS. Il ne
+reste qu'à **Télécharger**, puis à redémarrer Home Assistant.
+
+**2. Ajouter l'intégration**
+
+[![Ouvrir votre Home Assistant et commencer la configuration d'une nouvelle intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=pronote_ng)
+
+ Le formulaire demande d'abord **comment** vous vous connectez — QR code,
+identifiants, ou ENT. Le [guide de l'utilisateur](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#2-se-connecter--les-trois-modes)
+décrit les trois modes et dit lequel choisir.
+
+<details>
+<summary>Ajouter le dépôt à la main, si les boutons n'aboutissent pas</summary>
+
+1. Ouvrez **HACS**
+2. Ouvrez le menu **⋮** puis **Dépôts personnalisés**
+3. Ajoutez `https://github.com/FiveElements/ha-pronote-ng`
+4. Sélectionnez la catégorie **Intégration**, puis **Ajouter**
+5. Installez **Pronote NG**, puis redémarrez Home Assistant
+6. **Paramètres → Appareils et services → Ajouter une intégration**, cherchez **PRONOTE**
+
+</details>
 
  > 💡 Une intégration HACS officielle pourra être utilisée lorsqu'elle sera disponible. En attendant, l'installation par dépôt personnalisé permet d'utiliser Pronote NG directement depuis HACS.
 
- ## Installation manuelle
+ ### Installation manuelle
 
  Copiez le dossier :
 
@@ -126,7 +137,7 @@ custom_components/pronote_ng/
 
  dans le dossier `custom_components/` de votre configuration Home Assistant, puis redémarrez Home Assistant.
 
- ### Version minimale
+ #### Version minimale
 
  Pronote NG nécessite actuellement :
 
@@ -136,7 +147,7 @@ Home Assistant 2026.9.0 ou supérieur
 
 ---
 
- # 📊 Afficher les données PRONOTE
+ ## 📊 Afficher les données PRONOTE
 
  Pronote NG fournit des entités Home Assistant natives :
 
@@ -152,33 +163,34 @@ Home Assistant 2026.9.0 ou supérieur
 
  La documentation explique également comment créer un tableau de bord complet à partir des données PRONOTE.
 
- 👉 Afficher les données PRONOTE dans Home Assistant
+ 👉 [Afficher les données PRONOTE dans Home Assistant](https://fiveelements.github.io/ha-pronote-ng/AFFICHER-LES-DONNEES/)
 
 ---
 
- # 🎨 Cartes Lovelace
+ ## 🎨 Cartes Lovelace
 
  Des cartes Lovelace spécialement conçues pour Pronote NG sont disponibles dans un dépôt séparé :
 
- **FiveElements/ha-pronote-ng-cards**
+ **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)** — [documentation](https://fiveelements.github.io/ha-pronote-ng-cards/), une page par carte.
 
  Elles permettent notamment d'afficher :
 
- - 👨‍🎓 Informations sur l'élève
-- 📅 Prochain cours
-- 🗓️ Emploi du temps
-- 📝 Devoirs
-- 📊 Notes
-- 🎯 Évaluations
-- 🍽️ Cantine
-- 🏫 Vie scolaire
-- 🚦 État du limiteur
+ - 👨‍🎓 [Informations sur l'élève](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/eleve/)
+- 📅 [Prochain cours](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/prochain-cours/)
+- 🌅 [Vue journée](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/journee/)
+- 🗓️ [Emploi du temps](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/emploi-du-temps/)
+- 📝 [Devoirs](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/devoirs/)
+- 📊 [Notes](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/notes/)
+- 🎯 [Évaluations](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/evaluations/)
+- 🍽️ [Cantine](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/menu/)
+- 🏫 [Vie scolaire](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/vie-scolaire/)
+- 🚦 [État du limiteur](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/limiteur/)
 
  Les cartes sont **optionnelles** : Pronote NG fonctionne avec les cartes natives de Home Assistant.
 
 ---
 
- # 🔧 Services et actions
+ ## 🔧 Services et actions
 
  Pronote NG fournit plusieurs services Home Assistant.
 
@@ -189,6 +201,8 @@ Home Assistant 2026.9.0 ou supérieur
 - l'emploi du temps au format PDF
 - l'état du limiteur de requêtes
 
+ Le [catalogue des entités et des services](https://fiveelements.github.io/ha-pronote-ng/annexe-a-entites/) donne, pour chaque champ publié, d'où il vient.
+
  Des opérations d'écriture sont également disponibles mais sont **désactivées par défaut**, notamment :
 
  - cocher un devoir
@@ -197,7 +211,7 @@ Home Assistant 2026.9.0 ou supérieur
 
 ---
 
- # 🔒 Vie privée et sécurité
+ ## 🔒 Vie privée et sécurité
 
  La protection des données PRONOTE est une priorité du projet.
 
@@ -214,13 +228,16 @@ Home Assistant 2026.9.0 ou supérieur
 
  Le fichier de diagnostic ne contient pas le contenu des données scolaires. Les identifiants d'élèves y sont également protégés.
 
+ Le détail de ce qui est conservé, de ce qui ne l'est pas et de ce que contient
+le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#11-vie-privée).
+
  > ⚠️ **Ne configurez jamais le journaliseur `pronotepy` en niveau DEBUG.**
 >
 >  Le mode DEBUG de `pronotepy` peut contenir des informations sensibles provenant des requêtes PRONOTE.
 
 ---
 
- # 🧠 Pourquoi Pronote NG ?
+ ## 🧠 Pourquoi Pronote NG ?
 
  Pronote NG a été conçu autour de quelques principes importants.
 
@@ -254,41 +271,42 @@ Home Assistant 2026.9.0 ou supérieur
 
 ---
 
- # 📚 Documentation
+ ## 📚 Documentation
 
  La documentation complète est disponible ici :
 
- **📖 Documentation Pronote NG**
+ **[📖 Documentation Pronote NG](https://fiveelements.github.io/ha-pronote-ng/)**
 
  Elle contient notamment :
 
- - Guide utilisateur
-- Architecture de l'intégration
-- Catalogue des entités et services
-- Configuration du limiteur de requêtes
-- Création de tableaux de bord
-- Blueprints
-- Documentation technique pour les contributeurs
+ - [Guide utilisateur](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/) — installation, entités, services, réglages, dépannage
+- [Architecture de l'intégration](https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/)
+- [Catalogue des entités et services](https://fiveelements.github.io/ha-pronote-ng/annexe-a-entites/) — l'origine de chaque champ publié
+- [Configuration du limiteur de requêtes](https://fiveelements.github.io/ha-pronote-ng/annexe-b-rate-limit/) — couches, options, arithmétique du budget
+- [Création de tableaux de bord](https://fiveelements.github.io/ha-pronote-ng/AFFICHER-LES-DONNEES/)
+- [Blueprints](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/) — chaque réglage des sept blueprints, et le piège que chacun évite
+- [Documentation technique pour les contributeurs](CONTRIBUTING.md) — et la [spécification](https://fiveelements.github.io/ha-pronote-ng/SPECIFICATION/)
 
 ---
 
- # 🤝 Contribuer
+ ## 🤝 Contribuer
 
  Les contributions, rapports de bugs et suggestions sont les bienvenus.
 
  Avant d'ouvrir une issue :
 
- - vérifiez la documentation
-- utilisez les formulaires d'issue disponibles
+ - vérifiez [la documentation](https://fiveelements.github.io/ha-pronote-ng/)
+- utilisez les [formulaires d'issue](https://github.com/FiveElements/ha-pronote-ng/issues/new/choose) : ils demandent ce qu'il faut, et rappellent ce qu'il ne faut **pas** coller dans une issue publique
+- lisez [`CONTRIBUTING.md`](CONTRIBUTING.md) avant une *pull request*
 - ne partagez jamais d'identifiants PRONOTE réels
 - ne joignez jamais de données scolaires personnelles
 - ne joignez jamais de logs `pronotepy` en mode DEBUG
 
- 👉 Créer une issue
+ 👉 [Créer une issue](https://github.com/FiveElements/ha-pronote-ng/issues/new/choose)
 
 ---
 
- # ⚠️ Important
+ ## ⚠️ Important
 
  PRONOTE est un service tiers.
 
@@ -312,19 +330,7 @@ Home Assistant 2026.9.0 ou supérieur
  Chaque étoile et chaque contribution aide le projet à être découvert par les utilisateurs qui recherchent une intégration **PRONOTE pour Home Assistant**.
 
 
-## Contribuer
-
-[`CONTRIBUTING.md`](CONTRIBUTING.md) : comment monter l'environnement, faire
-tourner la suite sous Windows, les quatre fichiers qui se génèrent et ne
-s'éditent pas, et les deux règles non négociables — jamais un identifiant
-PRONOTE réel dans le dépôt, jamais le journaliseur `pronotepy` en DEBUG.
-
-Pour signaler un problème, utilisez les
-[formulaires d'issue](https://github.com/FiveElements/ha-pronote-ng/issues/new/choose) :
-ils demandent ce qu'il faut, et rappellent surtout ce qu'il ne faut **pas**
-coller dans une issue publique.
-
- # 📄 Licence
+ ## 📄 Licence
 
  Pronote NG est distribué sous licence [MIT](LICENSE).
 
