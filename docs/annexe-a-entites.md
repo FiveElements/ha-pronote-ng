@@ -31,8 +31,8 @@ scalaire, directement utilisable par un déclencheur `state` ou
 | `sensor.<é>_devoirs_a_faire` | nombre de devoirs non faits | — | **`items`**, `next_due` | `homework` | `Homework.done` |
 | `sensor.<é>_devoirs_demain` | nombre de devoirs pour le lendemain | — | **`items`** | `homework` | `Homework.date` |
 | `sensor.<é>_derniere_note` | valeur numérique de la note la plus récente | — | `subject`, `out_of`, `coefficient`, `date`, `class_average`, `status` | `marks` | `Grade.grade` |
-| `sensor.<é>_moyenne_generale` | moyenne générale de l'élève | — | `out_of`, `period` | `marks` | `Period.overall_average` |
-| `sensor.<é>_moyenne_classe` | moyenne générale de la classe | — | `out_of`, `period` | `marks` | `Period.class_overall_average` |
+| `sensor.<é>_moyenne_generale` | moyenne générale de l'élève | — | `out_of` (**constante 20**), `period` | `marks` | `Period.overall_average` |
+| `sensor.<é>_moyenne_classe` | moyenne générale de la classe | — | `out_of` (**constante 20**), `period` | `marks` | `Period.class_overall_average` |
 | `sensor.<é>_prochain_controle` | horodatage du prochain cours marqué contrôle | `timestamp` | `subject`, `classroom` | `timetable` | `Lesson.test` |
 | `sensor.<é>_prochaine_punition` | horodatage du prochain créneau de retenue | `timestamp` | `nature`, `duration`, `giver` | `attendance` | `Punishment.schedule` |
 | `sensor.<é>_absences_non_justifiees` | nombre | — | **`items`** | `attendance` | `Absence.justified` |
@@ -141,7 +141,9 @@ peut s'ajouter, aucun ne sera renommé sans annonce.
 l'envoie), `description_text` (le même énoncé en texte simple), `due`, `done`,
 `attachments[]`.
 
-**`grades[]`** — `id`, `subject`, **`value`** (et non `grade`), `status`,
+**`grades[]`** — `id`, `subject`, **`value`** (et non `grade` — mais la charge
+de `event.<é>_nouvelle_note` nomme cette même valeur `grade` : les deux noms
+coexistent, `value` dans les attributs, `grade` dans l'événement), `status`,
 `out_of`, `coefficient`, `date`, `class_average`, `min`, `max`, `comment`,
 `is_bonus`, `is_optional`. `value` et `status` sont **exclusifs** (§4.3) :
 l'un des deux est nul. C'est ce qui permet à l'état de
@@ -152,6 +154,13 @@ l'un des deux est nul. C'est ce qui permet à l'état de
 **`averages[]`** — `subject_id`, `subject`, **`student`** (et non `average`),
 `class_average`, `min`, `max`, `out_of`. Clés par `subject_id` : `Average` n'a
 pas d'identifiant propre et §2.4 interdit d'employer un rang.
+
+Ici `out_of` est le barème décodé (`baremeMoyEleve`). Sur
+`sensor.<é>_moyenne_generale` et `sensor.<é>_moyenne_classe`, l'attribut du même
+nom est une **constante 20** écrite dans le producteur d'attributs, pas une
+lecture : le même nom de clé porte une mesure sur une entité et une hypothèse
+sur l'autre. Les entités de moyenne générale de période close ne publient aucun
+`out_of`.
 
 **`absences[]`** — `id`, `from_date`, `to_date`, `justified`, **`hours`** (une
 **chaîne**, `"2h00"`, telle qu'upstream la donne), `days` (un entier),

@@ -400,8 +400,8 @@ PRONOTE renvoie une plage de semaines dans tous les cas.
 | Entité | État | Attributs utiles |
 | --- | --- | --- |
 | **Dernière note** | La valeur **numérique** de la note la plus récente. | `subject`, `out_of`, `coefficient`, `date`, `class_average`, `status` |
-| **Moyenne générale** | La moyenne générale de l'élève sur la période en cours. | `period`, `out_of` |
-| **Moyenne de la classe** | La moyenne générale de la classe sur la même période. | `period`, `out_of` |
+| **Moyenne générale** | La moyenne générale de l'élève sur la période en cours. | `period`, `out_of` (**toujours 20**, voir plus bas) |
+| **Moyenne de la classe** | La moyenne générale de la classe sur la même période. | `period`, `out_of` (**toujours 20**, voir plus bas) |
 | **Notes** | Nombre de notes de la période en cours. | `items` |
 | **Moyennes par matière** | Nombre de matières ayant une moyenne. | `items` |
 | **Bulletin** | Nombre de matières au bulletin de la période, ou vide si le bulletin n'est pas publié. | `subjects`, `comments`, `period` |
@@ -419,6 +419,35 @@ barème. Une note de 8 sur 10 est un bon résultat ; comparée à un seuil de 10
 sans remise à l'échelle, elle déclencherait une alerte à tort. Le blueprint
 « Nouvelle note » fait cette remise à l'échelle pour vous.
 
+**Mais pas sur les deux moyennes générales : leur `out_of` vaut toujours 20.**
+Sur « Dernière note », sur les éléments de « Notes » et sur ceux de « Moyennes
+par matière », `out_of` est le barème que PRONOTE annonce. Sur « Moyenne
+générale » et sur « Moyenne de la classe », c'est une valeur **écrite en dur**
+dans l'intégration : elle vaut 20 quel que soit l'établissement. Dans un
+établissement qui note sur 10, un message ou une carte qui écrit « 5,2/20 » en
+lisant cet attribut affirme quelque chose de faux, et rien du côté affichage ne
+permet de s'en apercevoir. Tant que ce n'est pas corrigé, **affichez ces deux
+états sans barème** — c'est le seul endroit de l'intégration où la bonne
+conduite est de montrer *moins* que ce qui est publié. Les entités de moyenne
+générale de période close, elles, ne publient aucun `out_of`.
+
+**Une note de bonus s'affiche comme une note qui compte.** Chaque élément de
+« Notes » porte `is_bonus` et `is_optional`, et une note de bonus ou une note
+facultative ne pèse pas comme les autres. Un affichage qui les ignore présente
+un 20/20 de bonus et un 8/20 d'interrogation comme deux résultats comparables.
+**Et « Dernière note » ne porte pas ces deux attributs** : un automatisme
+déclenché sur cette entité ne peut donc pas savoir si la note qui vient
+d'arriver compte. Pour le savoir, il faut retrouver la note dans les `items` de
+« Notes » par son `id`.
+
+**« Moyenne générale » a trois états, et ils ne disent pas la même chose.** Un
+nombre : la période publie une moyenne générale. `unknown` : la période est
+renseignée, mais l'établissement ne publie **pas** de moyenne générale — c'est
+un cas normal, certains établissements ne publient aucune statistique de classe.
+`unavailable` : l'intégration n'a pas de donnée, ou la sienne est trop vieille.
+Un message d'alerte qui traite `unknown` comme une panne reproche à
+l'intégration un choix de l'établissement.
+
 Chaque élément de `items` (pour « Notes ») contient `id`, `subject`, `value`,
 `status`, `out_of`, `coefficient`, `date`, `class_average`, `min`, `max`,
 `comment`, `is_bonus` et `is_optional`.
@@ -434,6 +463,43 @@ par exemple « Moyenne générale (Trimestre 1) ».
 Ces entités permettent de garder la trace d'un trimestre après sa clôture, quand
 les entités de la période en cours sont passées au trimestre suivant. Elles ne
 sont relues qu'une fois par jour : une période close ne change plus.
+
+**Elles ne sont pas la copie des entités de la période en cours.** Trois
+différences, à connaître avant de bâtir une carte ou un automatisme dessus.
+
+**Il n'y a pas de sœur close pour tout.** « Moyenne de la classe », « Absences
+injustifiées » et « Dernière note » n'existent que pour la période en cours. Sur
+une période close, la moyenne générale de la classe se lit dans l'attribut
+`class_average` de « Moyenne générale (Trimestre 1) », et les absences
+injustifiées se comptent en filtrant les `items` d'« Absences (Trimestre 1) »
+sur `justified`.
+
+**Trois jeux de données changent de forme.** « Notes », « Moyennes par
+matière », « Absences », « Retards » et « Punitions » ont exactement la même
+forme d'éléments que leurs entités de période en cours : une carte ou un modèle
+qui marche sur l'une marche sur l'autre. Les trois autres diffèrent. « Moyenne
+générale » ne publie pas d'attribut `out_of`. « Bulletin » publie `name`,
+`student_average`, `class_average` et `comments` par matière, mais pas `id`, pas
+`coefficient` et pas `teachers`. « Évaluations » ne publie que `id`, `name` et
+`subject` par évaluation — **pas les `acquisitions`**, qui sont pourtant tout le
+contenu de cette entité pour la période en cours.
+
+**Le nombre d'entités grandit à chaque clôture, et ce n'est pas gratuit.**
+L'intégration suit **toutes** les périodes closes que PRONOTE publie, et crée
+huit entités pour chacune. PRONOTE publie souvent plusieurs découpages de la
+même année — des trimestres et des semestres, par exemple — si bien qu'un
+établissement peut annoncer huit périodes là où l'on en attendait trois ;
+l'entité « Périodes » donne le nombre exact pour le vôtre. À la fin de l'année,
+comptez donc jusqu'à huit entités par période close, et **environ quatre
+requêtes par jour et par période close** — le bulletin, les notes, l'assiduité
+et les évaluations. C'est la relecture quotidienne de l'annexe B §5.6, et c'est
+le poste qui grandit tout seul au fil de l'année.
+
+Vous ne pouvez pas plafonner ce nombre depuis l'interface aujourd'hui. Ce que
+vous pouvez faire : **masquer** les entités dont vous ne vous servez pas, plutôt
+que de les supprimer — une entité supprimée que l'intégration fournit toujours
+revient au rechargement suivant, et le masquage n'économise aucune requête mais
+désencombre les listes de choix des automatisations.
 
 ### 4.5 Les absences, les retards et les punitions
 
