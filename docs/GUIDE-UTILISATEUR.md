@@ -1539,6 +1539,22 @@ identifiants internes **sur place** : les identifiants d'entité, l'appareil, le
 noms que vous avez donnés, les pièces et les étiquettes sont conservés. Rien à
 refaire côté cartes ni côté automatisations.
 
+**Renommer n'y est pour rien, et renommer reste sans danger.** L'appareil
+figé est souvent celui que vous aviez renommé, ce qui donne à croire que le
+renommage a provoqué le dédoublement. Ce n'est pas le cas, et il ne peut pas
+l'être : l'appariement d'un enfant se fait sur le nom que **PRONOTE** publie,
+jamais sur le libellé affiché dans Home Assistant. Renommer un appareil, une
+entité, ou les deux, n'a aucun effet sur ce mécanisme. Un test compare le nom
+que vous avez donné octet par octet avant et après la mise à jour, parce que
+c'est la promesse la plus lourde de cette page.
+
+**N'attendez pas de notification.** L'adoption des clés se fait en silence : la
+mise à jour ne crée **aucun** signalement dans *Paramètres → Système →
+Réparations*, et rien ne vous annonce qu'elle a eu lieu. Elle laisse une trace
+dans le journal de l'intégration, en clés techniques seulement — jamais un nom
+d'enfant. Le seul signe visible est celui décrit ici : un appareil de plus, dont
+les entités ne bougent plus.
+
 **Si vous hésitez**, ne supprimez rien et prenez une sauvegarde d'abord : un
 appareil figé ne consomme aucune requête et ne dérange que la liste des
 appareils. L'intégration ne le supprime pas d'elle-même, précisément parce que
@@ -1564,7 +1580,7 @@ Ce qui est conservé dans la configuration de l'intégration :
 | L'identifiant et le mot de passe, en mode « identifiants » et « ENT » | Le code PIN à deux facteurs |
 | En mode QR code : un jeton d'appareil, **à la place** d'un mot de passe, renouvelé à chaque connexion | L'URL iCal |
 | L'identifiant technique de l'appareil enrôlé | Le lien du PDF d'emploi du temps |
-| La liste des enfants suivis | Les données d'identité (adresse, INE, téléphones, courriels, responsables légaux) |
+| Pour chaque enfant : la clé que l'intégration lui a attribuée, l'identifiant PRONOTE du moment, et **son nom** — voir ci-dessous | Les données d'identité (adresse, INE, téléphones, courriels, responsables légaux) |
 
 Trois secrets ne sont **stockés nulle part** : l'URL iCal, le bloc d'identité et
 le lien du PDF. Ce sont des réponses de service, disponibles le temps d'un
@@ -1572,6 +1588,35 @@ script. L'URL iCal en particulier donne accès à l'emploi du temps complet d'un
 élève **sans aucun mot de passe** : conservée dans un état d'entité, elle
 atterrirait dans l'historique, dans chaque sauvegarde, sur les captures d'écran
 et dans les rapports de bug. C'est pour cela qu'elle n'est pas conservée.
+
+**En revanche, le nom de votre enfant est écrit en clair dans la configuration
+de l'intégration.** Vous avez le droit de l'apprendre ici plutôt que de le
+découvrir, donc voici exactement où et pourquoi.
+
+Depuis la v0.0.10, l'intégration tient une table qui associe à chaque enfant une
+clé qu'elle a frappée elle-même, l'identifiant que PRONOTE lui donne en ce
+moment, et son nom. Cette table vit dans l'entrée de configuration, c'est-à-dire
+dans le dossier `.storage` de votre configuration Home Assistant — le même
+endroit qui contient déjà l'adresse de votre espace PRONOTE et vos identifiants
+de connexion.
+
+Le nom y est **nécessaire**, et le remplacer par une empreinte rendrait le
+mécanisme inopérant. L'identifiant que PRONOTE attribue change ; quand il
+change, le nom est le seul point d'accroche qui reste pour reconnaître un enfant
+déjà connu au lieu d'en créer un second — c'est précisément le défaut décrit au
+§ 10.5. Or une empreinte ne se compare qu'à une empreinte identique : il
+suffirait que l'établissement écrive le nom autrement, ne serait-ce qu'une
+majuscule ou un accent, pour que l'appariement échoue et que le dédoublement
+revienne.
+
+Deux conséquences pratiques :
+
+- **Le fichier de diagnostic, lui, ne le contient pas.** Il est empreinté avant
+  publication, précisément parce que ce fichier est fait pour être joint à une
+  issue publique (§ 11.2).
+- **Une sauvegarde de Home Assistant contient ce nom**, comme elle contient déjà
+  vos identifiants PRONOTE. Traitez-la en conséquence : une sauvegarde n'est pas
+  un fichier à déposer sur un partage ouvert ni à joindre à un rapport de bug.
 
 ### 11.2 Ce que contient le fichier de diagnostic
 
