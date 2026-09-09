@@ -26,11 +26,20 @@ recorded from a live server; a genuinely captured payload goes in
 access to a child's entire timetable with no credentials — treat it as a
 password.
 
-**Never enable the `pronotepy` DEBUG logger.** `pronotepy/pronoteAPI.py:139`
-writes the reversible hex of every request body, credentials included, and
-`clients.log is pronoteAPI.log` — one single logger, so the useful lines cannot
-be separated from the leaking ones. The integration therefore declares no
-`loggers` key in `manifest.json` (`scripts/check_manifest.py` enforces this) and
+**Never enable the `pronotepy` DEBUG logger.** It leaks in **two** places, so
+filtering by sub-logger does not help. `pronotepy/pronoteAPI.py:139` writes the
+reversible hex of every request body, credentials included, and `clients.log is
+pronoteAPI.log` — one single logger, so the useful lines cannot be separated
+from the leaking ones. Separately, `pronotepy/dataClasses.py:228-231`, in the
+strict branch of `_resolver.__call__`, does `log.debug(json.dumps(self.json_dict))`
+— the **entire** dictionary of the object being decoded, as readable JSON:
+student name, homework text, establishment identifiers. That one is worse in one
+respect (it is plain text, not hex to reverse) and it fires on a failed decode
+path, which is exactly when somebody has just turned DEBUG on to understand why
+a collection is failing. `pronotepy.dataClasses` is a different logger from
+`pronotepy.pronoteAPI` and leaks independently of it. The integration therefore
+declares no `loggers` key in `manifest.json` (`scripts/check_manifest.py`
+enforces this) and
 `tests/test_no_secret_in_state.py` checks a full cycle logs no secret. To debug,
 enable `custom_components.pronote_ng: debug` only, and never suggest `pronotepy`
 to a user in an issue.
@@ -46,8 +55,16 @@ mypy --strict custom_components/pronote_ng
 python scripts/check_manifest.py
 pytest tests --cov=custom_components/pronote_ng --cov-branch --cov-report=xml:coverage.xml
 python scripts/check_coverage.py coverage.xml
+python scripts/check_doc_citations.py --since=<base-ref>
 mkdocs build --strict          # needs requirements_docs.txt
 ```
+
+Two things about the citation gate. It needs `git`, which the test images do not
+have, so run it on the host and not in the container. And `--since` must be
+written as one argument: `--since <ref>` in two words used to be ignored
+silently, leaving the gate report-only while CI went green — it now rejects any
+argument it does not recognise, which is the whole point of a gate that can
+otherwise disarm itself.
 
 ### Running tests on Windows
 
@@ -90,11 +107,11 @@ Two hassfest traps: a translation string may not contain a URL (use
 `description_placeholders`), and `manifest.json` keys must be ordered `domain`,
 `name`, then alphabetically.
 
-### The version floor is one number in 17 files
+### The version floor is one number in 19 files
 
 `hacs.json` `homeassistant` ⇄ the `requirements_test.txt` pin ⇄ the gated matrix
-row in `validate.yml` ⇄ 14 blueprint `min_version` values. Currently
-**2026.9.0** / `0.13.363`. `tests/test_version_floor.py` holds all 17, and a CI
+row in `validate.yml` ⇄ 16 blueprint `min_version` values. Currently
+**2026.9.0** / `0.13.363`. `tests/test_version_floor.py` holds all 19, and a CI
 step compares `homeassistant.const.__version__` to `hacs.json` so the declared
 number is the one actually exercised. PyPI mapping observed so far:
 `0.13.354`→2026.8.0, `0.13.363`→2026.9.0, `0.13.364`→2026.9.1. Raise the floor
@@ -189,9 +206,13 @@ several choices that otherwise look redundant:
   the only route to a fact. A state reading `8h30` or `14,5` loses sorting,
   graphing, thresholds and locale in one stroke.
 - `event.py` exists because a state trigger cannot say "a *new* grade arrived".
-  One `lesson_changed` entity declares four event types and fires **one event
-  per changed aspect**, so an automation asking "was a room changed?" never
-  inspects a payload.
+  One `lesson_changed` entity declares **six** event types
+  (`LESSON_EVENT_TYPES` in `const.py`: cancelled, restored, moved, room
+  changed, teacher changed, status changed) and fires **one event per changed
+  aspect**, so an automation asking "was a room changed?" never inspects a
+  payload. `lesson_restored` is a distinct type from `lesson_canceled` on
+  purpose: a detector that merges them fires "no first lesson, sleep in" on the
+  morning the lesson is reinstated.
 - `delta.py` splits the change rule: identifier-delta for most collections, but
   content comparison for lessons, because a room change keeps the same `N` and a
   replacement arrives with a fresh `N` while the original is still present.
@@ -266,6 +287,26 @@ plausible value; a missed change is an event that never arrives.
   `await hass.async_block_till_done()` *inside* the patch that suppresses set-up
   — `async_update_reload_and_abort` only schedules the reload, which otherwise
   runs after the patch is released and reaches the network.
+- **Never derive an `entity_id` from a translation key.** The suffix comes from
+  the entity's *translated name*, slugified by Home Assistant: the key
+  `averages` is named "Moyennes par matière", so the entity is
+  `sensor.<child>_subject_averages` in English and
+  `sensor.<child>_moyennes_par_matiere` in French — never
+  `sensor.<child>_averages`. Read the name from `translations/<lang>.json` and
+  slugify it with `homeassistant.util.slugify`; do not re-implement the accent
+  folding, which is where this project's two repositories have already
+  disagreed once. The suite's entity ids are the **English** slugs; the French
+  ones exist only on a French instance. This has now cost real time twice: a
+  fixture that invented `sensor.enfant_un_averages`, and eleven identifiers in
+  annexe A that named entities which do not exist. Home Assistant does not
+  reject an unknown entity id in an automation — the trigger simply never
+  fires, which reads as a broken integration.
+- `tests/test_doc_contract.py` is the barrier for that second failure: every
+  translated entity name must appear as a suffix in `docs/annexe-a-entites.md`.
+  Names carrying a placeholder (`Notes ({period})`) are skipped, because Home
+  Assistant substitutes the establishment's own period label and the suffix
+  depends on runtime data — note that `_p<n>` is the `unique_id` suffix
+  (`PronoteHistorySensor.__init__`), not the entity's.
 
 ## Releasing
 

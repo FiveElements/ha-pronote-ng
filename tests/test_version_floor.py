@@ -11,7 +11,7 @@ removed in favour of ``via_device_id``, which killed entity loading on six
 platforms out of seven; and a tenfold amplification of refresh requests.
 
 The problem this module addresses is the other half of that: the number is
-written down in **seventeen** files. ``hacs.json`` declares it, the pin encodes
+written down in **nineteen** files. ``hacs.json`` declares it, the pin encodes
 it, ``validate.yml``'s gated row repeats it, and sixteen blueprints each carry
 a ``min_version``. Nothing made them agree. A blueprint left at the old floor
 imports happily onto an instance the integration cannot run on, and the
