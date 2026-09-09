@@ -63,6 +63,7 @@ nav:
   - Les sept blueprints: BLUEPRINTS.md
   - "Migrer depuis pronote": MIGRATION-AUTOMATISATIONS.md
   - Architecture: ARCHITECTURE.md
+  - Le limiteur et ses six états: LIMITEUR.md
   - Spécification:
       - Spécification v2: SPECIFICATION.md
       - Annexe A — entités et services: annexe-a-entites.md

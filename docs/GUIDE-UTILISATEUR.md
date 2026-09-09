@@ -926,6 +926,10 @@ ne se met plus à jour. Elle donne la cause en un mot :
 | **Connexions suspendues** | Trop d'échecs de connexion : l'intégration a arrêté d'essayer. **C'est le cas à traiter en priorité** (§ [10](#10-dépannage)). |
 | **Page de session illisible** | L'adresse répond mais sans page de session PRONOTE. |
 
+Ce tableau donne la traduction, pas la mécanique. Ce qui fait entrer dans chaque
+état, ce qui l'en fait sortir, et pourquoi certains en masquent d'autres :
+[Le limiteur et ses six états](LIMITEUR.md).
+
 ---
 
 ## 7. Écrire dans PRONOTE

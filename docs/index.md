@@ -46,6 +46,8 @@ authentification, et aucun mot de passe n'est conservé.
       [le guide de l'utilisateur](GUIDE-UTILISATEUR.md).
     * Vous voulez **contribuer**, ou comprendre pourquoi c'est construit ainsi :
       [l'architecture](ARCHITECTURE.md).
+    * Une tuile est bloquée sur « Temporisation » ou « Bridé » et vous voulez
+      savoir pourquoi : [le limiteur et ses six états](LIMITEUR.md).
     * Vous voulez le **raisonnement d'origine**, y compris ce qui s'est révélé
       faux : [la spécification](SPECIFICATION.md) et
       [la revue contradictoire](revue-contradictoire-v1.md).
