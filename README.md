@@ -141,6 +141,22 @@ votre configuration, puis redémarrer.
 
 Home Assistant **2026.9.0** minimum.
 
+### Les cartes, dans un dépôt séparé
+
+Neuf cartes Lovelace faites pour cette intégration — élève, prochain cours,
+emploi du temps, devoirs, notes, évaluations, cantine, vie scolaire, limiteur —
+vivent dans **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)**
+([documentation](https://fiveelements.github.io/ha-pronote-ng-cards/)). Elles
+sont optionnelles : l'intégration publie des états primitifs, donc les cartes
+intégrées de Home Assistant suffisent pour l'essentiel — voyez
+[`docs/AFFICHER-LES-DONNEES.md`](docs/AFFICHER-LES-DONNEES.md), qui couvre les
+deux chemins.
+
+Elles se configurent avec **l'appareil de l'enfant**, jamais avec un identifiant
+d'entité : les identifiants dérivent du nom affiché de l'enfant et changent
+silencieusement s'il est renommé, tandis que la clé technique d'une entité est
+stable dans toutes les langues.
+
 ## Documentation
 
 Publiée sur <https://fiveelements.github.io/ha-pronote-ng/>, construite par
@@ -155,6 +171,9 @@ un lien interne.
 | [`docs/annexe-b-rate-limit.md`](docs/annexe-b-rate-limit.md) | Le limiteur de débit : couches, options, arithmétique du budget, repli |
 | [`docs/revue-contradictoire-v1.md`](docs/revue-contradictoire-v1.md) | La revue qui a produit la v2 — conservée, parce que ses raisons valent mieux que ses conclusions seules |
 | [`docs/GUIDE-UTILISATEUR.md`](docs/GUIDE-UTILISATEUR.md) | **Guide utilisateur** — installation, entités, services, réglages, dépannage |
+| [`docs/AFFICHER-LES-DONNEES.md`](docs/AFFICHER-LES-DONNEES.md) | Construire un tableau de bord, avec les cartes intégrées de Home Assistant ou la bibliothèque de cartes |
+| [`docs/BLUEPRINTS.md`](docs/BLUEPRINTS.md) | Chaque réglage des sept blueprints, et le piège que chacun évite |
+| [`docs/MIGRATION-AUTOMATISATIONS.md`](docs/MIGRATION-AUTOMATISATIONS.md) | Déplacer des automatisations écrites contre l'autre intégration `pronote` |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture interne, pour qui veut contribuer |
 
 La v1 a été révisée après une revue contradictoire dont **quatorze affirmations
