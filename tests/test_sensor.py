@@ -728,9 +728,18 @@ class TestTheSubjectColourReachesTheStateMachine:
     async def test_a_homework_item_publishes_its_colour(
         self, hass: HomeAssistant, account: PronoteAccount
     ) -> None:
-        """The tier upstream resolves strictly, so the likeliest to carry one."""
+        """The tier upstream resolves strictly, so the likeliest to carry one.
+
+        The entity id is read from the translated NAME, not guessed from the
+        translation key. This test asserted `sensor.enfant_un_homework_todo`
+        first -- the key -- and there is no such entity: Home Assistant builds
+        the suffix by slugifying the name, so `homework_todo` named "Homework
+        to do" becomes `homework_to_do`. The same mistake had just been
+        catalogued eleven times over in annexe A, which is what makes it worth
+        a comment rather than a silent fix.
+        """
         del account
-        items = _attributes(hass, "sensor.enfant_un_homework_todo")["items"]
+        items = _attributes(hass, "sensor.enfant_un_homework_to_do")["items"]
 
         assert items
         assert items[0]["background_color"] == "#336699"
@@ -738,9 +747,13 @@ class TestTheSubjectColourReachesTheStateMachine:
     async def test_a_subject_average_publishes_its_colour(
         self, hass: HomeAssistant, account: PronoteAccount
     ) -> None:
-        """Spelled ``couleur`` upstream, absorbed by the gateway."""
+        """Spelled ``couleur`` upstream, absorbed by the gateway.
+
+        `averages` is named "Subject averages", hence `subject_averages` and
+        not `averages`. See the note on the homework test above.
+        """
         del account
-        items = _attributes(hass, "sensor.enfant_un_averages")["items"]
+        items = _attributes(hass, "sensor.enfant_un_subject_averages")["items"]
 
         assert items
         assert items[0]["background_color"] == "#AA3366"

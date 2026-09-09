@@ -2044,3 +2044,31 @@ class TestTheColourInstruments:
         lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
 
         assert lesson.background_color is None
+
+    def test_an_empty_timetable_logs_no_field_names_and_does_not_raise(
+        self, gateway: PronoteGateway, client: FakeClient
+    ) -> None:
+        """A week with no lessons is a quiet week, not a protocol change.
+
+        The instrument reads the first entry, so it has to have an opinion
+        about there being none. Logging the shape of nothing would put a line
+        in the journal that says nothing; raising would fail a tier over a
+        debug line. It does neither, and this test is what pins that -- the
+        gate on this module is total coverage, and the false side of that guard
+        is reachable only from an empty response.
+        """
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response([])
+
+        result = gateway.timetable(client, include_next_week=False)
+
+        assert result.facts.lessons == ()
+
+    def test_an_empty_homework_tier_logs_no_field_names_either(
+        self, gateway: PronoteGateway, client: FakeClient
+    ) -> None:
+        """The same guard, on the tier where the colour is likeliest to exist."""
+        client.responses["PageCahierDeTexte"] = protocol.homework_response([])
+
+        result = gateway.homework(client)
+
+        assert result.facts.homework == ()
