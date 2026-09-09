@@ -18,10 +18,10 @@
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
   ·
-  <a href="https://github.com/FiveElements/ha-pronote-ng">🐛 Signaler un problème </a>
+  <a href="https://github.com/FiveElements/ha-pronote-ng/issues">🐛 Signaler un problème </a>
 
 </p>
-
+ 
 
  ## ✨ Fonctionnalités
 
