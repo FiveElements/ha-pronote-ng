@@ -159,8 +159,7 @@ Ici `out_of` est le barème décodé (`baremeMoyEleve`). Sur
 `sensor.<é>_moyenne_generale` et `sensor.<é>_moyenne_classe`, l'attribut du même
 nom est une **constante 20** écrite dans le producteur d'attributs, pas une
 lecture : le même nom de clé porte une mesure sur une entité et une hypothèse
-sur l'autre. Les entités de moyenne générale de période close ne publient aucun
-`out_of`.
+sur l'autre.
 
 **`absences[]`** — `id`, `from_date`, `to_date`, `justified`, **`hours`** (une
 **chaîne**, `"2h00"`, telle qu'upstream la donne), `days` (un entier),

@@ -428,8 +428,7 @@ dans l'intégration : elle vaut 20 quel que soit l'établissement. Dans un
 lisant cet attribut affirme quelque chose de faux, et rien du côté affichage ne
 permet de s'en apercevoir. Tant que ce n'est pas corrigé, **affichez ces deux
 états sans barème** — c'est le seul endroit de l'intégration où la bonne
-conduite est de montrer *moins* que ce qui est publié. Les entités de moyenne
-générale de période close, elles, ne publient aucun `out_of`.
+conduite est de montrer *moins* que ce qui est publié.
 
 **Une note de bonus s'affiche comme une note qui compte.** Chaque élément de
 « Notes » porte `is_bonus` et `is_optional`, et une note de bonus ou une note
@@ -464,25 +463,16 @@ Ces entités permettent de garder la trace d'un trimestre après sa clôture, qu
 les entités de la période en cours sont passées au trimestre suivant. Elles ne
 sont relues qu'une fois par jour : une période close ne change plus.
 
-**Elles ne sont pas la copie des entités de la période en cours.** Trois
-différences, à connaître avant de bâtir une carte ou un automatisme dessus.
+**« Dernière note » n'a pas de sœur close, et c'est voulu.** La dernière note
+d'un trimestre terminé est un fait figé sur lequel il n'y a rien à déclencher :
+ces entités-là existent pour être lues, pas pour armer un automatisme. Si vous
+avez besoin de la note la plus récente d'une période close, prenez le dernier
+élément des `items` de « Notes (Trimestre 1) », triés par `date`.
 
-**Il n'y a pas de sœur close pour tout.** « Moyenne de la classe », « Absences
-injustifiées » et « Dernière note » n'existent que pour la période en cours. Sur
-une période close, la moyenne générale de la classe se lit dans l'attribut
-`class_average` de « Moyenne générale (Trimestre 1) », et les absences
-injustifiées se comptent en filtrant les `items` d'« Absences (Trimestre 1) »
-sur `justified`.
-
-**Trois jeux de données changent de forme.** « Notes », « Moyennes par
-matière », « Absences », « Retards » et « Punitions » ont exactement la même
-forme d'éléments que leurs entités de période en cours : une carte ou un modèle
-qui marche sur l'une marche sur l'autre. Les trois autres diffèrent. « Moyenne
-générale » ne publie pas d'attribut `out_of`. « Bulletin » publie `name`,
-`student_average`, `class_average` et `comments` par matière, mais pas `id`, pas
-`coefficient` et pas `teachers`. « Évaluations » ne publie que `id`, `name` et
-`subject` par évaluation — **pas les `acquisitions`**, qui sont pourtant tout le
-contenu de cette entité pour la période en cours.
+**Ce qui se transpose sans rien changer.** « Notes », « Moyennes par matière »,
+« Absences », « Retards » et « Punitions » ont exactement la même forme
+d'éléments que leurs entités de période en cours : une carte ou un modèle qui
+marche sur l'une marche sur l'autre, sans condition sur l'onglet.
 
 **Le nombre d'entités grandit à chaque clôture, et ce n'est pas gratuit.**
 L'intégration suit **toutes** les périodes closes que PRONOTE publie, et crée
