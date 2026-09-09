@@ -287,7 +287,7 @@ card:
 
 ## Ce qu'aucune carte ne montrera
 
-Deux catégories, pour deux raisons différentes.
+Trois catégories, pour trois raisons différentes.
 
 **Ce qui n'est dans aucun état, délibérément.** L'URL iCal, le bloc d'identité
 et le lien du PDF d'emploi du temps ne sont **pas** des attributs : ce sont des
@@ -296,6 +296,24 @@ l'emploi du temps complet d'un enfant sans aucun identifiant — c'est un mot de
 passe, et un mot de passe n'a rien à faire dans un état d'entité que n'importe
 quel utilisateur de Home Assistant peut lire. Ces trois données s'obtiennent par
 un appel de service, décrit au § 5.1 du guide.
+
+**Ce que PRONOTE envoie et que l'intégration ne republie pas.** Deux données
+sont décodées puis retenues, et il est plus utile de le savoir que de les
+chercher :
+
+- **La couleur de matière.** PRONOTE en envoie une, et les DTO la portent
+  (`Lesson.background_color`, `Homework.background_color`,
+  `Average.background_color`, `ReportSubject.color`). Aucun attribut d'entité ne
+  l'expose — ni la liste `lessons`, ni les `subjects` du bulletin. Une carte qui
+  colore par matière choisit donc ses couleurs elle-même, et doit les prendre
+  dans les variables de thème plutôt que de les écrire en dur, sinon elle casse
+  en thème sombre.
+- **Le volume horaire d'une absence.** `sensor.<é>_absences` porte un **nombre
+  d'absences**, sans unité, et non un nombre d'heures. Le volume n'existe que
+  dans les éléments de `items`, sous la forme d'une **chaîne** écrite par
+  l'établissement (« 2h00 »), donc ni sommable ni comparable. « Combien d'heures
+  de cours manquées ce trimestre » n'est pas affichable en l'état ; la seule
+  durée calculable est l'écart entre `from_date` et `to_date`.
 
 **Ce qui n'a pas d'historique.** Les attributs qui portent des listes ne sont
 pas enregistrés en base : les listes que renvoie PRONOTE dépassent la taille
