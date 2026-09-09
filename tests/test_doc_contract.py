@@ -143,8 +143,28 @@ def test_every_entity_appears_in_the_annexe_a_catalogue() -> None:
         f"{domain}.<é>_{slugify(entry['name'])} ({domain}/{key})"
         for domain, keys in entities.items()
         for key, entry in keys.items()
-        if "name" in entry and f"_{slugify(entry['name'])}`" not in catalogue
+        if "name" in entry
+        # A name carrying a placeholder is a template, not a name. The
+        # per-period sensors are spelled "Notes ({period})" and Home Assistant
+        # substitutes the establishment's own label for the period -- "Notes
+        # (Trimestre 1)" -- so the entity suffix depends on data no test can
+        # see, and there is no fixed string for this check to look for. Skipped
+        # rather than guessed: asserting `_p<n>` here would pin a shorthand the
+        # instance does not actually produce.
+        and "{" not in entry["name"]
+        and f"_{slugify(entry['name'])}`" not in catalogue
     )
+
+    # The skip above must not be able to swallow the check. If a future rename
+    # gave every entity a placeholder, the comprehension would find nothing
+    # missing and this test would pass having verified nothing at all.
+    checked = sum(
+        1
+        for keys in entities.values()
+        for entry in keys.values()
+        if "name" in entry and "{" not in entry["name"]
+    )
+    assert checked > 50, f"only {checked} entities were checked; the filter is wrong"
 
     assert not missing, (
         "these entities exist and annexe A does not list them: " + ", ".join(missing)
