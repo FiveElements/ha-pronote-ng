@@ -352,19 +352,46 @@ passe, et un mot de passe n'a rien à faire dans un état d'entité que n'import
 quel utilisateur de Home Assistant peut lire. Ces trois données s'obtiennent par
 un appel de service, décrit au § 5.1 du guide.
 
-**Ce que PRONOTE envoie et que l'intégration ne republie pas.** Trois données
+**La couleur de matière est publiée depuis la v0.0.13.** `background_color` est
+un attribut des créneaux de la liste `lessons`, des devoirs et des moyennes par
+matière : la couleur que l'établissement associe à la matière, **telle que le
+serveur l'envoie**, ou `null`. La clé est toujours présente, seule sa valeur peut
+manquer, et aucune couleur n'est inventée — ni défaut, ni dérivation depuis le
+nom de la matière. L'annexe A en donne la règle complète.
+
+Deux réserves, parce qu'elles décident de ce qu'une carte peut afficher :
+
+- **Trois endroits ne la portent pas.** Le capteur du prochain cours compose ses
+  attributs un à un et ne la reprend pas ; les matières du bulletin non plus,
+  bien que le DTO la porte ; et les évaluations n'ont pas de couleur du tout,
+  le champ étant absent en amont. Sur ceux-là, une table de correspondance
+  écrite côté carte reste le seul moyen d'obtenir un accent — et elle doit
+  prendre ses valeurs dans les variables de thème plutôt que de les écrire en
+  dur, sinon elle casse en thème sombre.
+- **Sur le bulletin, le champ change d'orthographe en amont.** Le serveur
+  l'envoie sous `couleur` en minuscules et non `CouleurFond` — même sémantique,
+  orthographe différente.
+
+!!! warning "Une table de compensation devenue muette ne le dit pas"
+
+    Si vous aviez écrit une table de couleurs par matière pour compenser
+    l'absence du champ, elle ne s'applique probablement plus. Une carte qui
+    consulte d'abord la couleur du serveur ne retombe sur votre table que pour
+    les matières que l'établissement ne colore pas — donc, en pratique, pour
+    aucune. **Le bloc reste dans votre YAML et ne fait plus rien**, sans erreur
+    et sans avertissement.
+
+    C'est le même mode de panne qu'un `entity_id` inconnu dans un déclencheur,
+    que Home Assistant accepte sans broncher et qui ne se déclenche jamais : un
+    YAML silencieusement inopérant. Ne retirez pas la table pour autant sur les
+    trois endroits ci-dessus, où elle sert encore.
+
+**Ce que PRONOTE envoie et que l'intégration ne republie pas.** Deux données
 sont décodées puis retenues, et il est plus utile de le savoir que de les
 chercher :
 
-- **La couleur de matière.** PRONOTE en envoie une, et les DTO la portent
-  (`Lesson.background_color`, `Homework.background_color`,
-  `Average.background_color`, `ReportSubject.color`). Aucun attribut d'entité ne
-  l'expose — ni la liste `lessons`, ni les `subjects` du bulletin. Une carte qui
-  colore par matière choisit donc ses couleurs elle-même, et doit les prendre
-  dans les variables de thème plutôt que de les écrire en dur, sinon elle casse
-  en thème sombre.
 - **Les libellés d'un plat de cantine**, et c'est le cas le plus lourd des
-  trois. PRONOTE envoie pour chaque plat une liste de libellés portant un nom et
+  deux. PRONOTE envoie pour chaque plat une liste de libellés portant un nom et
   une couleur — c'est là qu'apparaîtraient un régime ou un allergène. Ils sont
   décodés par la bibliothèque, puis **abandonnés** : l'intégration ne garde que
   le nom du plat, donc les six listes de plats sont des listes de chaînes. Rien
