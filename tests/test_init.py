@@ -826,7 +826,7 @@ class TestWhatSurvivesAReload:
         is precisely the one somebody is watching for.
 
         `critical` is not a new hole: it is the priority the login itself uses,
-        and the quiet-hours branch of `RateLimiter.admit` already exempts it.
+        and the quiet-hours branch of `RateLimiter.check` already exempts it.
         """
         del hass
         student_id = CHILDREN[0][0]

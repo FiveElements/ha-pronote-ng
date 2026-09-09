@@ -45,7 +45,7 @@ async def collect_tier(  # noqa: PLR0911 -- one arm per tier is the point
         # automations rather than merely looking empty. So its *first*
         # collection outranks quiet hours, which is the one dispensation
         # annexe B already grants: `CRITICAL` is the priority the login itself
-        # uses, and the quiet-hours branch of `RateLimiter.admit` exempts it.
+        # uses, and the quiet-hours branch of `RateLimiter.check` exempts it.
         #
         # Without this, an instance restarted at 23:00 -- or installed at
         # 23:00 -- showed nothing at all until 06:00 and looked broken. The
