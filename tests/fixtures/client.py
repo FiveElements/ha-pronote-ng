@@ -195,22 +195,6 @@ class FakeMenu:
         self.dessert = [FakeFood("Pomme")]
 
 
-class FakeSubject:
-    """Stands in for ``pronotepy.Subject``."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-
-class FakeStaffMember:
-    """Stands in for ``pronotepy.TeachingStaff``."""
-
-    def __init__(self, name: str, role: str, subjects: Sequence[str]) -> None:
-        self.name = name
-        self.type = role
-        self.subjects = [FakeSubject(subject) for subject in subjects]
-
-
 class FakeRecipient:
     """Stands in for ``pronotepy.Recipient``."""
 
@@ -236,6 +220,7 @@ class FakeClient:
         first_monday: dt.date = dt.date(2025, 9, 1),
         last_date: dt.date | None = dt.date(2026, 7, 4),
         children: Sequence[tuple[str, str]] = (),
+        menus_published: bool = True,
     ) -> None:
         self.func_options = protocol.func_options(
             first_monday=first_monday, last_date=last_date
@@ -286,6 +271,13 @@ class FakeClient:
             self.set_child(str(self._children[0].id))
         self.communication = FakeCommunication(self)
         self.start_day = first_monday
+        #: Whether the canteen publishes anything. ``False`` is a real and
+        #: common configuration -- a school with no canteen, or a holiday week
+        #: -- and it is *not* an error: the request succeeds and answers with
+        #: an empty week. Modelled as a flag rather than by overriding `menus`
+        #: in a test, so the request is still recorded and the tier still
+        #: costs what it declares.
+        self.menus_published = menus_published
 
         #: ``(function name, tab, body)`` for every ``client.post``.
         self.posts: list[tuple[str, int, Any]] = []
@@ -305,14 +297,14 @@ class FakeClient:
                 [protocol.evaluation()]
             ),
             "PageInfosPerso": protocol.personal_info_response(),
+            "PageEquipePedagogique": protocol.teaching_staff_response(
+                [protocol.teaching_staff()]
+            ),
             "SaisieTAFFaitEleve": {"dataSec": {"data": {}}},
             "SaisieActualites": {"dataSec": {"data": {}}},
         }
 
         self.threads: list[FakeThread] = []
-        self.staff: list[FakeStaffMember] = [
-            FakeStaffMember("Prof. Un", "Professeur", ["Mathématiques"])
-        ]
         self.recipients: list[FakeRecipient] = [FakeRecipient("Prof. Un")]
         self.new_discussions: list[tuple[str, str, list[str]]] = []
         self.ical_calls = 0
@@ -422,15 +414,10 @@ class FakeClient:
         self._record("PageMenus", 10, {"start": start, "end": end})
         day = start
         out: list[FakeMenu] = []
-        while day <= end:
+        while self.menus_published and day <= end:
             out.append(FakeMenu(f"MENU-{day.isoformat()}", day))
             day += dt.timedelta(days=1)
         return out
-
-    def get_teaching_staff(self) -> list[FakeStaffMember]:
-        """The teaching staff."""
-        self._record("PageEquipePedagogique", 37)
-        return list(self.staff)
 
     def get_recipients(self) -> list[FakeRecipient]:
         """Who a new discussion may be addressed to."""

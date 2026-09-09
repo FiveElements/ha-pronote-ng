@@ -32,7 +32,12 @@ from homeassistant.core import callback
 
 from .account import PronoteAccount
 from .const import Tier
-from .entity import ClockDrivenMixin, PronoteAccountEntity, PronoteEntity
+from .entity import (
+    ClockDrivenMixin,
+    LocallyPolledMixin,
+    PronoteAccountEntity,
+    PronoteEntity,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -48,13 +53,16 @@ if TYPE_CHECKING:
 #: of an ``async_update``.
 PARALLEL_UPDATES = 0
 
-#: 30 seconds, which is the cadence these entities already ran at: with
-#: ``_attr_should_poll`` set and no ``SCAN_INTERVAL``, Home Assistant applies
-#: its own 30-second default. Declaring it changes no behaviour and records two
-#: things -- that the cadence is deliberate, and that it is free. The polled
-#: entities here are diagnostic readings of the limiter, the scheduler and the
-#: session, all held in memory: polling them places no request, which is why a
+#: 30 seconds, for the one polled entity here: the limiter's "throttled" flag,
+#: read straight out of memory. Polling it places no request, which is why a
 #: sub-minute cadence is affordable on this platform and nowhere else.
+#:
+#: This used to claim it was "the cadence these entities already ran at", and
+#: that was wrong: nothing polled, because ``should_poll`` on a coordinator
+#: entity is a property and the ``_attr_`` beside it was never consulted. See
+#: :class:`.entity.LocallyPolledMixin`, which is what makes the interval mean
+#: anything -- and note what it cost here: the flag whose whole purpose is to
+#: explain a quiet integration could itself go quiet.
 SCAN_INTERVAL = timedelta(seconds=30)
 
 #: How far ahead ``holidays`` looks for a lesson. Seven days rather than "the
@@ -542,7 +550,9 @@ class PronoteBinarySensor(ClockDrivenMixin, PronoteEntity, BinarySensorEntity):
         self._arm()
 
 
-class PronoteThrottledBinarySensor(PronoteAccountEntity, BinarySensorEntity):
+class PronoteThrottledBinarySensor(
+    LocallyPolledMixin, PronoteAccountEntity, BinarySensorEntity
+):
     """``on`` while the limiter is postponing collections.
 
     Attached to the account and not to a child: the budget is shared, because
@@ -553,7 +563,6 @@ class PronoteThrottledBinarySensor(PronoteAccountEntity, BinarySensorEntity):
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_should_poll = True
 
     @property
     def is_on(self) -> bool:

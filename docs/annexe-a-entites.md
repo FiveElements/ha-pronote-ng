@@ -84,7 +84,7 @@ calcul se fait dans le fuseau de l'établissement.
 | `sensor.<é>_evaluations` | nombre | **`items`** | `evaluations` | `Period.evaluations` |
 | `sensor.<é>_actualites` | nombre | **`items`** | `news` | `Client.information_and_surveys()` |
 | `sensor.<é>_discussions` | nombre | **`items`** | `discussions` | `Client.discussions()` |
-| `sensor.<é>_menu_du_jour` | nombre de plats | **`first_meal`**, **`main_meal`**, **`side_meal`**, **`other_meal`**, **`cheese`**, **`dessert`**, `is_lunch` | `menus` | `Menu` |
+| `sensor.<é>_menu_du_jour` | nombre de plats | **`first_meal`**, **`main_meal`**, **`side_meal`**, **`other_meal`**, **`cheese`**, **`dessert`**, `is_lunch`, `published` | `menus` | `Menu` |
 | `sensor.<é>_menu_demain` | nombre de plats | idem | `menus` | `Menu` |
 | `sensor.<é>_bulletin` | nombre de matières | **`subjects`**, **`comments`**, `period` | `marks` | `Period.report` |
 | `sensor.<é>_equipe_pedagogique` | nombre de membres | **`items`** | `static` | `Client.get_teaching_staff()` |
@@ -101,7 +101,97 @@ ne vaut en réalité qu'un seul appel, celui de l'équipe pédagogique.
 `Subject.id` : `Average` n'a **pas** de champ `id`, et la règle de stabilité
 (§2.4 de la spécification) interdit d'employer un rang dans la liste.
 
-### 2.1 Historique des périodes closes
+**Exigence.** Les deux capteurs de menu portent **toujours** leurs sept clés de
+plats, plus `published`. Un établissement qui ne publie rien un jour donné n'est
+pas une erreur : la requête aboutit et la semaine revient vide. Or un jeu
+d'attributs qui apparaît et disparaît est illisible depuis une carte —
+`state_attr(..., 'main_meal')` rend `None` aussi bien quand la cantine ne publie
+rien que quand le palier n'a jamais tourné, et ces deux phrases ne se disent pas
+pareil à un parent. Les listes sont donc vides et `published` porte la
+distinction ; `is_lunch` vaut `None` plutôt que de deviner un service pour un
+repas qui n'existe pas. L'état, lui, reste `unknown` : zéro plat serait une
+affirmation sur un menu existant.
+
+**Exigence.** Chaque élément de `sensor.<é>_devoirs` (et des deux capteurs
+primitifs de devoirs) porte `description` **et** `description_text`. `descriptif`
+arrive de PRONOTE en HTML — les professeurs saisissent dans un éditeur riche —
+et une carte ne peut en faire ni l'un ni l'autre : l'injecter ferait de chaque
+champ de texte professoral une voie d'entrée dans le tableau de bord, l'afficher
+tel quel fait lire les balises au parent. La conversion appartient donc au seul
+module qui *sait* que le champ est du HTML, une fois, et non à chaque carte — le
+HTML reste à côté, car il porte l'emphase et les liens.
+
+### 2.1 Forme des éléments
+
+Les tableaux ci-dessus nomment l'attribut ; ils ne disaient pas ce qu'un élément
+contient, et c'est un manque qui a coûté. Une carte a lu `grade` au lieu de
+`value` : **toutes** les notes s'affichaient « — », matière et coefficient
+corrects, note absente, sans un signe d'erreur — et ses propres tests ne l'ont
+pas vu, parce que leurs fixtures reprenaient le nom inventé. Un nom de champ
+deviné se vérifie contre lui-même. Il est donc écrit ici.
+
+Ces noms sont ceux des DTO de `models.py` et **ils sont stables** : un champ
+peut s'ajouter, aucun ne sera renommé sans annonce.
+
+**`lessons[]`** — `id`, `subject`, `teachers[]`, `classroom`, `start`, `end`
+(ISO 8601), `canceled`, `status`, `test`, `outing`, `detention`, `exempted`,
+`memo`, `end_inferred`.
+
+**`items[]` de devoirs** — `id`, `subject`, `description` (HTML tel que PRONOTE
+l'envoie), `description_text` (le même énoncé en texte simple), `due`, `done`,
+`attachments[]`.
+
+**`grades[]`** — `id`, `subject`, **`value`** (et non `grade`), `status`,
+`out_of`, `coefficient`, `date`, `class_average`, `min`, `max`, `comment`,
+`is_bonus`, `is_optional`. `value` et `status` sont **exclusifs** (§4.3) :
+l'un des deux est nul. C'est ce qui permet à l'état de
+`sensor.<é>_derniere_note` d'être numérique — donc utilisable par un
+`numeric_state` et par un graphe — au lieu d'être tantôt `14.5` tantôt
+`Absent`.
+
+**`averages[]`** — `subject_id`, `subject`, **`student`** (et non `average`),
+`class_average`, `min`, `max`, `out_of`. Clés par `subject_id` : `Average` n'a
+pas d'identifiant propre et §2.4 interdit d'employer un rang.
+
+**`absences[]`** — `id`, `from_date`, `to_date`, `justified`, **`hours`** (une
+**chaîne**, `"2h00"`, telle qu'upstream la donne), `days` (un entier),
+`reasons[]`. Il n'y a **pas** de `minutes` ici.
+
+**`delays[]`** — `id`, `date`, **`minutes`** (un entier), `justified`,
+`justification`, `reasons[]`. `minutes` vit ici et nulle part ailleurs : la
+spécification v1 le listait sur les deux, ce qui est la raison pour laquelle les
+deux ont aujourd'hui des entités `event` distinctes (§4).
+
+**`punishments[]`** — `id`, `nature`, `reasons[]`, `giver`, `exclusion`,
+`schedule[]`. Chaque créneau de `schedule[]` porte `start` et
+**`duration_minutes`**. La durée n'existe **qu'**au niveau du créneau :
+`Punishment` n'en a pas au premier niveau, et ce n'est pas un oubli
+d'exposition — PRONOTE ne la donne pas autrement.
+
+**`evaluations[]`** — `id`, `name`, `subject`, `date`, `acquisitions[]`. Chaque
+acquisition porte `name`, `level`, `abbreviation`, `domain`.
+
+**`items[]` d'actualités** — `id`, `title`, `author`, `category`, `read`,
+`survey`, `created`. Le **contenu est délibérément absent** :
+`Information.content` est un attribut paresseux qui place une requête à la
+lecture, et rien de tel ne franchit la passerelle (§3.1).
+
+**`items[]` de discussions** — `id`, `subject`, `creator`, `unread`, `closed`,
+`messages[]`, chaque message portant `id`, `author`, `created`.
+
+**`items[]` d'équipe pédagogique** — `name`, `role` (`teacher` ou `staff`,
+l'interprétation restant celle d'upstream), `subjects[]`.
+
+**`subjects[]` du bulletin** — `id`, `name`, `student_average`, `class_average`,
+`coefficient`, `comments[]`, `teachers[]`. Le capteur porte en plus `comments`
+au premier niveau et `period`.
+
+**Exigence.** Ces formes sont un **contrat**. Une carte tierce qui les lit doit
+pouvoir être écrite sans lire le code source de l'intégration, et un champ
+renommé en silence casse un tableau de bord sans aucun message d'erreur — le
+défaut se présente comme une donnée manquante, jamais comme une panne.
+
+### 2.2 Historique des périodes closes
 
 **Exigence.** Pour chaque période close suivie (option `history_periods`), les
 entités suivantes sont créées, suffixées par l'**index** de période et non par
@@ -216,7 +306,7 @@ donnerait l'illusion qu'il n'a jamais existé.
 
 | Entité | Éléments | Écriture | P |
 | --- | --- | --- | --- |
-| `todo.<é>_devoirs` | un élément par devoir, `due` = échéance, `summary` = matière, `description` = énoncé | cocher → `Homework.set_done(True)` | `homework` |
+| `todo.<é>_devoirs` | un élément par devoir, `due` = échéance, `summary` = matière, `description` = énoncé **en texte simple** | cocher → `Homework.set_done(True)` | `homework` |
 
 **Exigence.** `UPDATE_ITEM` n'est annoncé que si `write_operations_enabled` est
 vrai (§8.3 de la spécification).
@@ -280,7 +370,7 @@ Rend le réglage du §6 observable. Toutes ces entités portent
 | `sensor.<compte>_appels_du_jour` | nombre d'appels depuis minuit | `by_tier`, `logins`, `failed_logins` |
 | `sensor.<compte>_budget_restant` | appels restants sur le plafond du jour | `daily_cap`, `hourly_remaining`, `tokens` |
 | `sensor.<compte>_derniere_collecte` | horodatage (`timestamp`) | `tier`, `duration_ms`, `calls` |
-| `sensor.<compte>_prochaine_collecte` | horodatage (`timestamp`) | `tiers_due` |
+| `sensor.<compte>_prochaine_collecte` | horodatage (`timestamp`) | `tiers_due`, `overdue_by`, `failing` |
 | `sensor.<compte>_age_session` | âge de la session en secondes | `session_id_hash`, `opened_at` |
 | `sensor.<compte>_duree_vie_session` | durée de vie **mesurée** de la session, en minutes | `samples`, `last_expiry`, `strategy` |
 | `sensor.<compte>_connexions_du_jour` | nombre de connexions réussies | `failed`, `cap` |
@@ -292,6 +382,26 @@ est partagé (§7.1 de la spécification).
 
 **Exigence.** `session_id_hash` est une empreinte tronquée, pas l'identifiant de
 session. Un diagnostic ne doit pas donner de quoi rejouer une session.
+
+**Exigence.** Ces neuf entités se **rafraîchissent d'elles-mêmes**, toutes les
+trente secondes, sans placer aucune requête : leurs valeurs se lisent dans le
+limiteur, l'ordonnanceur et la session, déjà en mémoire. Ce n'est pas un détail
+d'implémentation. Rafraîchies seulement par une collecte — ce qu'elles étaient,
+`_attr_should_poll` étant inopérant sur une entité de coordinateur —, elles se
+taisaient précisément dans la circonstance où on les consulte : un palier dû et
+en échec laissait « prochaine collecte » figée quarante minutes dans le passé,
+et le témoin « bridé », dont tout le rôle est d'expliquer une intégration
+silencieuse (§6.6), pouvait rester allumé après le retour à la normale. La
+contrepartie est explicite dans `LocallyPolledMixin` : le scrutin ne doit
+**jamais** appeler `async_request_refresh`, sans quoi une lecture gratuite
+deviendrait une requête toutes les trente secondes.
+
+**Exigence.** `prochaine_collecte` porte une **échéance**, et non un décompte
+converti à l'instant de la lecture. Un horodatage passé y est une lecture
+légitime — un palier est en retard — et `overdue_by` en donne l'ampleur en
+secondes tandis que `failing` nomme les paliers dont la dernière tentative a
+échoué. Sans eux, « échéance dépassée et rien n'a tourné » et « il tourne et
+échoue à chaque fois » se lisent pareil sur la tuile.
 
 ---
 

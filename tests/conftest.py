@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.pronote_ng.const import (
+    CONF_CHILDREN,
     CONF_LOGIN_MODE,
     CONF_PRONOTE_URL,
     DOMAIN,
@@ -185,6 +186,11 @@ def entry_data_fixture() -> dict[str, Any]:
         CONF_LOGIN_MODE: str(LoginMode.CREDENTIALS),
         "username": "parent-under-test",
         "password": "not-a-real-password",
+        # The followed-child selection, which every real entry carries: the
+        # flow writes it on creation and the runtime reads it on every tick.
+        # Its absence here was not neutral -- it is what let a diagnostics
+        # download ship these identifiers unredacted without a test noticing.
+        CONF_CHILDREN: [child_id for child_id, _ in CHILDREN],
     }
 
 

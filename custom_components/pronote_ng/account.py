@@ -750,6 +750,12 @@ class PronoteAccount:
                 {
                     "id_hash": _short_hash(student.id),
                     "class_name": student.class_name,
+                    # Whether PRONOTE says this child has a profile photo, which
+                    # is what decides if the `image` platform creates an entity
+                    # at all. Without it, "no photo entity" is indistinguishable
+                    # from "the flag is being misread", and the first is a
+                    # legitimate school setting while the second is a bug.
+                    "has_photo": student.has_photo,
                 }
                 for student in self.state.students
             ],

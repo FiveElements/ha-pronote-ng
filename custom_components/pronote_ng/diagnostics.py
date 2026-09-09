@@ -21,6 +21,7 @@ from homeassistant.components.diagnostics import async_redact_data
 
 from .const import (
     CONF_ACCOUNT_PIN,
+    CONF_CHILDREN,
     CONF_CLIENT_IDENTIFIER,
     CONF_PRONOTE_URL,
     CONF_QR_PAYLOAD,
@@ -68,6 +69,22 @@ async def async_get_config_entry_diagnostics(
     data = dict(entry.data)
     if CONF_PRONOTE_URL in data:
         data[CONF_PRONOTE_URL] = public_url(str(data[CONF_PRONOTE_URL]))
+
+    # The child selection, fingerprinted rather than redacted. It escaped both
+    # treatments: `TO_REDACT` never listed it, so a dump carried each followed
+    # child's PRONOTE resource identifier -- `46#<opaque blob>` -- in full,
+    # while the `students` block a few lines below had been reducing the very
+    # same identifiers to a fingerprint all along. One file, two policies, and
+    # the laxer one won on the half nobody looked at.
+    #
+    # Fingerprinting rather than dropping, for the reason this module's own
+    # docstring gives: "both children show the same tier failing" stays legible
+    # if the ids are comparable, and the fingerprints match the `students`
+    # block, so the two can be read against each other.
+    if CONF_CHILDREN in data:
+        selection = data[CONF_CHILDREN]
+        if isinstance(selection, list):
+            data[CONF_CHILDREN] = [_short_hash(str(child)) for child in selection]
 
     return {
         "entry": {

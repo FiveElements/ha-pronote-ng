@@ -40,7 +40,12 @@ from .const import (
     LimiterState,
     Tier,
 )
-from .entity import ClockDrivenMixin, PronoteAccountEntity, PronoteEntity
+from .entity import (
+    ClockDrivenMixin,
+    LocallyPolledMixin,
+    PronoteAccountEntity,
+    PronoteEntity,
+)
 from .models import HistoryFacts
 from .options import bounded_option
 
@@ -75,13 +80,16 @@ if TYPE_CHECKING:
 #: of an ``async_update``.
 PARALLEL_UPDATES = 0
 
-#: 30 seconds, which is the cadence these entities already ran at: with
-#: ``_attr_should_poll`` set and no ``SCAN_INTERVAL``, Home Assistant applies
-#: its own 30-second default. Declaring it changes no behaviour and records two
-#: things -- that the cadence is deliberate, and that it is free. The polled
-#: entities here are diagnostic readings of the limiter, the scheduler and the
-#: session, all held in memory: polling them places no request, which is why a
-#: sub-minute cadence is affordable on this platform and nowhere else.
+#: 30 seconds. The polled entities here are diagnostic readings of the limiter,
+#: the scheduler and the session, all held in memory: polling them places no
+#: request, which is why a sub-minute cadence is affordable on this platform and
+#: nowhere else.
+#:
+#: This used to claim it was "the cadence these entities already ran at", and
+#: that was wrong: nothing on this platform polled, because ``should_poll`` on a
+#: coordinator entity is a property and the ``_attr_`` beside it was never
+#: consulted. See :class:`.entity.LocallyPolledMixin`, which is what makes the
+#: interval mean anything.
 SCAN_INTERVAL = timedelta(seconds=30)
 
 type StateValue = str | int | float | datetime | date | None
@@ -366,7 +374,12 @@ def _homework_dict(item: Homework) -> dict[str, Any]:
     return {
         "id": item.id,
         "subject": item.subject,
+        # Both, because a card cannot make one from the other: the HTML is
+        # what the teacher wrote, and the plain text is the only form of it a
+        # dashboard can print without either showing the tags or opening an
+        # injection route (§3.3).
         "description": item.description,
+        "description_text": item.description_text,
         "due": item.due.isoformat(),
         "done": item.done,
         "attachments": list(item.attachments),
@@ -814,9 +827,29 @@ def _menu_today_count(facts: MenusFacts, account: PronoteAccount) -> StateValue:
 
 
 def _menu_attributes_for(menu: Any | None) -> dict[str, Any]:
-    """One menu's courses."""
+    """One menu's courses, with the same keys whether or not there is one.
+
+    An attribute set that appears and disappears is unusable from a card: a
+    template reading ``state_attr(..., "main_meal")`` gets ``None`` both when
+    the canteen publishes nothing and when the tier has never run, and those
+    two say very different things to a parent. So the shape is constant and
+    ``published`` carries the distinction -- the courses are empty because
+    there is no menu, not because nobody looked.
+
+    ``is_lunch`` stays ``None`` rather than guessing a service for a meal that
+    does not exist.
+    """
     if menu is None:
-        return {}
+        return {
+            "first_meal": [],
+            "main_meal": [],
+            "side_meal": [],
+            "other_meal": [],
+            "cheese": [],
+            "dessert": [],
+            "is_lunch": None,
+            "published": False,
+        }
     return {
         "first_meal": list(menu.first_meal),
         "main_meal": list(menu.main_meal),
@@ -825,6 +858,7 @@ def _menu_attributes_for(menu: Any | None) -> dict[str, Any]:
         "cheese": list(menu.cheese),
         "dessert": list(menu.dessert),
         "is_lunch": menu.is_lunch,
+        "published": True,
     }
 
 
@@ -1530,11 +1564,10 @@ def _diagnostic_sensors(account: PronoteAccount) -> list[SensorEntity]:
     ]
 
 
-class PronoteLimiterSensor(PronoteAccountEntity, SensorEntity):
+class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntity):
     """One diagnostic reading of the limiter, scheduler or session."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_should_poll = True
 
     def __init__(
         self,
@@ -1620,7 +1653,25 @@ class PronoteLimiterSensor(PronoteAccountEntity, SensorEntity):
                     "calls": record.last_calls,
                 }
             case "next_collection":
-                return {"tiers_due": list(self.account.scheduler.tiers_due_names())}
+                # Late, and why. A deadline in the past is a legitimate
+                # reading -- a tier is overdue -- but on its own it is
+                # indistinguishable from a sensor that stopped updating, which
+                # is what a dashboard first suspects. `failing` names the tiers
+                # whose last attempt raised, so "the deadline passed and
+                # nothing ran" and "it runs and fails every time" are two
+                # different sentences on the same tile.
+                remaining = self.account.scheduler.next_due_in()
+                late = int(-remaining) if remaining is not None and remaining < 0 else 0
+                records = self.account.state.records
+                return {
+                    "tiers_due": list(self.account.scheduler.tiers_due_names()),
+                    "overdue_by": late,
+                    "failing": {
+                        str(tier): record.consecutive_failures
+                        for tier, record in records.items()
+                        if record.consecutive_failures
+                    },
+                }
             case "session_lifetime":
                 # The measured value, and how it is being acted on. This is what
                 # turns the session strategy from a bet into an observation

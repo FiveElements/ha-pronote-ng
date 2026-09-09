@@ -465,3 +465,55 @@ async def test_an_entry_with_no_address_still_produces_a_diagnostic(
     assert CONF_PRONOTE_URL not in diagnostics["entry"]["data"]
     assert diagnostics["entry"]["url_host"] is None
     assert diagnostics["account"]["students"]
+
+
+@REQUIRES_HASS
+async def test_the_followed_child_selection_is_fingerprinted_like_the_rest(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """One file, and it had two policies -- the laxer one on the unread half.
+
+    ``entry.data["children"]`` holds each followed child's PRONOTE resource
+    identifier, written ``46#<opaque blob>``. It appeared in a real download in
+    full: ``TO_REDACT`` never listed it, while the ``students`` block a few
+    lines below had been reducing the very same identifiers to a fingerprint
+    all along.
+
+    That identifier is what selects a child in a request, and this file exists
+    to be attached to a public issue (§8.2). Fingerprinted rather than dropped,
+    so it still matches the ``students`` block and the two can be read against
+    each other -- which is the whole argument this module makes for hashing
+    instead of redacting.
+    """
+    entry = account.entry
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    selection = diagnostics["entry"]["data"]["children"]
+    fingerprints = [_short_hash(child_id) for child_id, _ in CHILDREN]
+
+    assert selection == fingerprints
+    dumped = json.dumps(diagnostics)
+    for child_id, _name in CHILDREN:
+        assert child_id not in dumped
+
+
+@REQUIRES_HASS
+async def test_whether_a_child_has_a_photo_is_reported(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """ "No photo entity" and "the flag is misread" looked identical.
+
+    ``image.async_setup_entry`` creates an entity only for a child whose
+    ``has_photo`` is true, and that flag is read from one key of
+    ``parametres_utilisateur``. On a live account no photo entity appeared, and
+    there was no way to tell a school that publishes no photos -- a legitimate
+    setting -- from a renamed key, which is a bug. The boolean is a boolean:
+    reporting it costs nothing and settles the question from the download.
+    """
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry=account.entry)
+
+    students = diagnostics["account"]["students"]
+
+    assert students
+    for student in students:
+        assert isinstance(student["has_photo"], bool)

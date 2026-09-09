@@ -91,7 +91,10 @@ class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):
             TodoItem(
                 uid=item.id,
                 summary=item.subject or "?",
-                description=item.description or None,
+                # The plain form, not the HTML: the to-do list renders this
+                # as text, so the markup PRONOTE wraps the description in
+                # would be read out tag by tag.
+                description=item.description_text or None,
                 due=item.due,
                 status=(
                     TodoItemStatus.COMPLETED

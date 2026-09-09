@@ -23,6 +23,7 @@ payloads. See ``tests/fixtures/`` for why none of them came off a real server.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -717,6 +718,59 @@ def test_one_undecodable_homework_item_costs_that_item(
     assert items[0].done is False
     assert items[0].subject is None
     assert items[1].description == ""
+
+
+def test_a_homework_description_is_published_as_prose_as_well_as_html(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """``descriptif`` is a rich-text field, and a card can use neither end raw.
+
+    Teachers type into an editor, so a description arrives as markup with
+    character entities. Injecting that into a dashboard would turn every
+    teacher's text box into an XSS route, and printing it makes the parent read
+    the tags. Stripping it in each consumer would be three strippers and three
+    answers to ``&amp;amp;``, so the module that knows the field is HTML does it
+    once.
+
+    The HTML is kept alongside: it carries the emphasis and the links, and
+    discarding what upstream sent in favour of our reading of it is what §3.1
+    refuses to do.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [
+            protocol.homework(
+                description=(
+                    "<div>Exercices 3 &amp; 4 p.&nbsp;52</div>"
+                    "<div>Apporter l&#039;&eacute;querre</div>"
+                )
+            )
+        ]
+    )
+
+    item = gateway.homework(client).facts.homework[0]
+
+    assert item.description_text == "Exercices 3 & 4 p. 52\nApporter l'équerre"
+    # Not replaced by it: the markup survives for whoever wants to render it.
+    assert "<div>" in item.description
+
+
+def test_an_entity_a_teacher_typed_by_hand_is_not_read_as_a_tag(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """The order of the two passes is the whole correctness of the stripper.
+
+    A maths or code exercise legitimately contains ``&lt;`` and ``&gt;``, which
+    PRONOTE sends escaped. Decoding the entities before removing the tags would
+    turn that text *into* a tag and then delete it -- the exercise would reach
+    the parent with a hole in the middle. Tags go first for that reason.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [protocol.homework(description="Comparer &lt;b&gt; et &lt;strong&gt;")]
+    )
+
+    item = gateway.homework(client).facts.homework[0]
+
+    assert item.description_text == "Comparer <b> et <strong>"
 
 
 def test_a_homework_item_without_an_id_or_a_due_date_is_dropped(
@@ -1431,6 +1485,82 @@ def test_the_teaching_staff_is_the_whole_static_tier(
     assert result.facts.teaching_staff[0].name == "Prof. Un"
     assert result.facts.teaching_staff[0].subjects == ("Mathématiques",)
     assert not hasattr(result.facts, "ical_url")
+
+
+def test_a_teaching_staff_response_without_its_list_names_what_it_did_carry(
+    gateway: PronoteGateway, client: FakeClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The live failure that had to be reproduced before it could be understood.
+
+    A PRONOTE 26.2 server answered tab 37 with no ``liste`` key.
+    ``ClientBase.get_teaching_staff`` subscripts it blind, so the tier failed as
+    ``KeyError: 'liste'`` -- a message naming nothing anyone can act on, in a
+    module whose §3.3 rule is that the *reading* happens here.
+
+    Failing the tier is still correct and deliberate: an absent key is not an
+    empty staff list, and §5.4 keeps the previous snapshot rather than
+    publishing a school with no teachers. What was missing is the cause. With
+    the key names the response *does* carry, a renamed field is one log line
+    away instead of one release away.
+    """
+    caplog.set_level(logging.WARNING)
+    client.responses["PageEquipePedagogique"] = {
+        "dataSec": {"data": {"listeEquipePedagogique": {"V": []}}}
+    }
+
+    with pytest.raises(ProtocolChanged):
+        gateway.static(client)
+
+    assert "the teaching staff" in caplog.text
+    assert "liste" in caplog.text
+    # The keys it *does* carry, which is the whole point of the change.
+    assert "listeEquipePedagogique" in caplog.text
+
+
+def test_an_empty_teaching_staff_list_is_not_a_failure(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """ "Absent" and "empty" stay two different answers.
+
+    An establishment that publishes the tab with nobody in it is a quiet
+    school, not a protocol change. It must succeed with no members, rather than
+    keep yesterday's snapshot for ever and eventually raise a repair.
+    """
+    client.responses["PageEquipePedagogique"] = protocol.teaching_staff_response([])
+
+    result = gateway.static(client)
+
+    assert result.facts.teaching_staff == ()
+    assert result.calls == 1
+
+
+def test_a_staff_member_who_is_not_a_teacher_is_labelled_as_such(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """``G`` is the discriminator, and it is upstream's to interpret.
+
+    ``dataClasses.TeachingStaff`` maps ``G == 3`` to ``"teacher"`` and anything
+    else to ``"staff"``. Decoding the tab ourselves must not mean re-deciding
+    that: the entries still go through upstream's class, so a head teacher or a
+    nurse keeps arriving as ``staff`` without this module owning the table.
+    """
+    client.responses["PageEquipePedagogique"] = protocol.teaching_staff_response(
+        [
+            protocol.teaching_staff(),
+            protocol.teaching_staff(
+                identifier="STAFF-2",
+                name="Vie scolaire",
+                teacher=False,
+                subjects=(),
+                order=2,
+            ),
+        ]
+    )
+
+    result = gateway.static(client)
+
+    roles = {member.name: member.role for member in result.facts.teaching_staff}
+    assert roles == {"Prof. Un": "teacher", "Vie scolaire": "staff"}
 
 
 # ---------------------------------------------------------------------------

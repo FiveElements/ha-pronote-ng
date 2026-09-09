@@ -628,7 +628,7 @@ minuteur. Trois propriétés en découlent, qu'aucun jeu de minuteurs ne donne :
 1. **La granularité du battement ne fixe pas le budget.** Le budget est fixé
    par les échéances. Augmenter la cadence du battement ne coûte donc rien —
    ce qui est dit explicitement dans `next_due_in`
-   (`scheduler.py:231-258`) — alors qu'avec des minuteurs, la fréquence du
+   (`scheduler.py:236-273`) — alors qu'avec des minuteurs, la fréquence du
    déclencheur *est* la fréquence des requêtes.
 2. **Un palier différé n'est jamais abandonné.** `defer`
    (`scheduler.py:277-294`) déplace son `not_before` et conserve son instantané

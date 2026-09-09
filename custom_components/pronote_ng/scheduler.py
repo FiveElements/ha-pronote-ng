@@ -234,12 +234,23 @@ class FetchScheduler:
         return [tier for _, _, tier in candidates]
 
     def next_due_in(self) -> float | None:
-        """Seconds until the earliest deadline; ``0.0`` when something is due.
+        """Seconds until the earliest deadline; **negative when overdue**.
 
         ``None`` means there is no enabled tier at all -- not "nothing is due",
-        which is what the previous wording claimed. Feeds
-        ``sensor.<account>_prochaine_collecte``, which therefore reads *now*
-        whenever a tier is overdue, and that is the honest answer.
+        which is what the previous wording claimed.
+
+        The sign matters, and it used to be clamped to zero. Feeding
+        ``sensor.<account>_prochaine_collecte`` a clamped value made it publish
+        *the instant of its own last refresh* as the next collection, and that
+        entity is refreshed by a collection: a tier that was due and failing
+        left the timestamp frozen forty minutes in the past with nothing
+        explaining why. The card was right to call it absurd -- it was reading
+        "now" written down some time ago.
+
+        Unclamped, the value is a **deadline** and not a countdown, so it does
+        not depend on when it was computed. A past timestamp then means exactly
+        what it says: the collection is late by that much, which with
+        ``tiers_due`` beside it is a diagnosis rather than a puzzle.
 
         Note the master tick's granularity bounds how closely execution follows
         the deadline: raising the tick rate costs nothing, because deadlines and
@@ -257,7 +268,7 @@ class FetchScheduler:
                 due_at = max(
                     state.last_collected + plan.interval_seconds, state.not_before
                 )
-            remaining = max(0.0, due_at - now)
+            remaining = due_at - now
             if best is None or remaining < best:
                 best = remaining
         return best

@@ -371,6 +371,29 @@ def test_next_due_in_is_zero_when_something_is_overdue(clock: FakeClock) -> None
     assert scheduler.next_due_in() == 0.0
 
 
+def test_a_missed_deadline_is_reported_as_how_late_it_is(clock: FakeClock) -> None:
+    """The sign is the fix, and the reason is what the value is used for.
+
+    ``sensor.<compte>_prochaine_collecte`` publishes ``now + this``. Clamped at
+    zero, that made the entity report the instant of its own last refresh --
+    and it is refreshed *by a collection*, so a tier that was due and failing
+    froze the timestamp in the past while the clock moved on. A dashboard read
+    "next collection: 40 minutes ago", which is not a deadline at all.
+
+    Unclamped, the number is an offset to a fixed instant instead of a
+    countdown from an arbitrary one, so the timestamp stops depending on when
+    anybody happened to ask.
+    """
+    scheduler = build(clock, one(Tier.TIMETABLE, 15, Priority.HIGH))
+    scheduler.mark_collected(Tier.TIMETABLE)
+
+    clock.advance(15 * 60 + 40 * 60)
+
+    assert scheduler.next_due_in() == pytest.approx(-40 * 60)
+    # And it is genuinely due -- late, not silently dropped.
+    assert scheduler.tiers_due_names() == ("timetable",)
+
+
 def test_next_due_in_counts_down_to_the_earliest_deadline(clock: FakeClock) -> None:
     """The earliest of the enabled tiers, not the average or the first."""
     plans = {

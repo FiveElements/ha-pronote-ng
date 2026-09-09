@@ -30,7 +30,9 @@ this is a bounded exception, not a policy.
 from __future__ import annotations
 
 import datetime as dt
+from html import unescape
 import logging
+import re
 from typing import TYPE_CHECKING, Any, Final
 from zoneinfo import ZoneInfo
 
@@ -190,6 +192,46 @@ class GatewayResult[T]:
 # ---------------------------------------------------------------------------
 
 
+#: Tags that end a line of prose. Substituted before the rest are dropped, so
+#: a description written as paragraphs does not arrive as one run-on sentence.
+_LINE_BREAK_TAG: Final = re.compile(
+    r"(?i)<\s*(?:br\s*/?|/\s*(?:p|div|li|tr|h[1-6]|blockquote))\s*>"
+)
+_ANY_TAG: Final = re.compile(r"<[^>]*>")
+
+
+def _plain_text(html: str) -> str:
+    """The same prose, without the markup PRONOTE writes into it.
+
+    ``descriptif`` is HTML: teachers type into a rich-text field, so a homework
+    description arrives as ``<div>…</div>``, ``<br>`` and character entities
+    (``&#039;``, ``&quot;``, ``&nbsp;``). That is unusable at both ends of a
+    Home Assistant install. A card cannot inject it -- doing so would make
+    every teacher's text field an XSS vector into the dashboard -- and cannot
+    print it either, because the parent then reads the tags out loud.
+
+    So the conversion belongs here, once, and not in each consumer: this module
+    is the only place that *knows* the field is HTML, and three cards each
+    inventing their own stripper is three subtly different answers to
+    "&amp;amp;".
+
+    The HTML is kept alongside in ``description``. It carries emphasis and the
+    occasional link, and discarding what upstream sent in favour of our reading
+    of it is the one thing §3.1 refuses to do.
+
+    Order matters. Breaks become newlines first, then tags go, then entities are
+    decoded -- decoding earlier would turn a literal ``&lt;b&gt;`` the teacher
+    typed into a tag and delete it.
+    """
+    if not html:
+        return ""
+    text = _LINE_BREAK_TAG.sub("\n", html)
+    text = _ANY_TAG.sub("", text)
+    text = unescape(text).replace("\xa0", " ")
+    lines = [line.strip() for line in text.split("\n")]
+    return "\n".join(line for line in lines if line)
+
+
 def _get(source: Any, *path: str) -> Any:
     """Walk a path through nested dicts, yielding ``None`` on any miss.
 
@@ -233,13 +275,25 @@ def _required_list(source: Any, *path: str, what: str) -> list[Any]:
     cursor: Any = source
     for key in path:
         if not isinstance(cursor, dict) or key not in cursor:
+            # The key names actually present, which is the single piece of
+            # information that turns "the protocol changed" into "the protocol
+            # changed *to this*". Names only, never a value: this warning lands
+            # in the file users are invited to attach to a public issue (§8.2).
+            #
+            # It is here because its absence was expensive. A live server
+            # dropped one key, the log said `KeyError: 'liste'`, and there was
+            # no way to tell a renamed field from a section the establishment
+            # does not publish without shipping a build just to look.
+            seen = sorted(cursor) if isinstance(cursor, dict) else type(cursor).__name__
             _LOGGER.warning(
-                "PRONOTE returned no %s: the response carries no %s. This "
-                "usually means the protocol changed and the integration needs "
-                "an update; treating the collection as failed rather than as "
-                "empty so the previous data is kept",
+                "PRONOTE returned no %s: the response carries no %s. What it "
+                "does carry at that level is %s. This usually means the "
+                "protocol changed and the integration needs an update; "
+                "treating the collection as failed rather than as empty so the "
+                "previous data is kept",
                 what,
                 ".".join(path),
+                seen,
             )
             raise ProtocolChanged(what, ".".join(path))
         cursor = cursor[key]
@@ -750,6 +804,7 @@ class PronoteGateway:
             id=str(identifier),
             subject=_get(entry, "Matiere", "V", "L") or None,
             description=str(description) if description else "",
+            description_text=_plain_text(str(description) if description else ""),
             due=due,
             done=bool(entry.get("TAFFait", False)),
             background_color=_get(entry, "CouleurFond") or None,
@@ -1328,14 +1383,31 @@ class PronoteGateway:
         more: keeping it would drop an autonomous authentication bearer into the
         snapshot store, a long-lived structure whose purpose is to be dumped
         into a diagnostic report (§8.2).
+
+        Decoded here rather than through ``client.get_teaching_staff()``, and
+        the difference is not stylistic. Upstream reads
+        ``post("PageEquipePedagogique", 37)["dataSec"]["data"]["liste"]["V"]``
+        with bare subscription, so a server whose response omits ``liste`` --
+        which is what a live PRONOTE 26.2 does -- reaches the user as
+        ``KeyError: 'liste'``. That names nothing anyone can act on, and it
+        breaks §3.3's own rule: one raw ``post`` per tab, the entries handed to
+        upstream's data classes, the *reading* done by this module's helpers.
+        Through ``_required_list`` the same failure names the tab, the key and
+        the keys the response did carry -- which is the difference between a
+        diagnosable outage and a guess.
         """
+        entries = _required_list(
+            _get(client.post("PageEquipePedagogique", 37), "dataSec", "data") or {},
+            "liste",
+            what="the teaching staff",
+        )
         members = tuple(
             TeachingStaffMember(
                 name=member.name,
                 role=member.type,
                 subjects=tuple(subject.name for subject in member.subjects),
             )
-            for member in client.get_teaching_staff()
+            for member in (dataClasses.TeachingStaff(entry) for entry in entries)
         )
         return GatewayResult(StaticFacts(teaching_staff=members), calls=1)
 

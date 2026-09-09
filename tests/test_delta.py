@@ -144,6 +144,7 @@ def a_homework(identifier: str = "HOMEWORK-1") -> Homework:
         id=identifier,
         subject="Histoire",
         description="Lire le chapitre 4",
+        description_text="Lire le chapitre 4",
         due=dt.date(2026, 3, 16),
         done=False,
         background_color=None,

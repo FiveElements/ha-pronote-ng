@@ -150,6 +150,46 @@ class PronoteAccountEntity(CoordinatorEntity["PronoteTierCoordinator"]):
         return True
 
 
+class LocallyPolledMixin:
+    """Makes a coordinator entity poll, for readings that cost nothing to take.
+
+    ``_attr_should_poll = True`` on a :class:`CoordinatorEntity` does nothing.
+    ``BaseCoordinatorEntity`` declares ``should_poll`` as a ``cached_property``
+    returning ``False``, and a property beats the ``_attr_`` fallback it shadows
+    -- so the attribute was inert, and the diagnostic entities carrying it never
+    polled at all. They were refreshed only when the session tier happened to
+    collect, which is once every session cadence and not at all while a tier is
+    failing. That is how ``sensor.<account>_prochaine_collecte`` came to publish
+    an instant forty minutes old, and how the "throttled" flag -- the entity
+    whose whole job is to explain a quiet integration (§6.6) -- could stay ``on``
+    after the limiter had recovered.
+
+    Two overrides are needed together and neither works alone. ``should_poll``
+    has to be a property, and ``async_update`` has to stop being
+    ``CoordinatorEntity``'s: that one calls ``async_request_refresh``, so
+    polling would have turned a free local reading into a server request every
+    thirty seconds -- the exact thing the budget exists to prevent (§7.1).
+
+    Only for entities whose value is computed from objects already in memory:
+    the limiter's counters, the scheduler's deadlines, the session's age. Any
+    entity whose value comes from a collection must stay coordinator-driven.
+    """
+
+    @property
+    def should_poll(self) -> bool:
+        """Yes -- and see the class docstring for why this is a property."""
+        return True
+
+    async def async_update(self) -> None:
+        """Nothing to fetch.
+
+        The poll exists to re-evaluate the properties, which read in-memory
+        state. Home Assistant writes the new state after this returns, so an
+        empty body is the whole update. Overriding it is load-bearing rather
+        than tidy: the inherited implementation would place a request.
+        """
+
+
 class ClockDrivenMixin:
     """Re-evaluates an entity at a wall-clock instant rather than on a poll.
 

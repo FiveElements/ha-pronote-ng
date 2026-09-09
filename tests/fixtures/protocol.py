@@ -16,7 +16,10 @@ for instants and ``%d/%m/%Y`` for plain dates; anything else raises
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 #: The identifiers used throughout. Deliberately not numeric strings: a real
 #: PRONOTE ``N`` is a number, so a test failure mentioning ``LESSON-1`` can
@@ -656,6 +659,47 @@ def news_response(entries: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "dataSec": {"data": {"listeModesAff": [{"listeActualites": {"V": entries}}]}}
     }
+
+
+# ---------------------------------------------------------------------------
+# Teaching staff -- the static tier
+# ---------------------------------------------------------------------------
+
+
+def teaching_staff(
+    *,
+    identifier: str = "STAFF-1",
+    name: str = "Prof. Un",
+    subjects: Sequence[tuple[str, str]] = (("SUBJECT-1", "Mathématiques"),),
+    teacher: bool = True,
+    order: int = 1,
+) -> dict[str, Any]:
+    """One ``PageEquipePedagogique`` entry, in the shape upstream decodes.
+
+    Raw rather than an object, because ``dataClasses.TeachingStaff`` is what
+    reads it: ``G`` is the discriminator it turns into ``"teacher"`` or
+    ``"staff"`` (3 means teacher), and ``matieres.V`` carries the subjects with
+    their weekly volume. A fake that returned finished objects would let this
+    module's own decoding drift without a test noticing -- which is how a live
+    server dropping the ``liste`` key reached a user as ``KeyError: 'liste'``.
+    """
+    return {
+        "N": identifier,
+        "L": name,
+        "P": order,
+        "G": 3 if teacher else 4,
+        "matieres": {
+            "V": [
+                {"N": subject_id, "L": subject_name, "volumeHoraire": "4h30"}
+                for subject_id, subject_name in subjects
+            ]
+        },
+    }
+
+
+def teaching_staff_response(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """A ``PageEquipePedagogique`` tab-37 response."""
+    return {"dataSec": {"data": {"liste": {"V": entries}}}}
 
 
 # ---------------------------------------------------------------------------

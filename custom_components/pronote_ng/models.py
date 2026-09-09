@@ -141,7 +141,16 @@ class Homework:
 
     id: str
     subject: str | None
+    #: As PRONOTE sends it, which is HTML: teachers type into a rich-text
+    #: field, so this carries `<div>`, `<br>` and character entities.
     description: str
+    #: The same prose with the markup removed and the entities decoded. It
+    #: exists because a consumer can do neither of the two things raw HTML
+    #: allows: injecting it would make every teacher's text field an XSS
+    #: vector into the dashboard, and printing it makes the reader see the
+    #: tags. The conversion belongs to the only module that knows the field is
+    #: HTML, rather than to each card inventing its own stripper.
+    description_text: str
     due: date
     done: bool
     background_color: str | None

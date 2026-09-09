@@ -253,12 +253,46 @@ async def test_the_estimate_is_on_every_page_and_agrees_with_the_annexe(
     form = await _open(hass, mock_entry, section)
     placeholders = form["description_placeholders"]
 
+    followed = len(mock_entry.data[CONF_CHILDREN])
+
     assert set(placeholders) == {"estimate", "students", "measured"}
+    assert placeholders["students"] == str(followed)
     assert placeholders["estimate"] == str(
         estimate_daily_requests(
-            mock_entry.options, students=1, session_lifetime_minutes=None
+            mock_entry.options,
+            students=followed,
+            session_lifetime_minutes=None,
         )
     )
+
+
+@REQUIRES_HASS
+async def test_the_estimate_scales_with_the_children_actually_followed(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """The number is per child, and it used to be untested at more than one.
+
+    The entry fixture carried no ``children`` key, so every assertion about the
+    estimate was made at ``students=1`` -- the one value at which the scaling
+    cannot be observed. A parent following two children places nearly twice the
+    traffic, and that is the figure the options page exists to show *before*
+    somebody shortens an interval.
+
+    Nearly twice, not exactly: the login and the session upkeep are shared, so
+    the second child adds its tiers and not a second account's worth of
+    overhead. Asserting a strict inequality on both sides holds that shape
+    without hard-coding a number the annexe would have to be edited to match.
+    """
+    followed = len(mock_entry.data[CONF_CHILDREN])
+    assert followed > 1, "the fixture must follow more than one child for this to test"
+
+    form = await _open(hass, mock_entry, "general")
+    for_many = int(form["description_placeholders"]["estimate"])
+    for_one = estimate_daily_requests(
+        mock_entry.options, students=1, session_lifetime_minutes=None
+    )
+
+    assert for_one < for_many < for_one * followed
 
 
 @REQUIRES_HASS

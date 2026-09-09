@@ -83,7 +83,9 @@ HOMEWORK_ENTRIES = [
     protocol.homework(
         identifier="HOMEWORK-1",
         subject="Histoire",
-        description="Lire le chapitre 4",
+        # As PRONOTE sends it. Teachers type into a rich-text editor, so the
+        # markup is the normal case and not the exotic one.
+        description="<div>Lire le chapitre 4</div>",
         done=False,
     ),
     protocol.homework(
@@ -245,6 +247,21 @@ async def test_an_item_the_server_left_blank_is_still_addressable(
 
     assert blank["summary"] == "?"
     assert not blank.get("description")
+
+
+async def test_the_detail_line_is_prose_and_not_the_markup_pronote_sent(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """The one place in the integration where a parent reads a teacher's text.
+
+    ``descriptif`` is HTML. The to-do card renders ``description`` as text, so
+    forwarding it verbatim put ``<div>`` and ``&#039;`` in front of the reader;
+    the frontend would not interpret them, which is the correct behaviour and
+    also exactly why they must not be there.
+    """
+    items = {item["uid"]: item for item in await _items(hass, _list_id("Enfant Un"))}
+
+    assert items["HOMEWORK-1"]["description"] == "Lire le chapitre 4"
 
 
 async def test_a_ticked_item_reads_as_completed_and_an_open_one_as_needing_action(
