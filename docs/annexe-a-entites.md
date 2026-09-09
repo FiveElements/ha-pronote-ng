@@ -26,6 +26,7 @@ scalaire, directement utilisable par un déclencheur `state` ou
 | --- | --- | --- | --- | --- | --- |
 | `sensor.<é>_prochain_cours` | horodatage du début | `timestamp` | `subject`, `teachers`, `classroom`, `end`, `canceled` | `timetable` | `Lesson.start` |
 | `sensor.<é>_fin_des_cours` | horodatage de la fin du dernier cours du jour | `timestamp` | `subject` | `timetable` | `Lesson.end` |
+| `sensor.<é>_fin_de_matinee` | horodatage de la fin du dernier cours avant la pause de midi | `timestamp` | `subject`, `end_inferred`, `resumes_at`, `break_minutes` | `timetable` | `Lesson.end` |
 | `sensor.<é>_prochain_reveil` | horodatage du réveil calculé | `timestamp` | `first_lesson`, `margin_minutes` | `timetable` | — (premier cours − `wake_margin`) |
 | `sensor.<é>_cours_du_jour` | nombre de cours | — | **`lessons`**, `first_start`, `last_end`, `canceled_count` | `timetable` | `Client.lessons()` |
 | `sensor.<é>_devoirs_a_faire` | nombre de devoirs non faits | — | **`items`**, `next_due` | `homework` | `Homework.done` |
@@ -64,6 +65,33 @@ l'attribut `status` porte le motif. Un état qui vaudrait tantôt `14.5` tantôt
 **Exigence.** `sensor.<é>_prochain_reveil` ignore les cours annulés et les jours
 sans cours, et n'avance pas au lendemain avant la fin des cours du jour. Le
 calcul se fait dans le fuseau de l'établissement.
+
+**Exigence.** `sensor.<é>_fin_de_matinee` retient le creux le plus long qui
+**commence entre 11h00 et 14h30** dans le fuseau de l'établissement **et** dure
+au moins **45 minutes** (`MIDDAY_BREAK_EARLIEST`, `MIDDAY_BREAK_LATEST`,
+`MIDDAY_BREAK_MIN_MINUTES`). Ce n'est délibérément pas « le plus grand creux de
+la journée » : un enfant qui a un cours le matin et un en fin d'après-midi a un
+creux de cinq heures qui n'est pas un déjeuner, et répondre 10h00 mettrait un
+parent sur la route au mauvais moment. La durée minimale est l'autre moitié de
+la règle — trente minutes à midi est un changement de salle, pas un repas.
+Comme `prochain_reveil`, le capteur ne compte que les cours qui placent
+réellement l'enfant quelque part : les cours annulés et ceux dont il est
+dispensé sont écartés (`_teaching_lessons`). Les chevauchements sont traités en
+suivant la fin la plus lointaine atteinte et non par comparaison de paires
+consécutives, parce que PRONOTE renvoie des cours qui se chevauchent — un
+remplaçant arrive alors que l'original est encore là — et qu'un balayage par
+paires inventerait un creux négatif.
+
+**Exigence.** L'état de `sensor.<é>_fin_de_matinee` est **`unknown` quand la
+journée n'a pas de pause de midi**, et c'est l'objet de l'entité, pas une
+lacune. `unknown` et non `unavailable` : la collecte a réussi, la réponse est
+« pas de pause de midi aujourd'hui ». Il n'y a **pas de valeur de repli** vers
+la fin des cours : `fin_des_cours` répond déjà à l'enfant qui finit à midi sans
+rien après, et deux entités d'horodatage portant le même instant feraient
+déclencher deux automatisations pour un seul retour. L'attribut `end_inferred`
+vaut ce qu'il vaut pour toute fin de cours — vrai partout où `DateDuCoursFin`
+n'est pas envoyé, ce qui est le cas de tous les cours sur certains
+établissements (§4.1).
 
 ---
 
