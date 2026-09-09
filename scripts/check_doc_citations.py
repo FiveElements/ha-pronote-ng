@@ -504,6 +504,20 @@ def _summarise(report: Report, since: str | None, *, drift: bool) -> None:
 def main() -> int:
     """Report every citation that cannot be followed, or may have moved."""
     argv = sys.argv[1:]
+    # Spelled out rather than left to argparse because the failure mode being
+    # avoided is a silently ignored argument: `--since <ref>` in two words, or
+    # a typo in the flag, would leave the run report-only while the workflow
+    # step went green -- the shallow-clone trap again, from another door.
+    unknown = [
+        arg for arg in argv if arg != "--no-drift" and not arg.startswith("--since=")
+    ]
+    if unknown:
+        print(
+            f"error: unrecognised argument(s) {' '.join(unknown)}. Usage: "
+            "check_doc_citations.py [--since=<ref>] [--no-drift]. Note the "
+            "`=`: --since takes it, and a separate word would be ignored."
+        )
+        return 1
     wanted = "--no-drift" not in argv
     since_ref = next(
         (arg.split("=", 1)[1] for arg in argv if arg.startswith("--since=")),
