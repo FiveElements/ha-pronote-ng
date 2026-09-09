@@ -1,0 +1,94 @@
+"""Facts the documentation repeats, pinned to the one place that knows them.
+
+A list that lives in three files diverges in two of them. This suite exists
+because that already happened and was paid for: ``LESSON_EVENT_TYPES`` grew
+``lesson_restored`` and ``lesson_status_changed``, and the reference tables
+went on announcing four types for long enough that a code comment, an annexe
+row and an architecture note all disagreed at once. The argument in each was
+still right, which is what makes the divergence expensive -- a reader
+reconciles a true claim with a stale list and concludes the list.
+
+The rule these tests encode is narrow on purpose. They do not check prose, and
+they do not check that the documentation is *good*; they check that a set the
+code owns is reproduced exactly where the documentation reproduces it. Adding a
+seventh event type must fail here, in the same commit, rather than being
+noticed on a dashboard months later.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+import re
+
+import pytest
+
+from custom_components.pronote_ng import const
+
+#: Every event type the integration can fire, by constant name. Collected from
+#: the module rather than typed out, so a new ``EVENT_`` constant joins the
+#: vocabulary automatically and cannot be silently excluded from the check.
+ALL_EVENT_TYPES = frozenset(
+    value
+    for name, value in vars(const).items()
+    if name.startswith("EVENT_") and isinstance(value, str)
+)
+
+DOCS = Path(__file__).resolve().parents[1] / "docs"
+
+#: The rows that reproduce the lesson-change vocabulary, and the marker that
+#: identifies each. Two files, because a table for automation authors (the
+#: guide) and a reference table (the annexe) are read by different people and
+#: drifted independently.
+LESSON_ROWS = (
+    pytest.param(DOCS / "annexe-a-entites.md", "cours_modifie", id="annexe A §4"),
+    pytest.param(DOCS / "GUIDE-UTILISATEUR.md", "Cours modifié", id="guide §4.10"),
+)
+
+
+def _event_types_named_in(line: str) -> frozenset[str]:
+    """The event types a documentation row names, ignoring everything else.
+
+    Backticked tokens are matched against the vocabulary rather than parsed by
+    column, so the attribute names that share the row are ignored without this
+    test having to know the table's shape -- which is the documentation's to
+    change, not ours.
+    """
+    return frozenset(re.findall(r"`([a-z_]+)`", line)) & ALL_EVENT_TYPES
+
+
+@pytest.mark.parametrize(("path", "marker"), LESSON_ROWS)
+def test_the_documented_lesson_event_types_are_exactly_the_declared_ones(
+    path: Path, marker: str
+) -> None:
+    """Both directions, because both have been wrong.
+
+    Missing a type sends an automation author looking for a trigger that
+    exists -- ``lesson_restored`` was undocumented while it was precisely the
+    one that stops "no first period, sleep in" firing on the morning a lesson
+    comes back. An extra type promises a trigger that never fires, which is
+    worse: nothing in the trace says why.
+    """
+    rows = [
+        line for line in path.read_text(encoding="utf-8").splitlines() if marker in line
+    ]
+    documented: set[str] = set()
+    for row in rows:
+        documented |= _event_types_named_in(row)
+
+    assert rows, f"no row mentioning {marker!r} in {path.name}"
+    assert documented == set(const.LESSON_EVENT_TYPES)
+
+
+def test_every_event_type_the_code_can_fire_is_documented_somewhere() -> None:
+    """An event nobody documents is an event nobody triggers on.
+
+    The entity exists, the bus carries it, and the only route to discovering it
+    is reading the source -- which §1's design objective rules out: an ordinary
+    school automation must be writable from the documentation.
+    """
+    prose = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(DOCS.glob("*.md"))
+    )
+    named = frozenset(re.findall(r"`([a-z_]+)`", prose)) & ALL_EVENT_TYPES
+
+    assert ALL_EVENT_TYPES - named == frozenset()

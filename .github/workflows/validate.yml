@@ -170,3 +170,56 @@ jobs:
         # the request payload, credentials included. The requirement is only
         # worth anything if it is enforced.
         run: python scripts/check_manifest.py
+
+  citations:
+    name: Documentation citations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The drift check asks git when the cited file last moved relative
+          # to when the document was last read. On the default shallow clone
+          # every such question returns nothing, so the check would pass
+          # without having run -- which is why `check_doc_citations.py`
+          # refuses a shallow clone outright rather than reporting success.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          # Standard library only, like the manifest job; pinned to match.
+          python-version: "3.14"
+
+      - name: Work out which commits are under test
+        id: range
+        # What blocks is only the drift *these* commits caused; the rest is
+        # reported as a backlog. That split needs a base commit, and each
+        # event names it differently. A base that does not resolve is left
+        # empty rather than guessed, and the check then reports without
+        # blocking -- said out loud in the log, because a gate that quietly
+        # stops gating is the failure this whole job exists to prevent.
+        run: |
+          set -euo pipefail
+          base=""
+          case "${{ github.event_name }}" in
+            pull_request) base="${{ github.event.pull_request.base.sha }}" ;;
+            push)         base="${{ github.event.before }}" ;;
+          esac
+          if [ -n "$base" ] && git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+            echo "since=$base" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify --quiet "HEAD~1^{commit}" >/dev/null; then
+            echo "Base '$base' does not resolve; falling back to HEAD~1."
+            echo "since=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No base commit resolves, so drift is reported but nothing blocks."
+            echo "since=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Every cited source location exists and has not moved
+        # The convention throughout `docs/` is that a claim about behaviour
+        # cites the code implementing it. Nothing verified those citations
+        # until now, and both ways they rot are invisible to review: a
+        # refactor breaks them in bulk, and a commit to one file silently
+        # invalidates a range cited for it in a document nobody touched.
+        run: |
+          python scripts/check_doc_citations.py \
+            ${{ steps.range.outputs.since && format('--since={0}', steps.range.outputs.since) || '' }}
