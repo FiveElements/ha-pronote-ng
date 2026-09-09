@@ -114,6 +114,58 @@ entity: todo.enfant_un_devoirs
 vous avez activé l'écriture (§ 7 du guide). Sinon, elle est en lecture seule —
 par ses fonctions déclarées, pas en échouant quand on tape dessus.
 
+**Et sans l'écriture, rien n'indique qu'un devoir est fait.** L'attribut `done`
+existe sur chaque élément, mais une liste de tâches en lecture seule ne dessine
+pas de case cochée : l'information est là et n'est pas montrée. Si vous voulez la
+voir sans activer l'écriture, l'agenda **Devoirs** préfixe d'une coche les
+devoirs faits, et une carte Markdown peut lire `done` directement.
+
+### Les actualités et la messagerie : aucune carte, et c'est structurel
+
+**Aucune carte, ni intégrée ni de la bibliothèque, ne montre les actualités ou
+les discussions.** Ce n'est pas un oubli de configuration : les quatre entités
+concernées — `sensor.<é>_actualites`, `_actualites_non_lues`,
+`sensor.<é>_discussions`, `_messages_non_lus` — ne sont lues par aucune des neuf
+cartes, et les cartes intégrées ne savent pas parcourir un attribut. C'est donc
+la famille où un modèle est le plus nécessaire, et la seule où il n'y a aucune
+solution de repli.
+
+Ce que vous pouvez faire, du plus simple au plus complet :
+
+**Deux badges**, qui répondent à « y a-t-il du nouveau » sans rien encombrer :
+
+```yaml
+type: entities
+entities:
+  - entity: sensor.enfant_un_actualites_non_lues
+  - entity: sensor.enfant_un_messages_non_lus
+```
+
+`_messages_non_lus` est la **somme** des messages non lus de toutes les
+discussions, et non le nombre de discussions concernées — un 7 peut venir d'un
+seul fil.
+
+**La liste, en Markdown**, puisque c'est le seul chemin :
+
+```yaml
+type: markdown
+content: >-
+  {% for a in state_attr('sensor.enfant_un_actualites', 'items')
+       | rejectattr('read') %}
+  - **{{ a.title }}** — {{ a.author }}
+  {% endfor %}
+```
+
+**Ce qu'aucun affichage ne vous donnera : le texte.** Le corps d'une actualité et
+celui d'un message ne sont pas récupérés — les lire coûterait une requête par
+élément et par collecte. Les entités disent qu'il y a du nouveau, de qui et sur
+quel sujet ; le contenu se lit dans PRONOTE. Une carte qui promettrait de
+l'afficher promettrait une donnée qui n'existe pas côté Home Assistant.
+
+Pour être **prévenu** plutôt que d'aller voir, ces deux familles ont leurs
+déclencheurs d'appareil — « nouvelle actualité » et « nouveau message » — et
+c'est le bon outil : voyez [Les sept blueprints](BLUEPRINTS.md).
+
 ### Les listes en Markdown
 
 Les listes — cours du jour, devoirs, notes, plats du menu — vivent dans des
