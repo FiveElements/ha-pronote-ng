@@ -104,6 +104,7 @@ ignore = [
 # attached (§4.2), and that is what tests/test_gateway.py checks.
 "tests/fixtures/protocol.py" = ["DTZ001"]
 "tests/test_gateway.py" = ["DTZ001"]
+"tests/test_sensor.py" = ["DTZ001"]
 "tests/clock.py" = ["DTZ001"]
 # Standalone CI helpers, not an importable package.
 "scripts/*" = ["INP001", "T201"]

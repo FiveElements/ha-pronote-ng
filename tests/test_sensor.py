@@ -19,14 +19,14 @@ neither print it nor inject it.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, PARIS, REQUIRES_HASS
 from .fixtures import protocol
 from .fixtures.client import FakeClient
 
@@ -200,3 +200,158 @@ class TestTheDiagnosticReadingsRefreshOnTheirOwn:
         assert state is not None
         assert "overdue_by" in state.attributes
         assert "failing" in state.attributes
+
+
+def _day(hour: int, minute: int = 0) -> datetime:
+    """A naive instant on the frozen school day, as the protocol sends them."""
+    return datetime(2026, 3, 12, hour, minute)
+
+
+class TestWhenTheMorningEnds:
+    """`morning_end` answers "when do I collect the child for lunch?".
+
+    The state is a timestamp, so an automation triggers on it directly and
+    needs no template walking `attributes.lessons` -- which is the §1 test any
+    new entity has to pass.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """A day with a real lunch break: 8-12, then 14-16."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(8),
+                    end=_day(12),
+                    place=0,
+                    duration=8,
+                    subject="Mathématiques",
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(14),
+                    end=_day(16),
+                    place=12,
+                    duration=4,
+                    subject="Histoire",
+                ),
+            ]
+        )
+        return client
+
+    async def test_the_state_is_the_end_of_the_last_morning_lesson(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A timestamp, and the context a card needs beside it."""
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_morning")
+
+        assert state is not None
+        # Compared as an instant, not as text: Home Assistant normalises a
+        # timestamp state to UTC, so the establishment's 12:00+01:00 is stored
+        # as 11:00+00:00 and a string comparison tests the serialisation
+        # rather than the rule.
+        assert dt_util.parse_datetime(state.state) == datetime(
+            2026, 3, 12, 12, 0, tzinfo=PARIS
+        )
+        assert state.attributes["subject"] == "Mathématiques"
+        assert state.attributes["resumes_at"] == "2026-03-12T14:00:00+01:00"
+        assert state.attributes["break_minutes"] == 120
+
+
+class TestWhenThereIsNoMiddayBreak:
+    """Nothing, rather than a plausible wrong hour."""
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """One morning lesson and one late-afternoon lesson.
+
+        This is the day that makes "the day's largest gap" the wrong rule: the
+        gap is five hours and it starts at 10:00, which is not a lunch break
+        and would send a parent out mid-morning.
+        """
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(9),
+                    end=_day(10),
+                    place=2,
+                    duration=2,
+                    subject="Mathématiques",
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(15),
+                    end=_day(16),
+                    place=14,
+                    duration=2,
+                    subject="Histoire",
+                ),
+            ]
+        )
+        return client
+
+    async def test_the_largest_gap_of_the_day_is_not_a_lunch_break(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """`unknown`, not `unavailable`, and not 10:00.
+
+        The collection succeeded and the honest answer is "no midday break
+        today". `end_of_lessons` is the entity that says when this child comes
+        home, and publishing the same instant twice would fire two
+        automations for one homecoming.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_morning")
+
+        assert state is not None
+        assert state.state == "unknown"
+        assert "resumes_at" not in state.attributes
+
+
+class TestWhenTheGapIsTooShortToBeLunch:
+    """A changeover between two lessons is not a break."""
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """8-12, then 12:30-16: inside the window, but half an hour."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(8),
+                    end=_day(12),
+                    place=0,
+                    duration=8,
+                    subject="Mathématiques",
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(12, 30),
+                    end=_day(16),
+                    place=9,
+                    duration=7,
+                    subject="Histoire",
+                ),
+            ]
+        )
+        return client
+
+    async def test_thirty_minutes_at_noon_is_not_reported_as_a_break(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The window alone is not the rule; the duration is the other half.
+
+        Without it, any timetable with a short changeover near noon would
+        announce a lunch break the child never gets.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_morning")
+
+        assert state is not None
+        assert state.state == "unknown"

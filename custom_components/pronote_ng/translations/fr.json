@@ -202,6 +202,9 @@
       "end_of_lessons": {
         "name": "Fin des cours"
       },
+      "morning_end": {
+        "name": "Fin de matinée"
+      },
       "next_wake_up": {
         "name": "Prochain réveil"
       },

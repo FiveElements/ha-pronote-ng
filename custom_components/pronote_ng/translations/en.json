@@ -202,6 +202,9 @@
       "end_of_lessons": {
         "name": "End of lessons"
       },
+      "morning_end": {
+        "name": "End of morning"
+      },
       "next_wake_up": {
         "name": "Wake-up time"
       },

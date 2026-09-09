@@ -8,6 +8,7 @@ justify is a default nobody can tune.
 
 from __future__ import annotations
 
+from datetime import time as dt_time
 from enum import StrEnum
 from typing import Final
 
@@ -115,6 +116,17 @@ DEFAULT_TIER_INTERVALS: Final[dict[Tier, int]] = {
     Tier.STATIC: 1440,
     Tier.HISTORY: 1440,
 }
+
+#: The midday break is recognised by *when* it starts and *how long* it lasts,
+#: never as "the day's largest gap". A child with one morning lesson and one
+#: late-afternoon lesson would otherwise be given a 10:00 "end of morning",
+#: which is not a lunch break and would send somebody home at the wrong hour.
+#: Read in the establishment's timezone, like every other hour in this
+#: integration.
+MIDDAY_BREAK_EARLIEST: Final = dt_time(11, 0)
+MIDDAY_BREAK_LATEST: Final = dt_time(14, 30)
+#: Shorter than this is a corridor gap between two lessons, not a lunch break.
+MIDDAY_BREAK_MIN_MINUTES: Final = 45
 
 #: Tiers that feed an ``event`` entity cannot be slowed past this, or the event
 #: stops being worth publishing (SPECIFICATION.md §5.2). A cancelled lesson

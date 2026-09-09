@@ -35,6 +35,9 @@ from .account import PronoteAccount
 from .const import (
     DEFAULT_HOMEWORK_HORIZON,
     DEFAULT_WAKE_MARGIN,
+    MIDDAY_BREAK_EARLIEST,
+    MIDDAY_BREAK_LATEST,
+    MIDDAY_BREAK_MIN_MINUTES,
     OPT_HOMEWORK_HORIZON,
     OPT_WAKE_MARGIN,
     LimiterState,
@@ -173,6 +176,81 @@ def _end_of_day_attributes(
         return {}
     last = max(today, key=lambda lesson: lesson.end)
     return {"subject": last.subject, "end_inferred": last.end_inferred}
+
+
+def _midday_break(
+    facts: TimetableFacts, account: PronoteAccount
+) -> tuple[Lesson, Lesson] | None:
+    """The lesson that closes the morning and the one that resumes after lunch.
+
+    The rule is deliberately not "the day's largest gap": the break has to
+    *start* inside :data:`MIDDAY_BREAK_EARLIEST`--:data:`MIDDAY_BREAK_LATEST`
+    and last at least :data:`MIDDAY_BREAK_MIN_MINUTES`. A child with one
+    morning lesson and one late-afternoon lesson has a five-hour gap that is
+    not a lunch break, and answering 10:00 to "when does the morning end"
+    would put a parent on the road at the wrong time.
+
+    ``None`` when the day has no such gap, and that is the whole point of the
+    entity rather than a shortcoming: a child who finishes at noon with
+    nothing afterwards must publish nothing here. ``end_of_lessons`` already
+    answers that case, and two timestamp entities carrying the same instant
+    would fire two automations for one homecoming.
+
+    Overlaps are handled by tracking the furthest end reached rather than
+    comparing consecutive pairs: PRONOTE does return lessons that overlap --
+    a replacement arrives while the original is still present -- and a
+    pairwise scan would invent a negative gap between them.
+    """
+    lessons = sorted(
+        _teaching_lessons(_lessons_on(facts, account.gateway.today())),
+        key=lambda lesson: lesson.start,
+    )
+    if len(lessons) < 2:
+        return None
+
+    breaks: list[tuple[timedelta, Lesson, Lesson]] = []
+    closing = lessons[0]
+    for lesson in lessons[1:]:
+        if lesson.start > closing.end:
+            gap = lesson.start - closing.end
+            starts_at = closing.end.time()
+            if (
+                gap >= timedelta(minutes=MIDDAY_BREAK_MIN_MINUTES)
+                and MIDDAY_BREAK_EARLIEST <= starts_at <= MIDDAY_BREAK_LATEST
+            ):
+                breaks.append((gap, closing, lesson))
+        if lesson.end > closing.end:
+            closing = lesson
+
+    if not breaks:
+        return None
+    _, before, after = max(breaks, key=lambda found: found[0])
+    return before, after
+
+
+def _morning_end(facts: TimetableFacts, account: PronoteAccount) -> StateValue:
+    """End of the last lesson before the midday break."""
+    found = _midday_break(facts, account)
+    return found[0].end if found else None
+
+
+def _morning_end_attributes(
+    facts: TimetableFacts, account: PronoteAccount
+) -> dict[str, Any]:
+    """What closes the morning, and when the afternoon starts."""
+    found = _midday_break(facts, account)
+    if found is None:
+        return {}
+    before, after = found
+    return {
+        "subject": before.subject,
+        # As on every other timestamp taken from a lesson end: pronotepy
+        # infers it when `DateDuCoursFin` is absent, and on this
+        # establishment that is every lesson (§4.1).
+        "end_inferred": before.end_inferred,
+        "resumes_at": after.start.isoformat(),
+        "break_minutes": int((after.start - before.end).total_seconds() // 60),
+    }
 
 
 def _wake_target(
@@ -1008,6 +1086,13 @@ PRIMITIVE_SENSORS: Final[tuple[PronoteSensorDescription, ...]] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=_end_of_day,
         attributes_fn=_end_of_day_attributes,
+    ),
+    PronoteSensorDescription(
+        key="morning_end",
+        tier=Tier.TIMETABLE,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_morning_end,
+        attributes_fn=_morning_end_attributes,
     ),
     PronoteSensorDescription(
         key="next_wake_up",
