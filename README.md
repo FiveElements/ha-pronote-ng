@@ -27,213 +27,349 @@
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
   ·
-  🐛 Signaler un problème · [💻 GitHub](<https://github.com/FiveElements/ha-pronote-ng>)
+  <a href="https://github.com/FiveElements/ha-pronote-ng">🐛 Signaler un problème </a>
 
 </p>
 
 
+ ## ✨ Fonctionnalités
 
-## Les points forts
+ ### 📅 Vie scolaire
 
-**Le coût est affiché avant d'être dépensé.** Chaque page de réglages montre
-l'estimation du nombre de requêtes quotidiennes que les valeurs saisies vont
-coûter, calculée par la fonction même qui produit les chiffres de
-[l'annexe B](docs/annexe-b-rate-limit.md) — la page et le document ne peuvent
-donc pas diverger. Un réglage dont on ne voit pas la conséquence se règle au
-hasard, et la conséquence se mesure ici en requêtes sur le compte scolaire d'un
-enfant. En dessous, l'appareillage qui rend ce chiffre vrai : un limiteur à
-trois étages (espacement minimal, seau à jetons horaire, plafond quotidien),
-deux compteurs de connexion tenus à part, dix paliers de collecte ayant chacun
-sa cadence, et **un seul battement maître**, parce que des minuteries
-indépendantes finissent par coïncider et produire des rafales.
+ - Emploi du temps
+- Prochains cours
+- Devoirs
+- Notes et moyennes
+- Évaluations par compétences
+- Absences
+- Retards
+- Punitions
+- Bulletins
+- Actualités
+- Discussions
+- Menus de cantine
+- Informations sur le personnel
 
-**Les données sensibles ne deviennent jamais un état.** L'URL iCal (qui donne
-accès à l'emploi du temps complet d'un élève sans aucun identifiant), le bloc
-d'identité et le lien du PDF d'emploi du temps sont des réponses de service
-(`SupportsResponse.ONLY`) : rien ne les retient, ni un état, ni un attribut, ni
-le fichier de diagnostic. Le code PIN à deux facteurs n'est pas persisté, ce
-qui est d'ailleurs la raison pour laquelle l'intégration sait le redemander. Et
-le diagnostic rapporte la *forme* de chaque collecte — quand elle date, ce
-qu'elle a coûté, combien d'éléments elle contient — jamais son contenu : une
-note ou le corps d'un message n'ont rien à faire dans un fichier que l'on colle
-dans une issue publique. C'est de la conception, pas du filtrage en sortie.
+ ### 🤖 Automatisations Home Assistant
 
-**L'enrôlement par QR code évite de conserver un mot de passe.** C'est le mode
-recommandé : Home Assistant s'inscrit auprès de PRONOTE comme un appareil, et
-le jeton obtenu tourne à chaque authentification — il est donc réécrit dans
-l'entrée de configuration après chaque connexion, sans quoi l'accès serait
-perdu au démarrage suivant. Deux autres modes restent disponibles là où
-celui-ci ne s'applique pas : identifiant et mot de passe, ou ENT.
+ Pronote NG s'intègre nativement dans le moteur d'automatisation de Home Assistant.
 
-**« Absent » n'est pas « vide ».** Quand une clé que le protocole garantit
-disparaît de la réponse, le palier **échoue** au lieu de rapporter zéro
-élément : il garde son instantané précédent, se marque périmé, puis ouvre un
-signalement de réparation. Une liste vide est une information plausible (une
-semaine sans devoirs existe), donc la confondre avec une rupture de protocole
-publierait un mensonge crédible : les capteurs se videraient, la péremption ne
-se déclencherait jamais puisque la collecte a « réussi », et l'automatisation du
-matin cesserait simplement de partir, sans une ligne dans le journal.
+ Vous pouvez notamment créer des automatisations lorsqu'une nouvelle note apparaît, lorsqu'un devoir est ajouté ou lorsqu'un événement scolaire change.
 
-**Un appareil par enfant, une seule session pour tous.** Sur un compte parent,
-chaque enfant est un appareil distinct avec ses propres entités, tandis que la
-session et le budget de requêtes sont partagés : un second enfant coûte ses
-données, pas une seconde connexion. La sélection de l'enfant et l'appel forment
-une fermeture indivisible tenue sous verrou, parce que l'unité de travail
-atomique est le couple *(enfant, palier)* — sans quoi un compte parent publie
-silencieusement l'emploi du temps d'un enfant sous les entités de l'autre.
+ L'intégration fournit :
 
-**De quoi automatiser sans écrire de template.** Des entités `event` disent *ce
-qui vient de changer* (quelle note, dans quelle matière, avec quel coefficient)
-là où un déclencheur d'état ne sait dire que « le compteur a bougé » ; elles
-sont émises après la publication des instantanés, de sorte qu'une automatisation
-réagissant à l'arrivée d'une note trouve le capteur déjà à jour. S'y ajoutent
-des déclencheurs, conditions et actions d'appareil, des blueprints prêts à
-importer, et des services d'écriture — cocher un devoir, envoyer un message —
-**désactivés par défaut**.
+ - 14 déclencheurs d'appareil
+- 10 conditions
+- 4 actions
+- 7 blueprints prêts à l'emploi
+- des blueprints disponibles en français et en anglais
 
-Ces choix sont tenus par la chaîne d'intégration continue : `ruff`,
-`mypy --strict`, quelques centaines de tests, et un portail de couverture qui
-exige **100 %** sur les quatre modules où une erreur ne produit aucun symptôme
-visible — le limiteur, l'ordonnanceur, la passerelle et le détecteur de
-changements.
+ Aucune programmation en YAML n'est nécessaire pour les automatisations courantes.
 
-## Ce que ça fait
 
-- **Sept plateformes d'entités** : `sensor`, `binary_sensor`, `calendar`,
-  `todo`, `image`, `event`, `button` — emploi du temps, devoirs, notes et
-  moyennes, absences et retards, punitions, évaluations par compétences,
-  actualités, discussions, menus, personnel, bulletins.
-- **Huit services**, dont l'URL iCal, l'identité, le PDF d'emploi du temps et
-  l'état du limiteur. Ces quatre-là sont des réponses de service
-  (`SupportsResponse.ONLY`) et ne transitent par aucun état d'entité — les
-  trois premiers parce qu'ils sont sensibles, le quatrième parce qu'un état de
-  limiteur n'a pas d'utilisateur en dehors du moment où on le demande.
-- **Écritures optionnelles**, coupées par défaut : cocher un devoir, marquer
-  une actualité comme lue, envoyer un message.
-- **Automatisations d'appareil** : 14 déclencheurs, 10 conditions, 4 actions,
-  plus **sept blueprints**, livrés chacun en français et en anglais.
-- **Trois modes de connexion** : QR code (recommandé), identifiants directs,
-  ENT.
-- **Comptes parents multi-enfants**, chaque enfant étant un appareil distinct.
+ ### 👨‍👩‍👧‍👦 Comptes parents
 
-## Ce que ça protège
+ Les comptes parents avec plusieurs enfants sont pris en charge.
 
-PRONOTE sanctionne une **adresse IP**, pas seulement un compte. Le limiteur
-(`custom_components/pronote_ng/ratelimit.py`) est donc au centre du design :
-trois couches — espacement minimal, seau à jetons, plafond journalier — plus
-deux compteurs de connexion, tous **débités à l'admission** sous un verrou,
-jamais à la sortie. Un login coûte cinq à sept requêtes et la poignée de main
-est lente ; facturé au retour, il laisse une fenêtre de plusieurs secondes
-pendant laquelle un second appelant lit un budget intact.
+ Chaque enfant est représenté comme un appareil Home Assistant distinct, tout en partageant la même session PRONOTE et le même budget de requêtes.
 
-Le budget par défaut est d'environ **180 requêtes par jour** pour un enfant,
-contre ≈ 423 dans la première version de la spécification.
+ ### 🔐 Connexion sécurisée
 
-## Installation
+ Trois méthodes de connexion sont disponibles :
 
-L'intégration s'appelle **Pronote NG** et son domaine Home Assistant est
-**`pronote_ng`** : c'est le nom du dossier sous `custom_components/`, et le
-préfixe de toutes ses entités et de tous ses services.
+ 1. **QR code — recommandé**
+2. Identifiant et mot de passe
+3. Connexion via ENT
 
-### HACS (dépôt personnalisé)
+ L'enrôlement par QR code permet à Home Assistant de s'enregistrer comme appareil auprès de PRONOTE sans avoir à conserver votre mot de passe.
 
-1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
-2. Ajouter `https://github.com/FiveElements/ha-pronote-ng`, catégorie
-   *Intégration*.
-3. Installer **Pronote NG**, puis redémarrer Home Assistant.
-4. *Paramètres → Appareils et services → Ajouter une intégration → PRONOTE*.
+ ### 🛡️ Protection contre les requêtes excessives
 
-### Manuellement
+ PRONOTE peut limiter les requêtes provenant d'une même adresse IP.
 
-Copier `custom_components/pronote_ng/` dans le dossier `custom_components/` de
-votre configuration, puis redémarrer.
+ Pronote NG intègre donc un limiteur de requêtes à plusieurs niveaux afin d'éviter les sollicitations excessives :
 
-Home Assistant **2026.9.0** minimum.
+ - espacement minimal entre les requêtes
+- seau à jetons horaire
+- plafond quotidien
+- compteurs de connexion séparés
+- cadence configurable des différentes collectes
 
-### Les cartes, dans un dépôt séparé
+ Le budget par défaut est d'environ **180 requêtes par jour et par enfant**.
 
-Neuf cartes Lovelace faites pour cette intégration — élève, prochain cours,
-emploi du temps, devoirs, notes, évaluations, cantine, vie scolaire, limiteur —
-vivent dans **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)**
-([documentation](https://fiveelements.github.io/ha-pronote-ng-cards/)). Elles
-sont optionnelles : l'intégration publie des états primitifs, donc les cartes
-intégrées de Home Assistant suffisent pour l'essentiel — voyez
-[`docs/AFFICHER-LES-DONNEES.md`](docs/AFFICHER-LES-DONNEES.md), qui couvre les
-deux chemins.
+ L'intégration estime également le coût des réglages avant leur application afin de rendre leur impact visible.
 
-Elles se configurent avec **l'appareil de l'enfant**, jamais avec un identifiant
-d'entité : les identifiants dérivent du nom affiché de l'enfant et changent
-silencieusement s'il est renommé, tandis que la clé technique d'une entité est
-stable dans toutes les langues.
+---
 
-## Documentation
+ # 🚀 Installation
 
-Publiée sur <https://fiveelements.github.io/ha-pronote-ng/>, construite par
-MkDocs Material depuis ce même dossier `docs/` — il n'y a donc pas de copie à
-maintenir, et `mkdocs build --strict` fait échouer la *pull request* qui casse
-un lien interne.
+ ## Avec HACS
 
-| Document | Contenu |
-| --- | --- |
-| [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) | **v2** — architecture, session, ordonnanceur, configuration, sécurité, i18n, qualité, jalons |
-| [`docs/annexe-a-entites.md`](docs/annexe-a-entites.md) | Catalogue complet des entités et services, avec l'origine de chaque champ |
-| [`docs/annexe-b-rate-limit.md`](docs/annexe-b-rate-limit.md) | Le limiteur de débit : couches, options, arithmétique du budget, repli |
-| [`docs/revue-contradictoire-v1.md`](docs/revue-contradictoire-v1.md) | La revue qui a produit la v2 — conservée, parce que ses raisons valent mieux que ses conclusions seules |
-| [`docs/GUIDE-UTILISATEUR.md`](docs/GUIDE-UTILISATEUR.md) | **Guide utilisateur** — installation, entités, services, réglages, dépannage |
-| [`docs/AFFICHER-LES-DONNEES.md`](docs/AFFICHER-LES-DONNEES.md) | Construire un tableau de bord, avec les cartes intégrées de Home Assistant ou la bibliothèque de cartes |
-| [`docs/BLUEPRINTS.md`](docs/BLUEPRINTS.md) | Chaque réglage des sept blueprints, et le piège que chacun évite |
-| [`docs/MIGRATION-AUTOMATISATIONS.md`](docs/MIGRATION-AUTOMATISATIONS.md) | Déplacer des automatisations écrites contre l'autre intégration `pronote` |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture interne, pour qui veut contribuer |
+ Pronote NG peut être installé avec [HACS](<https://www.hacs.xyz/>) comme dépôt personnalisé.
 
-La v1 a été révisée après une revue contradictoire dont **quatorze affirmations
-porteuses sur quatorze** se sont vérifiées dans la source. Les changements :
-stratégie de session inversée, règle de détection des changements dédoublée,
-client durci rendu prérequis, paliers réduits de treize à dix, et budget par
-défaut ramené de ≈ 423 à ≈ 180 requêtes par jour. Le détail est au §14 de la
-spécification.
+ 1. Ouvrez **HACS → Intégrations**
+2. Ouvrez le menu **⋮**
+3. Sélectionnez **Dépôts personnalisés**
+4. Ajoutez :
 
-## Développement
+```
+https://github.com/FiveElements/ha-pronote-ng
+```
 
-La suite de tests **ne tourne pas sous Windows** :
-`pytest-homeassistant-custom-component` importe `fcntl`. Sous Linux ou WSL :
+ 5. Sélectionnez la catégorie **Intégration**
+6. Installez **Pronote NG**
+7. Redémarrez Home Assistant
+8. Allez dans **Paramètres → Appareils et services**
+9. Cliquez sur **Ajouter une intégration**
+10. Recherchez **PRONOTE**
 
-```bash
+ > 💡 Une intégration HACS officielle pourra être utilisée lorsqu'elle sera disponible. En attendant, l'installation par dépôt personnalisé permet d'utiliser Pronote NG directement depuis HACS.
+
+ ## Installation manuelle
+
+ Copiez le dossier :
+
+```
+custom_components/pronote_ng/
+```
+
+ dans le dossier `custom_components/` de votre configuration Home Assistant, puis redémarrez Home Assistant.
+
+ ### Version minimale
+
+ Pronote NG nécessite actuellement :
+
+```
+Home Assistant 2026.9.0 ou supérieur
+```
+
+---
+
+ # 📊 Afficher les données PRONOTE
+
+ Pronote NG fournit des entités Home Assistant natives :
+
+ - `sensor`
+- `binary_sensor`
+- `calendar`
+- `todo`
+- `image`
+- `event`
+- `button`
+
+ Vous pouvez donc utiliser les cartes natives de Home Assistant pour construire votre propre tableau de bord.
+
+ La documentation explique également comment créer un tableau de bord complet à partir des données PRONOTE.
+
+ 👉 Afficher les données PRONOTE dans Home Assistant
+
+---
+
+ # 🎨 Cartes Lovelace
+
+ Des cartes Lovelace spécialement conçues pour Pronote NG sont disponibles dans un dépôt séparé :
+
+ **FiveElements/ha-pronote-ng-cards**
+
+ Elles permettent notamment d'afficher :
+
+ - 👨‍🎓 Informations sur l'élève
+- 📅 Prochain cours
+- 🗓️ Emploi du temps
+- 📝 Devoirs
+- 📊 Notes
+- 🎯 Évaluations
+- 🍽️ Cantine
+- 🏫 Vie scolaire
+- 🚦 État du limiteur
+
+ Les cartes sont **optionnelles** : Pronote NG fonctionne avec les cartes natives de Home Assistant.
+
+---
+
+ # 🔧 Services et actions
+
+ Pronote NG fournit plusieurs services Home Assistant.
+
+ Certains services permettent notamment d'accéder à :
+
+ - l'URL iCal de l'emploi du temps
+- l'identité de l'élève
+- l'emploi du temps au format PDF
+- l'état du limiteur de requêtes
+
+ Des opérations d'écriture sont également disponibles mais sont **désactivées par défaut**, notamment :
+
+ - cocher un devoir
+- marquer une actualité comme lue
+- envoyer un message
+
+---
+
+ # 🔒 Vie privée et sécurité
+
+ La protection des données PRONOTE est une priorité du projet.
+
+ Les informations sensibles ne sont pas stockées dans les états des entités ou dans leurs attributs.
+
+ Cela concerne notamment :
+
+ - l'URL iCal
+- les informations d'identité
+- le lien vers le PDF de l'emploi du temps
+- les informations d'authentification
+
+ Les données sensibles sont fournies uniquement lorsqu'elles sont explicitement demandées par un service.
+
+ Le fichier de diagnostic ne contient pas le contenu des données scolaires. Les identifiants d'élèves y sont également protégés.
+
+ > ⚠️ **Ne configurez jamais le journaliseur `pronotepy` en niveau DEBUG.**
+>
+>  Le mode DEBUG de `pronotepy` peut contenir des informations sensibles provenant des requêtes PRONOTE.
+
+---
+
+ # 🧠 Pourquoi Pronote NG ?
+
+ Pronote NG a été conçu autour de quelques principes importants.
+
+ ### Ne jamais confondre une absence de données avec une donnée vide
+
+ Une liste vide peut être parfaitement valide : par exemple, une semaine sans devoirs.
+
+ À l'inverse, la disparition inattendue d'une donnée obligatoire peut indiquer un changement du protocole PRONOTE.
+
+ Pronote NG distingue donc ces deux situations afin d'éviter de publier silencieusement des données incorrectes dans Home Assistant.
+
+ ### Une session partagée pour plusieurs enfants
+
+ Avec un compte parent, chaque enfant dispose de son propre appareil Home Assistant, tout en partageant la même session PRONOTE.
+
+ Cela évite de multiplier inutilement les connexions.
+
+ ### Des événements utilisables directement dans les automatisations
+
+ Les événements permettent de réagir précisément aux changements.
+
+ Par exemple :
+
+ > « Une nouvelle note vient d'être publiée en mathématiques. »
+
+ plutôt que simplement :
+
+ > « Le nombre de notes a changé. »
+
+ Cela permet de créer des automatisations Home Assistant plus fiables et plus simples.
+
+---
+
+ # 📚 Documentation
+
+ La documentation complète est disponible ici :
+
+ **📖 Documentation Pronote NG**
+
+ Elle contient notamment :
+
+ - Guide utilisateur
+- Architecture de l'intégration
+- Catalogue des entités et services
+- Configuration du limiteur de requêtes
+- Création de tableaux de bord
+- Blueprints
+- Migration depuis l'ancienne intégration `pronote`
+- Documentation technique pour les contributeurs
+
+---
+
+ # 🔄 Migration depuis l'ancienne intégration
+
+ Pronote NG est une nouvelle génération de l'intégration PRONOTE pour Home Assistant.
+
+ Une documentation dédiée explique comment migrer les automatisations existantes depuis l'autre intégration `pronote`.
+
+ 👉 Guide de migration
+
+---
+
+ # 🧑‍💻 Développement
+
+ Le projet utilise notamment :
+
+ - Python
+- Home Assistant
+- `ruff`
+- `mypy`
+- `pytest`
+- MkDocs Material
+
+ Les tests et contrôles qualité sont exécutés automatiquement par la CI.
+
+ Pour contribuer :
+
+```
 pip install -r requirements_test.txt
-ruff check . && ruff format --check .
+
+ruff check .
+ruff format --check .
+
 mypy --strict custom_components/ scripts/
+
 pytest tests --cov=custom_components/pronote_ng --cov-branch
-python scripts/check_coverage.py coverage.xml
 ```
 
-Pour la documentation :
+ Pour travailler sur la documentation :
 
-```bash
+```
 pip install -r requirements_docs.txt
-mkdocs serve           # aperçu local, rechargement à chaud
-mkdocs build --strict  # ce que la CI exige
+
+mkdocs serve
+mkdocs build --strict
 ```
 
-Sous Windows, la moitié de la suite sans dépendance à Home Assistant — le
-limiteur, l'ordonnanceur, la passerelle, le détecteur de changements, les DTO,
-l'estimateur de budget — s'exécute directement ; le reste se saute avec un
-marqueur explicite. C'est cette moitié qui porte le portail à 100 %.
+ Consultez également CONTRIBUTING.md avant de proposer une contribution.
 
-Le portail de couverture exige 80 % global et **100 %** sur `ratelimit.py`,
-`scheduler.py`, `gateway.py` et `delta.py`, en prenant pour chacun le minimum
-de la couverture de lignes et de branches.
+---
 
-## Vie privée
+ # 🤝 Contribuer
 
-Aucun secret ne transite par un état d'entité, un attribut ou le fichier de
-diagnostic : ni l'URL iCal — qui donne accès à l'emploi du temps complet d'un
-élève sans aucun identifiant — ni le bloc d'identité, ni le lien du PDF. Ce
-sont des réponses de service, et rien ne les stocke. Les identifiants d'élève
-n'apparaissent dans les diagnostics que sous forme d'empreinte tronquée.
+ Les contributions, rapports de bugs et suggestions sont les bienvenus.
 
-Le journaliseur `pronotepy` ne doit **jamais** être passé en DEBUG : il y écrit
-l'hexadécimal de chaque corps de requête, identifiants compris. L'intégration
-ne configure aucun journaliseur et ne déclare aucune clé `loggers` dans son
-manifeste, et un test le vérifie.
+ Avant d'ouvrir une issue :
+
+ - vérifiez la documentation
+- utilisez les formulaires d'issue disponibles
+- ne partagez jamais d'identifiants PRONOTE réels
+- ne joignez jamais de données scolaires personnelles
+- ne joignez jamais de logs `pronotepy` en mode DEBUG
+
+ 👉 Créer une issue
+
+---
+
+ # ⚠️ Important
+
+ PRONOTE est un service tiers.
+
+ **Pronote NG n'est pas développé, maintenu ou officiellement supporté par Index Éducation / PRONOTE.**
+
+ Le fonctionnement de l'intégration dépend de l'API et du comportement de PRONOTE. Une évolution de PRONOTE ou de l'ENT utilisé par votre établissement peut nécessiter une adaptation de l'intégration.
+
+---
+
+
+ ## ⭐ Vous utilisez Pronote NG ?
+
+ Si cette intégration vous est utile :
+
+ - ⭐ ajoutez une étoile au projet GitHub
+- 🐛 signalez les problèmes rencontrés
+- 💡 proposez des améliorations
+- 📖 contribuez à la documentation
+- 📣 partagez le projet avec d'autres utilisateurs de Home Assistant
+
+ Chaque étoile et chaque contribution aide le projet à être découvert par les utilisateurs qui recherchent une intégration **PRONOTE pour Home Assistant**.
+
 
 ## Contribuer
 
@@ -247,6 +383,10 @@ Pour signaler un problème, utilisez les
 ils demandent ce qu'il faut, et rappellent surtout ce qu'il ne faut **pas**
 coller dans une issue publique.
 
-## Licence
+ # 📄 Licence
 
-[MIT](LICENSE).
+ Pronote NG est distribué sous licence [MIT](LICENSE).
+
+---
+
+
