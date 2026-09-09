@@ -1,12 +1,19 @@
+# Pronote NG — PRONOTE pour Home Assistant
+
 <p align="center">
   <img src="docs/assets/logo.png" alt="Pronote NG" width="180">
 </p>
 
-<h1 align="center">Pronote NG</h1>
-
 <p align="center">
   <strong>Intégration Home Assistant pour PRONOTE — seconde génération.</strong>
 </p>
+
+ **Pronote NG** est une intégration [Home Assistant](<https://www.home-assistant.io/>) permettant d'intégrer **PRONOTE** directement dans votre installation domotique.
+
+ Retrouvez dans Home Assistant les informations scolaires de vos enfants : **emploi du temps, devoirs, notes, moyennes, absences, retards, évaluations, actualités, discussions, menus et bien plus encore.**
+
+ L'intégration est conçue pour les élèves comme pour les parents utilisant un compte PRONOTE ou un ENT.
+
 
 <p align="center">
   <a href="https://fiveelements.github.io/ha-pronote-ng/">Documentation</a>
