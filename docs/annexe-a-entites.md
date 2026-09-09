@@ -253,15 +253,21 @@ la nature du changement ; les attributs portent le contexte.
 
 | Entité | `event_types` | Attributs du contexte | P |
 | --- | --- | --- | --- |
-| `event.<é>_nouvelle_note` | `grade_added` | `subject`, `grade`, `out_of`, `coefficient`, `date`, `class_average`, `status` | `marks` |
+| `event.<é>_nouvelle_note` | `grade_added` | `subject`, `grade`, `out_of`, `coefficient`, `date`, `class_average`, `status`, `grade_id` | `marks` |
 | `event.<é>_nouveau_devoir` | `homework_added` | `subject`, `description`, `due`, `id` | `homework` |
-| `event.<é>_cours_modifie` | `lesson_canceled`, `lesson_moved`, `room_changed`, `teacher_changed` | `subject`, `start`, `end`, `previous_start`, `classroom`, `previous_classroom`, `status` | `timetable` |
-| `event.<é>_nouvelle_actualite` | `information_added` | `author`, `title`, `category`, `survey` | `news` |
-| `event.<é>_nouvelle_absence` | `absence_added` | `from_date`, `to_date`, `justified`, `reasons`, `hours`, `days` | `attendance` |
-| `event.<é>_nouveau_retard` | `delay_added` | `date`, `justified`, `justification`, `reasons`, `minutes` | `attendance` |
-| `event.<é>_nouvelle_punition` | `punishment_added` | `nature`, `reasons`, `giver`, `schedule`, `exclusion` | `attendance` |
-| `event.<é>_nouveau_message` | `message_received` | `discussion`, `author`, `created` | `discussions` |
-| `event.<é>_nouvelle_evaluation` | `evaluation_added` | `subject`, `name`, `acquisitions`, `date` | `evaluations` |
+| `event.<é>_cours_modifie` | `lesson_canceled`, `lesson_restored`, `lesson_moved`, `room_changed`, `teacher_changed`, `lesson_status_changed` | `subject`, `start`, `end`, `previous_start`, `previous_end`, `classroom`, `previous_classroom`, `teachers`, `previous_teachers`, `status`, `canceled`, `lesson_id` | `timetable` |
+| `event.<é>_nouvelle_actualite` | `information_added` | `author`, `title`, `category`, `survey`, `information_id` | `news` |
+| `event.<é>_nouvelle_absence` | `absence_added` | `from_date`, `to_date`, `justified`, `reasons`, `hours`, `days`, `absence_id` | `attendance` |
+| `event.<é>_nouveau_retard` | `delay_added` | `date`, `justified`, `justification`, `reasons`, `minutes`, `delay_id` | `attendance` |
+| `event.<é>_nouvelle_punition` | `punishment_added` | `nature`, `reasons`, `giver`, `exclusion`, `schedule`, `punishment_id` | `attendance` |
+| `event.<é>_nouveau_message` | `message_received` | `discussion`, `author`, `created`, `discussion_id`, `unread` | `discussions` |
+| `event.<é>_nouvelle_evaluation` | `evaluation_added` | `subject`, `name`, `acquisitions`, `date`, `evaluation_id` | `evaluations` |
+
+**Deux attributs ne sont pas toujours renseignés.** Sur
+`event.<é>_nouveau_message`, `author` et `created` sont `null` quand la passerelle
+n'a pas déplié le fil — plus de fils sont passés en non-lu que le plafond
+d'expansion n'en autorise. L'évènement part quand même, avec l'identité du fil :
+perdre « un message est arrivé » serait pire que perdre le nom de l'auteur.
 
 **Exigence.** Deux règles de détection, selon la collection (§2.2.1 de la
 spécification) :
@@ -274,8 +280,8 @@ spécification) :
   retirer l'ancien. Sa détection est donc : dédoublonnage par créneau en gardant
   le `num` maximal, puis comparaison du tuple
   `(canceled, status, classroom, teachers, start, end)` sur la clé
-  `(date, place, subject_id)`. `previous_start` et `previous_classroom` viennent
-  de ce tuple précédent — ils n'avaient aucune source dans la v1.
+  `(date, place, subject_id)`. Les quatre attributs `previous_*` viennent de ce
+  tuple précédent — ils n'avaient aucune source dans la v1.
 
 **Exigence.** Aucun évènement n'est émis lors du premier instantané d'un palier
 après démarrage ou rechargement, sinon chaque redémarrage rejouerait le

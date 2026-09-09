@@ -2103,27 +2103,38 @@ uniquement la **couche sur laquelle le détecteur travaille** qui change : la
 passerelle expose les deux vues, `lessons` dédoublonnée pour l'affichage et
 `all_lessons` pour le delta.
 
-### 12.4 Les types d'événement du cours modifié sont six et non quatre
+### 12.4 Les types d'événement du cours modifié sont six et non quatre — divergence close
 
-L'annexe A §4 déclare que `event.<élève>_cours_modifie` porte quatre
-`event_types` : `lesson_canceled`, `lesson_moved`, `room_changed`,
-`teacher_changed`. Le code en déclare **six** (`LESSON_EVENT_TYPES`,
-`const.py:360-367`), en ajoutant :
+Cette divergence est **résolue** dans le même sens que la §12.9 : c'est
+l'annexe qui a bougé, parce que c'est le code qui avait raison.
+
+L'annexe A §4 ne déclarait que quatre `event_types` sur
+`event.<élève>_cours_modifie` : `lesson_canceled`, `lesson_moved`,
+`room_changed`, `teacher_changed`. Le code en déclare **six**
+(`LESSON_EVENT_TYPES`, `const.py:402-409`), et le tableau de l'annexe les porte
+désormais tous — avec, au passage, les douze attributs de contexte réellement
+émis par `_lesson_context` au lieu de sept. Les deux qui manquaient :
 
 * **`lesson_restored`** — une annulation **levée**, le cours est rétabli. Son
   absence est ce qui faisait déclencher `lesson_canceled` pour l'événement
   exactement opposé par le repli « si rien d'autre n'a correspondu, appelons ça
   une annulation » : une automatisation qui notifie « pas de cours en première
   heure, dors » se déclenchait le matin où le cours revenait
-  (`const.py:338-343`) ;
+  (`const.py:379-384`) ;
 * **`lesson_status_changed`** — seul le libellé `Statut` a bougé, sans drapeau,
   sans horaire, sans salle et sans professeur. PRONOTE utilise ce champ pour
   des situations où il ne pose pas `estAnnule` — « Prof. absent », « Cours
   dépl. » — donc le changement est réel et vaut d'être rapporté ; il n'est
-  simplement pas une annulation, ce qu'il était rapporté comme étant.
+  simplement pas une annulation, ce qu'il était rapporté comme étant
+  (`const.py:387-390`).
 
 Corollaire côté automatisations : `device_trigger.py:58-73` expose **quatorze**
 types de déclencheur, dont ces deux-là.
+
+Ce qui reste à surveiller n'est plus l'annexe mais la **duplication** : la même
+liste vit maintenant dans `const.py`, dans le tableau du § 4.10 du guide et dans
+celui du § 4 de l'annexe A. Un septième type ajouté au code sans toucher aux
+deux documents recrée exactement l'écart qu'on vient de fermer.
 
 ### 12.5 Le plafond de connexions compte les tentatives, pas les succès
 
