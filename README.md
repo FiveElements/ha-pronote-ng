@@ -21,8 +21,8 @@
   ·
   <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
   ·
-  <a href="https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/">🐛 Signaler un problème · [💻 GitHub](<https://github.com/FiveElements/ha-pronote-ng>)
-</a>
+  🐛 Signaler un problème · [💻 GitHub](<https://github.com/FiveElements/ha-pronote-ng>)
+
 </p>
 
 <p align="center">
