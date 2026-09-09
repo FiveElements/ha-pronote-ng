@@ -27,13 +27,14 @@ scalaire, directement utilisable par un déclencheur `state` ou
 | `sensor.<é>_prochain_cours` | horodatage du début | `timestamp` | `subject`, `teachers`, `classroom`, `end`, `canceled` | `timetable` | `Lesson.start` |
 | `sensor.<é>_fin_des_cours` | horodatage de la fin du dernier cours du jour | `timestamp` | `subject` | `timetable` | `Lesson.end` |
 | `sensor.<é>_fin_de_matinee` | horodatage de la fin du dernier cours avant la pause de midi | `timestamp` | `subject`, `end_inferred`, `resumes_at`, `break_minutes` | `timetable` | `Lesson.end` |
+| `sensor.<é>_prochaine_annulation` | horodatage du début du prochain cours annulé | `timestamp` | `subject`, `end`, `classroom`, `end_inferred`, **`items`** | `timetable` | `Lesson.canceled` |
 | `sensor.<é>_prochain_reveil` | horodatage du réveil calculé | `timestamp` | `first_lesson`, `margin_minutes` | `timetable` | — (premier cours − `wake_margin`) |
 | `sensor.<é>_cours_du_jour` | nombre de cours | — | **`lessons`**, `first_start`, `last_end`, `canceled_count` | `timetable` | `Client.lessons()` |
 | `sensor.<é>_devoirs_a_faire` | nombre de devoirs non faits | — | **`items`**, `next_due` | `homework` | `Homework.done` |
-| `sensor.<é>_devoirs_demain` | nombre de devoirs pour le lendemain | — | **`items`** | `homework` | `Homework.date` |
+| `sensor.<é>_devoirs_pour_demain` | nombre de devoirs pour le lendemain | — | **`items`** | `homework` | `Homework.date` |
 | `sensor.<é>_derniere_note` | valeur numérique de la note la plus récente | — | `subject`, `out_of`, `coefficient`, `date`, `class_average`, `status` | `marks` | `Grade.grade` |
 | `sensor.<é>_moyenne_generale` | moyenne générale de l'élève | — | `out_of` (**constante 20**), `period` | `marks` | `Period.overall_average` |
-| `sensor.<é>_moyenne_classe` | moyenne générale de la classe | — | `out_of` (**constante 20**), `period` | `marks` | `Period.class_overall_average` |
+| `sensor.<é>_moyenne_de_la_classe` | moyenne générale de la classe | — | `out_of` (**constante 20**), `period` | `marks` | `Period.class_overall_average` |
 | `sensor.<é>_prochain_controle` | horodatage du prochain cours marqué contrôle | `timestamp` | `subject`, `classroom` | `timetable` | `Lesson.test` |
 | `sensor.<é>_prochaine_punition` | horodatage du prochain créneau de retenue | `timestamp` | `nature`, `duration`, `giver` | `attendance` | `Punishment.schedule` |
 | `sensor.<é>_absences_non_justifiees` | nombre | — | **`items`** | `attendance` | `Absence.justified` |
@@ -93,6 +94,21 @@ vaut ce qu'il vaut pour toute fin de cours — vrai partout où `DateDuCoursFin`
 n'est pas envoyé, ce qui est le cas de tous les cours sur certains
 établissements (§4.1).
 
+**Exigence.** `sensor.<é>_prochaine_annulation` retient le prochain cours annulé
+**dont la fin n'est pas passée**, et `unknown` s'il n'y en a pas. Le même filtre
+`end > now` sert l'état **et** l'attribut `items` : deux filtres finiraient par
+diverger, et une carte montrerait une liste dont la première entrée n'est pas
+l'état de l'entité. La conséquence est assumée — *pendant* le créneau annulé,
+l'état est légèrement dans le passé, ce qui se lit « cette annulation est encore
+en cours » et ne demande pas de contournement.
+
+**Exigence.** La fenêtre de `sensor.<é>_prochaine_annulation` est celle qui a été
+collectée — la **semaine entière**, pas la journée — comme `prochain_cours` : une
+annulation à deux jours est exactement celle dont un parent veut être prévenu. Une
+**dispense n'est pas une annulation** et n'y figure jamais : le cours a lieu,
+l'enfant n'est simplement pas tenu d'y être, et l'annoncer comme annulé dirait à un
+parent que la classe est supprimée.
+
 ---
 
 ## 2. Capteurs de liste — la surface d'affichage
@@ -101,11 +117,11 @@ n'est pas envoyé, ce qui est le cas de tous les cours sur certains
 
 | Entité | État | Attributs | P | Origine |
 | --- | --- | --- | --- | --- |
-| `sensor.<é>_emploi_du_temps_demain` | nombre de cours | **`lessons`** | `timetable` | `Client.lessons()` |
-| `sensor.<é>_emploi_du_temps_semaine` | nombre de cours | **`lessons`** | `timetable` | `Client.lessons()` |
+| `sensor.<é>_emploi_du_temps_de_demain` | nombre de cours | **`lessons`** | `timetable` | `Client.lessons()` |
+| `sensor.<é>_emploi_du_temps_de_la_semaine` | nombre de cours | **`lessons`** | `timetable` | `Client.lessons()` |
 | `sensor.<é>_devoirs` | nombre total sur l'horizon | **`items`** | `homework` | `Client.homework()` |
 | `sensor.<é>_notes` | nombre de notes de la période | **`items`** | `marks` | `Period.grades` |
-| `sensor.<é>_moyennes` | nombre de matières | **`items`** | `marks` | `Period.averages` |
+| `sensor.<é>_moyennes_par_matiere` | nombre de matières | **`items`** | `marks` | `Period.averages` |
 | `sensor.<é>_absences` | nombre | **`items`** | `attendance` | `Period.absences` |
 | `sensor.<é>_retards` | nombre | **`items`** | `attendance` | `Period.delays` |
 | `sensor.<é>_punitions` | nombre | **`items`** | `attendance` | `Period.punishments` |
@@ -113,7 +129,7 @@ n'est pas envoyé, ce qui est le cas de tous les cours sur certains
 | `sensor.<é>_actualites` | nombre | **`items`** | `news` | `Client.information_and_surveys()` |
 | `sensor.<é>_discussions` | nombre | **`items`** | `discussions` | `Client.discussions()` |
 | `sensor.<é>_menu_du_jour` | nombre de plats | **`first_meal`**, **`main_meal`**, **`side_meal`**, **`other_meal`**, **`cheese`**, **`dessert`**, `is_lunch`, `published` | `menus` | `Menu` |
-| `sensor.<é>_menu_demain` | nombre de plats | idem | `menus` | `Menu` |
+| `sensor.<é>_menu_de_demain` | nombre de plats | idem | `menus` | `Menu` |
 | `sensor.<é>_bulletin` | nombre de matières | **`subjects`**, **`comments`**, `period` | `marks` | `Period.report` |
 | `sensor.<é>_equipe_pedagogique` | nombre de membres | **`items`** | `static` | `Client.get_teaching_staff()` |
 | `sensor.<é>_classe` | nom de la classe | `grade`, `establishment` | `session` | `ClientInfo.class_name` |
@@ -125,7 +141,7 @@ appel** : `class_name`, `establishment`, `name` et `periods` se lisent dans
 v1 les rangeait sous `static` et leur budgétait des appels ; le palier `static`
 ne vaut en réalité qu'un seul appel, celui de l'équipe pédagogique.
 
-**Exigence.** Les éléments de `sensor.<é>_moyennes` sont clés par
+**Exigence.** Les éléments de `sensor.<é>_moyennes_par_matiere` sont clés par
 `Subject.id` : `Average` n'a **pas** de champ `id`, et la règle de stabilité
 (§2.4 de la spécification) interdit d'employer un rang dans la liste.
 
@@ -184,7 +200,7 @@ l'un des deux est nul. C'est ce qui permet à l'état de
 pas d'identifiant propre et §2.4 interdit d'employer un rang.
 
 Ici `out_of` est le barème décodé (`baremeMoyEleve`). Sur
-`sensor.<é>_moyenne_generale` et `sensor.<é>_moyenne_classe`, l'attribut du même
+`sensor.<é>_moyenne_generale` et `sensor.<é>_moyenne_de_la_classe`, l'attribut du même
 nom est une **constante 20** écrite dans le producteur d'attributs, pas une
 lecture : le même nom de clé porte une mesure sur une entité et une hypothèse
 sur l'autre.
@@ -257,7 +273,7 @@ l'établissement renomme « Trimestre 1 » en « Semestre 1 ».
 | `binary_sensor.<é>_absence_en_cours` | une absence couvre l'heure courante | `problem` | `attendance` | `Absence.from_date`/`to_date` |
 | `binary_sensor.<é>_punition_a_venir` | une punition est programmée dans le futur | `problem` | `attendance` | `Punishment.schedule` |
 | `binary_sensor.<é>_vacances` | aucun cours dans les 7 jours et hors période active | — | `timetable` | — |
-| `binary_sensor.<é>_bride` | le limiteur retarde des collectes | `problem` | — | — |
+| `binary_sensor.<compte>_collectes_bridees` | le limiteur retarde des collectes | `problem` | — | — |
 
 ### 3.1 Trois jumeaux retirés en v2
 
@@ -274,7 +290,8 @@ absence de cours sur une fenêtre.
 
 **Exigence.** Les entités qui dépendent de l'heure et non des seules données —
 `en_cours`, `absence_en_cours`, et côté capteurs `prochain_cours`,
-`fin_des_cours`, `prochain_reveil`, `prochain_controle`, `prochaine_punition` —
+`fin_des_cours`, `fin_de_matinee`, `prochaine_annulation`, `prochain_reveil`,
+`prochain_controle`, `prochaine_punition` —
 sont réévaluées par `async_track_point_in_time` positionné sur la prochaine
 bascule connue, jamais par sondage. Sans cela elles changent d'état au rythme de
 leur palier, avec jusqu'à quinze minutes de retard : sur un capteur de réveil,
@@ -358,7 +375,7 @@ vrai (§8.3 de la spécification).
 | Entité | Effet |
 | --- | --- |
 | `button.<é>_rafraichir` | demande un passage prioritaire à l'ordonnanceur, sans contourner le limiteur |
-| `button.<é>_rafraichir_notes` | idem, palier `marks` seulement |
+| `button.<é>_rafraichir_les_notes` | idem, palier `marks` seulement |
 
 ### 5.4 `image`
 
@@ -413,11 +430,11 @@ Rend le réglage du §6 observable. Toutes ces entités portent
 | `sensor.<compte>_budget_restant` | appels restants sur le plafond du jour | `daily_cap`, `hourly_remaining`, `tokens` |
 | `sensor.<compte>_derniere_collecte` | horodatage (`timestamp`) | `tier`, `duration_ms`, `calls` |
 | `sensor.<compte>_prochaine_collecte` | horodatage (`timestamp`) | `tiers_due`, `overdue_by`, `failing` |
-| `sensor.<compte>_age_session` | âge de la session en secondes | `session_id_hash`, `opened_at` |
-| `sensor.<compte>_duree_vie_session` | durée de vie **mesurée** de la session, en minutes | `samples`, `last_expiry`, `strategy` |
+| `sensor.<compte>_age_de_la_session` | âge de la session en secondes | `session_id_hash`, `opened_at` |
+| `sensor.<compte>_duree_de_vie_de_la_session` | durée de vie **mesurée** de la session, en minutes | `samples`, `last_expiry`, `strategy` |
 | `sensor.<compte>_connexions_du_jour` | nombre de connexions réussies | `failed`, `cap` |
-| `sensor.<compte>_etat_limiteur` | `nominal`, `throttled`, `backoff`, `quiet_hours`, `credentials_hold`, `bootstrap_failed` | `until`, `reason`, `consecutive_failures` |
-| `binary_sensor.<compte>_bride` | `on` si des collectes sont retardées | `since` |
+| `sensor.<compte>_etat_du_limiteur` | `nominal`, `throttled`, `backoff`, `quiet_hours`, `credentials_hold`, `bootstrap_failed` | `until`, `reason`, `consecutive_failures` |
+| `binary_sensor.<compte>_collectes_bridees` | `on` si des collectes sont retardées | `since` |
 
 Ces entités sont attachées à l'appareil **compte**, pas à un enfant : le budget
 est partagé (§7.1 de la spécification).
