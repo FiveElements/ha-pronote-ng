@@ -45,7 +45,7 @@ from custom_components.pronote_ng.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -198,7 +198,8 @@ async def test_the_ical_url_exists_only_in_its_service_response(
     from homeassistant.helpers import device_registry as dr
 
     device = dr.async_get(hass).async_get_device_by_identifier(
-        (DOMAIN, f"{mock_entry.entry_id}_{STUDENT_ONE}"), mock_entry.entry_id
+        (DOMAIN, f"{mock_entry.entry_id}_{child_key(mock_entry, STUDENT_ONE)}"),
+        mock_entry.entry_id,
     )
     assert device is not None
 

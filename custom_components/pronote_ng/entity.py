@@ -58,7 +58,7 @@ class PronoteEntity(CoordinatorEntity["PronoteTierCoordinator"]):
         self.student = student
         self._key = key
 
-        # Config entry, then the PRONOTE identifier, then a stable functional
+        # Config entry, then the child's minted key, then a stable functional
         # key -- never a label, a period name or a rank. An automation that
         # breaks in September because a sensor was renamed is a regression even
         # if no code failed (§2.4).
@@ -66,12 +66,21 @@ class PronoteEntity(CoordinatorEntity["PronoteTierCoordinator"]):
         # The entry id is part of it because the entry's own `unique_id` is the
         # *account*, so two entries following the same child are legitimate: a
         # mother's account and a father's, or a parent account alongside the
-        # child's own. And `student.id` is PRONOTE's resource number `N`, which
-        # is only unique within one establishment's database. Without this
-        # prefix the registry does not reject the second entry -- it *re-points*
-        # the existing entity at it, moving the entity to the other entry's
-        # device and silently breaking every automation that referenced it.
-        self._attr_unique_id = f"{account.entry.entry_id}_{student.id}_{key}"
+        # child's own. Without that prefix the registry does not reject the
+        # second entry -- it *re-points* the existing entity at it, moving the
+        # entity to the other entry's device and silently breaking every
+        # automation that referenced it.
+        #
+        # The middle part is `account.stable_key(...)` and **not** `student.id`.
+        # That was the defect: `student.id` is PRONOTE's `46#<signature>`, and
+        # the signature is not stable between sessions. When it rotated, every
+        # `unique_id` here moved with it, so Home Assistant saw a new child --
+        # a second device, a second full set of entities, and the previous set
+        # orphaned in the registry for ever, with every dashboard and
+        # automation still pointing at the dead one. See `child_keys.py`.
+        self._attr_unique_id = (
+            f"{account.entry.entry_id}_{account.stable_key(student.id)}_{key}"
+        )
         self._attr_translation_key = key
         self._attr_device_info = _student_device(account, student)
 
@@ -236,8 +245,14 @@ def _student_device(account: PronoteAccount, student: Student) -> DeviceInfo:
     entities, which declare no parent, survived. A device link is therefore
     load-bearing for the whole integration, which is why it is spelled out here.
     """
+    # The minted key, for the same reason as the entity `unique_id`: keyed on
+    # `student.id` this device was re-created from scratch every time PRONOTE
+    # rotated the child's resource signature, stranding the previous one and
+    # everything attached to it.
     info = DeviceInfo(
-        identifiers={(DOMAIN, f"{account.entry.entry_id}_{student.id}")},
+        identifiers={
+            (DOMAIN, f"{account.entry.entry_id}_{account.stable_key(student.id)}")
+        },
         name=student.name,
         manufacturer="PRONOTE",
         model=student.class_name or None,

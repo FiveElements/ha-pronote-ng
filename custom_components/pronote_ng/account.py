@@ -26,12 +26,18 @@ import time
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
+from .child_keys import pair
 from .const import (
     CONF_ACCOUNT_PIN,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_CLIENT_IDENTIFIER,
     CONF_DEVICE_NAME,
@@ -89,7 +95,7 @@ from .session import (
 from .urls import public_url
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from homeassistant.config_entries import ConfigEntry
 
@@ -204,6 +210,12 @@ class PronoteAccount:
         self._selected_children: tuple[str, ...] = tuple(
             entry.data.get(CONF_CHILDREN) or ()
         )
+        #: PRONOTE resource identifier -> the key this integration minted for
+        #: that child. Filled by `_async_pair_children` during set-up, before
+        #: any platform is forwarded, because `entity.py` reads it to build
+        #: every `unique_id`. Empty until then, and deliberately not defaulted
+        #: to the resource identifier: see `stable_key`.
+        self._child_keys: dict[str, str] = {}
         self._unsub_tick: Any | None = None
         self._tick_lock = asyncio.Lock()
         self._unread_by_student: dict[str, dict[str, int]] = {}
@@ -321,6 +333,10 @@ class PronoteAccount:
         self.state.periods = periods
         self.state.current_period = current
 
+        # Before the platforms are forwarded, because every `unique_id` is
+        # built from what this establishes.
+        self._async_pair_children(students)
+
         session_coordinator = self.coordinators[Tier.SESSION]
         for student, facts in zip(students, session_snapshots, strict=True):
             session_coordinator.publish(
@@ -333,6 +349,199 @@ class PronoteAccount:
                     student_id=student.id,
                 ),
             )
+
+    @callback
+    def _async_pair_children(self, students: Sequence[Student]) -> None:
+        """Give every announced child the key this integration owns.
+
+        The whole point of `child_keys` is that PRONOTE's resource identifier
+        rotates, so this runs at every set-up rather than once: the table in
+        the config entry is the durable artefact, and re-pairing against it is
+        the normal mode of operation.
+
+        Writing the entry here is safe and the timing is not accidental.
+        `async_setup_entry` attaches the update listener that reloads the entry
+        *after* `async_setup` returns, so this write cannot start a reload
+        loop -- and it only writes when the table actually changed, which is
+        the same guard `_async_persist_credentials` needs for the opposite
+        reason.
+        """
+        stored = list(self.entry.data.get(CONF_CHILD_KEYS) or ())
+        keys, table, notes = pair(
+            stored, [(student.id, student.name) for student in students]
+        )
+        self._child_keys = keys
+        for note in notes:
+            # Keys only, never a name: this lands in the log users attach to
+            # public issues (§8.2). It is logged at all because the silence
+            # here is what hid the duplicate-device defect for as long as it
+            # existed.
+            _LOGGER.info("child identity: %s", note)
+        if table != stored:
+            self.hass.config_entries.async_update_entry(
+                self.entry, data={**self.entry.data, CONF_CHILD_KEYS: table}
+            )
+
+        self._async_adopt_existing_registry_rows()
+
+    @callback
+    def _async_adopt_existing_registry_rows(self) -> None:
+        """Re-point rows created against PRONOTE's rotating identifier.
+
+        Entities and devices that predate the minted keys carry
+        ``<entry_id>_46#<signature>...`` in their ``unique_id``. Rewriting that
+        **in place** is the whole difference between a fix and a second
+        breakage: `async_update_entity` keeps the registry row, so the
+        ``entity_id``, the device, a name the user set by hand, the area and
+        the labels all survive. Creating new entities and leaving the old ones
+        would *be* the defect, performed deliberately -- and it would break
+        every dashboard badge and tile, which can only be wired to a literal
+        ``entity_id``.
+
+        Run here rather than from a version-numbered migration handler, and
+        that is a deliberate choice: a migration runs before any login, so it
+        cannot know which children the account announces *now* -- and on an
+        instance that already suffered the defect the registry holds two
+        generations for one child, with no way to tell from the registry alone
+        which is alive. Pairing has just answered that question, so this runs
+        immediately after it and only ever touches children the account
+        actually announced. The other generation is left exactly as it is: its
+        entities are dead either way, and deleting registry rows on a user's
+        behalf is not this integration's decision.
+
+        Idempotent by construction -- after the first pass nothing matches the
+        old prefix -- so it also repairs an entry whose identifier rotated
+        between one start and the next.
+        """
+        entities = er.async_get(self.hass)
+        devices = dr.async_get(self.hass)
+        entry_id = self.entry.entry_id
+        rows = er.async_entries_for_config_entry(entities, entry_id)
+
+        for resource_id, minted in self._child_keys.items():
+            if resource_id == minted:
+                continue
+            self._async_adopt_device(devices, entry_id, resource_id, minted)
+            self._async_adopt_entities(entities, rows, entry_id, resource_id, minted)
+
+    @callback
+    def _async_adopt_device(
+        self, devices: dr.DeviceRegistry, entry_id: str, resource_id: str, minted: str
+    ) -> None:
+        """Move one child device onto its minted identifier."""
+        was = (DOMAIN, f"{entry_id}_{resource_id}")
+        now = (DOMAIN, f"{entry_id}_{minted}")
+        # `async_get_device_by_identifier` and not `async_get_device`: the
+        # latter is deprecated because a device identifier is no longer unique
+        # across config entries, and it *raises* under the test harness. That
+        # is also why it takes the entry id -- which is the more correct
+        # question anyway, since two accounts may follow the same child.
+        device = devices.async_get_device_by_identifier(was, entry_id)
+        if device is None:
+            return
+        taken = devices.async_get_device_by_identifier(now, entry_id)
+        if taken is not None:
+            if taken.id != device.id:
+                # Both generations exist as devices. Claiming the identifier
+                # would collide, and merging them would decide for the user
+                # which of two devices keeps their custom name.
+                _LOGGER.warning(
+                    "a device already carries the minted identifier for %s, so "
+                    "the older one is left as it is; it will not update again "
+                    "and can be deleted from the device page",
+                    minted,
+                )
+            return
+        devices.async_update_device(device.id, new_identifiers={now})
+        _LOGGER.info(
+            "adopted the existing device for %s, keeping its name, area and labels",
+            minted,
+        )
+
+    @callback
+    def _async_adopt_entities(
+        self,
+        entities: er.EntityRegistry,
+        rows: list[er.RegistryEntry],
+        entry_id: str,
+        resource_id: str,
+        minted: str,
+    ) -> None:
+        """Rewrite the unique id of every entity of one child, in place."""
+        was = f"{entry_id}_{resource_id}_"
+        now = f"{entry_id}_{minted}_"
+        adopted = 0
+        for row in rows:
+            if not row.unique_id.startswith(was):
+                continue
+            wanted = now + row.unique_id[len(was) :]
+            taken = entities.async_get_entity_id(row.domain, DOMAIN, wanted)
+            if taken is not None and taken != row.entity_id:
+                # Refusing beats raising: `async_update_entity` would abort the
+                # whole set-up over one row, and an entry that will not load is
+                # worse than one entity left behind.
+                _LOGGER.warning(
+                    "cannot re-point %s: %s already holds the identity it would take",
+                    row.entity_id,
+                    taken,
+                )
+                continue
+            entities.async_update_entity(row.entity_id, new_unique_id=wanted)
+            adopted += 1
+        if adopted:
+            _LOGGER.info(
+                "re-pointed %d existing entities of %s onto an identity that "
+                "no longer follows PRONOTE's rotating identifier; every "
+                "entity_id, custom name, area and label is unchanged",
+                adopted,
+                minted,
+            )
+
+    def student_id_for_key(self, key: str) -> str | None:
+        """Turn a minted key back into the identifier PRONOTE announced.
+
+        The reverse of `stable_key`, needed at every boundary where a *device*
+        is the input: a device identifier carries the minted key, while the
+        coordinators, the gateway and the bus events are all keyed by the
+        session's resource identifier. Three call sites need it -- the
+        diagnostics dump, the device triggers and the service target
+        resolution -- and each is a place where a device that Home Assistant
+        stored months ago has to be matched to the child of this session.
+
+        A value that is *already* a known resource identifier is returned
+        unchanged, which is what makes a device created before the keys
+        existed keep working between the upgrade and the migration.
+        """
+        if key in self._child_keys:
+            return key
+        for student_id, minted in self._child_keys.items():
+            if minted == key:
+                return student_id
+        return None
+
+    def stable_key(self, student_id: str) -> str:
+        """The minted key for a child, for use in a `unique_id`.
+
+        Falls back to the resource identifier only if pairing never ran for
+        this child, which cannot happen through `async_setup`: every student
+        in `state.students` was paired before the platforms were forwarded.
+        It is a loud fallback rather than an exception because raising here
+        would fail the whole entry -- losing every child's entities -- to
+        protect the identity of one. The error says what to look for, since
+        the consequence is precisely the defect this replaced: an entity whose
+        identity follows a value PRONOTE rotates.
+        """
+        key = self._child_keys.get(student_id)
+        if key is None:
+            _LOGGER.error(
+                "no minted key for a child that entities are being built for; "
+                "falling back to the PRONOTE resource identifier, which is "
+                "not stable between sessions and will orphan those entities "
+                "the next time it rotates. This is an integration bug: "
+                "pairing runs before the platforms are forwarded"
+            )
+            return student_id
+        return key
 
     async def _async_student_ids(self) -> tuple[str, ...]:
         """Which children to follow: those the user selected, or all of them."""
@@ -353,6 +562,34 @@ class PronoteAccount:
         if not self._selected_children:
             return available
         chosen = tuple(sid for sid in available if sid in self._selected_children)
+        if not chosen:
+            # Following every child is the right recovery -- refusing to
+            # collect anything because a stored identifier went stale would
+            # take the whole integration down -- but doing it *silently* is
+            # what let a serious defect hide.
+            #
+            # A PRONOTE resource identifier is written `46#<signature>`, and
+            # that signature is **not stable between sessions**. The
+            # identifiers stored at configuration time therefore stop matching,
+            # this fallback quietly follows the children it was handed instead,
+            # and because an entity's `unique_id` embeds the identifier, a
+            # whole new device and one entity per description appear while the
+            # previous generation is orphaned in the registry -- every
+            # dashboard, automation and helper pointing at it dead, with
+            # nothing logged anywhere. `config_flow._account_identity` already
+            # learned that lesson for the *account* id and drops the signature
+            # before comparing; nobody carried it here.
+            _LOGGER.warning(
+                "none of the %d selected children match the %d the account "
+                "now announces, so all of them are followed. PRONOTE resource "
+                "identifiers are not stable between sessions, so this is "
+                "expected to happen and is recovered from -- but it also means "
+                "the entities of the previously followed children are no "
+                "longer updated. Re-select the children in the options to "
+                "settle the selection on what the account announces today",
+                len(self._selected_children),
+                len(available),
+            )
         return chosen or available
 
     def _stopping(self) -> bool:

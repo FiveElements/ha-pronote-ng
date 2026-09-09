@@ -16,6 +16,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.pronote_ng.const import (
+    CHILD_KEY,
+    CHILD_RESOURCE_ID,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_LOGIN_MODE,
     CONF_PRONOTE_URL,
@@ -92,6 +95,26 @@ _BATCH_DRAIN_ATTEMPTS = 50
 #: forgets ``set_child``, a snapshot keyed by tier instead of by student, a
 #: login counted per child instead of per batch.
 CHILDREN = (("STUDENT-1", "Enfant Un"), ("STUDENT-2", "Enfant Deux"))
+
+
+def child_key(entry: Any, student_id: str) -> str:
+    """The key the integration minted for one child.
+
+    Read out of the config entry rather than assumed, and that is the point:
+    PRONOTE's resource identifier rotates between sessions, so an entity's
+    identity is built from a key this integration allocates and stores. A test
+    that spelled the key out by hand would be asserting the minting *order*,
+    which is not a promise -- what is promised is that the stored table maps
+    the child PRONOTE announced to the key its entities carry.
+    """
+    for record in entry.data.get(CONF_CHILD_KEYS) or ():
+        if record.get(CHILD_RESOURCE_ID) == student_id:
+            return str(record[CHILD_KEY])
+    raise AssertionError(
+        f"no minted key for {student_id!r}; the entry holds "
+        f"{entry.data.get(CONF_CHILD_KEYS)!r}"
+    )
+
 
 #: Options for the end-to-end tests.
 #:

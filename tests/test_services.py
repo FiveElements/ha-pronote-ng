@@ -50,7 +50,7 @@ from custom_components.pronote_ng.const import (
 )
 from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, REQUIRES_HASS, child_key
 from .fixtures.client import FakeThread
 
 if TYPE_CHECKING:
@@ -84,7 +84,9 @@ def _device_id(hass: HomeAssistant, entry_id: str, identifier: str) -> str:
 
 def _child_device(hass: HomeAssistant, entry: MockConfigEntry, student: str) -> str:
     """One child's device id."""
-    return _device_id(hass, entry.entry_id, f"{entry.entry_id}_{student}")
+    return _device_id(
+        hass, entry.entry_id, f"{entry.entry_id}_{child_key(entry, student)}"
+    )
 
 
 def _account_device(hass: HomeAssistant, entry: MockConfigEntry) -> str:

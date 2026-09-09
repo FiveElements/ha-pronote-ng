@@ -20,6 +20,7 @@ credentials that are correct is worse than saying nothing.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -33,6 +34,7 @@ from pronotepy.exceptions import CryptoError, MFAError, PronoteAPIError
 import pytest
 
 from custom_components.pronote_ng.const import (
+    CONF_CHILDREN,
     DOMAIN,
     ISSUE_ACCOUNT_UNREADABLE,
     ISSUE_BOOTSTRAP_FAILED,
@@ -47,9 +49,10 @@ from custom_components.pronote_ng.ratelimit import (
     REQUESTS_PER_LOGIN,
 )
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
 if TYPE_CHECKING:
+    from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -111,7 +114,8 @@ async def test_a_device_per_child_hangs_off_the_account_device(
     assert account_device.name == "Collège d'Essai"
 
     for student in account.students:
-        child = by_identifier[f"{mock_entry.entry_id}_{student.id}"]
+        key = child_key(mock_entry, student.id)
+        child = by_identifier[f"{mock_entry.entry_id}_{key}"]
         assert child.via_device_id == account_device.id
         assert child.name == student.name
         assert child.model == student.class_name
@@ -140,7 +144,8 @@ async def test_every_entity_id_is_derived_from_the_pronote_identifier(
     assert entries, "the platforms created no entities at all"
 
     prefixes = tuple(
-        f"{mock_entry.entry_id}_{student}_" for student in (STUDENT_ONE, STUDENT_TWO)
+        f"{mock_entry.entry_id}_{child_key(mock_entry, student)}_"
+        for student in (STUDENT_ONE, STUDENT_TWO)
     )
     per_child = [entry for entry in entries if entry.unique_id.startswith(prefixes[0])]
     assert per_child
@@ -551,3 +556,58 @@ async def test_no_tab_call_happens_outside_the_selection_it_belongs_to(
         snapshot = coordinator.snapshot_for(student_id)
         assert snapshot is not None, f"no timetable published for {student_id}"
         assert snapshot.student_id == student_id
+
+
+async def test_a_stale_child_selection_says_so_instead_of_recovering_quietly(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: FrozenDateTimeFactory,
+    no_spacing: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The silence that hid the worst defect this integration has had.
+
+    A PRONOTE resource identifier is written ``46#<signature>``, and that
+    signature is **not stable between sessions**. So the identifiers stored in
+    ``entry.data["children"]`` at configuration time eventually match nothing
+    the account announces, and following every child instead is the right
+    recovery -- refusing to collect because a stored string went stale would
+    take the whole integration down.
+
+    Recovering *quietly* is what cost. An entity's ``unique_id`` embeds the
+    identifier, so a changed one creates a new device and a full set of new
+    entities while the previous generation is orphaned in the registry:
+    every dashboard, automation and helper pointing at it dead, and nothing
+    logged anywhere. On a live instance three generations accumulated before
+    anybody noticed, and only because a dashboard read the dead set.
+
+    ``config_flow._account_identity`` already learned this lesson for the
+    account identifier -- it drops the signature before comparing, and its
+    docstring explains why. Nobody carried it here.
+    """
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        data={**mock_entry.data, CONF_CHILDREN: ["46#a-signature-from-last-session"]},
+    )
+    caplog.set_level(logging.WARNING)
+
+    with patch(
+        "custom_components.pronote_ng.session.build_client",
+        return_value=parent_client,
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        account = mock_entry.runtime_data
+        # Recovered: every announced child is followed, so the account works.
+        assert {student.id for student in account.students} == {
+            child_id for child_id, _name in CHILDREN
+        }
+        # And said so, naming both counts so the reader can see it is a
+        # mismatch and not an empty account.
+        assert "selected children match" in caplog.text
+        assert "not stable between sessions" in caplog.text
+
+        await hass.config_entries.async_unload(mock_entry.entry_id)
+        await hass.async_block_till_done()

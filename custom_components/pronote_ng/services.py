@@ -168,10 +168,17 @@ def _resolve(hass: HomeAssistant, device_id: str) -> tuple[PronoteAccount, str |
         # account device that carries the diagnostics.
         if identifier in accounts:
             return accounts[identifier], None
-        entry_id, _, student_id = identifier.partition("_")
+        entry_id, _, child_key = identifier.partition("_")
         account = accounts.get(entry_id)
-        if account is not None and student_id:
-            return account, student_id
+        if account is not None and child_key:
+            # The suffix is the key this integration minted for the child; the
+            # gateway needs the identifier PRONOTE announced this session.
+            # `None` here means the device belongs to a child the account no
+            # longer announces -- an orphan from before the keys existed --
+            # which must not be silently served as some other child.
+            student_id = account.student_id_for_key(child_key)
+            if student_id is not None:
+                return account, student_id
 
     raise ServiceValidationError(
         translation_domain=DOMAIN,

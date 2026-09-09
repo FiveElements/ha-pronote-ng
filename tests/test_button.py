@@ -48,7 +48,7 @@ from custom_components.pronote_ng.button import (
 from custom_components.pronote_ng.const import DOMAIN, Tier
 from custom_components.pronote_ng.entity import PronoteEntity
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -68,7 +68,12 @@ STUDENT_TWO = CHILDREN[1][0]
 DATA_TIERS = [tier for tier in Tier if tier is not Tier.SESSION]
 
 
-def button_id(hass: HomeAssistant, entry_id: str, student_id: str, key: str) -> str:
+def button_id(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    student_id: str,
+    key: str,
+) -> str:
     """The entity id of one child's button, resolved through the registry.
 
     By unique id rather than by a slugified name: the name comes from
@@ -77,7 +82,7 @@ def button_id(hass: HomeAssistant, entry_id: str, student_id: str, key: str) -> 
     """
     registry = er.async_get(hass)
     entity_id = registry.async_get_entity_id(
-        BUTTON_DOMAIN, DOMAIN, f"{entry_id}_{student_id}_{key}"
+        BUTTON_DOMAIN, DOMAIN, f"{entry.entry_id}_{child_key(entry, student_id)}_{key}"
     )
     assert entity_id is not None, f"no {key} button for {student_id}"
     return entity_id
@@ -107,7 +112,7 @@ async def test_every_child_gets_its_own_pair_of_refresh_buttons(
     with the first's and silently re-points at it.
     """
     expected = {
-        f"{mock_entry.entry_id}_{student}_{description.key}"
+        f"{mock_entry.entry_id}_{child_key(mock_entry, student)}_{description.key}"
         for student in (STUDENT_ONE, STUDENT_TWO)
         for description in BUTTONS
     }
@@ -183,7 +188,7 @@ async def test_a_refresh_button_stays_pressable_when_its_tier_has_no_data(
     coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
 
-    entity_id = button_id(hass, mock_entry.entry_id, STUDENT_ONE, "refresh")
+    entity_id = button_id(hass, mock_entry, STUDENT_ONE, "refresh")
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.state != STATE_UNAVAILABLE
@@ -213,7 +218,7 @@ async def test_the_general_refresh_asks_for_every_tier_but_never_the_session(
     here rather than relied upon to have no plan: it has none today, which makes
     the mistake silent instead of impossible.
     """
-    entity_id = button_id(hass, mock_entry.entry_id, STUDENT_ONE, "refresh")
+    entity_id = button_id(hass, mock_entry, STUDENT_ONE, "refresh")
 
     with patch.object(account.scheduler, "request") as request:
         await press(hass, entity_id)
@@ -235,7 +240,7 @@ async def test_the_grades_button_asks_for_grades_and_nothing_else(
     defaulted to "everything" for both descriptions, the two buttons would look
     identical and behave identically, and only the request counter would know.
     """
-    entity_id = button_id(hass, mock_entry.entry_id, STUDENT_ONE, "refresh_marks")
+    entity_id = button_id(hass, mock_entry, STUDENT_ONE, "refresh_marks")
 
     with patch.object(account.scheduler, "request") as request:
         await press(hass, entity_id)
@@ -258,7 +263,7 @@ async def test_a_press_wakes_the_heartbeat_instead_of_calling_pronote_itself(
     escaping all of it, so what is asserted is that the press itself posts
     nothing and hands the job to the tick.
     """
-    entity_id = button_id(hass, mock_entry.entry_id, STUDENT_ONE, "refresh")
+    entity_id = button_id(hass, mock_entry, STUDENT_ONE, "refresh")
     before = len(parent_client.posts)
 
     with patch.object(account, "async_request_tick", AsyncMock()) as request_tick:
@@ -282,7 +287,7 @@ async def test_a_press_still_refreshes_when_write_operations_are_disabled(
     """
     assert account.write_enabled is False
 
-    entity_id = button_id(hass, mock_entry.entry_id, STUDENT_TWO, "refresh_marks")
+    entity_id = button_id(hass, mock_entry, STUDENT_TWO, "refresh_marks")
     with patch.object(account.scheduler, "request") as request:
         await press(hass, entity_id)
 
@@ -314,7 +319,7 @@ async def test_ten_presses_cost_one_batch_and_not_ten(
     something, or the button is decorative, and the nine that follow must cost
     nothing at all.
     """
-    entity_id = button_id(hass, mock_entry.entry_id, STUDENT_ONE, "refresh")
+    entity_id = button_id(hass, mock_entry, STUDENT_ONE, "refresh")
     before = len(parent_client.posts)
 
     await press(hass, entity_id)

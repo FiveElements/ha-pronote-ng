@@ -47,10 +47,11 @@ from custom_components.pronote_ng.device_condition import (
 )
 from custom_components.pronote_ng.device_trigger import (
     TRIGGER_TYPES,
+    async_attach_trigger,
     async_get_triggers,
 )
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -78,7 +79,9 @@ def _device_id(hass: HomeAssistant, entry_id: str, identifier: str) -> str:
 
 
 def _child(hass: HomeAssistant, entry: MockConfigEntry, student: str) -> str:
-    return _device_id(hass, entry.entry_id, f"{entry.entry_id}_{student}")
+    return _device_id(
+        hass, entry.entry_id, f"{entry.entry_id}_{child_key(entry, student)}"
+    )
 
 
 def _account_device(hass: HomeAssistant, entry: MockConfigEntry) -> str:
@@ -189,6 +192,48 @@ async def test_a_trigger_fires_for_its_own_child_only(
     # And the type has to match too: a grade is not a cancellation.
     await _fire(hass, mock_entry, student_id=STUDENT_ONE, event_type=EVENT_GRADE_ADDED)
     assert len(fired) == 1
+
+
+async def test_a_trigger_on_a_device_that_no_longer_resolves_does_not_attach(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """The quietest failure this integration has produced.
+
+    A device left behind by an earlier child identity still resolves to a
+    device id, so the automation editor accepts it and Home Assistant attaches
+    the trigger. But the child cannot be resolved, the event filter is built
+    with ``student_id: None``, and no real event -- all of which carry a
+    student -- can ever match it. There is no trace, no log line and no
+    ``unavailable`` entity: the automation is indistinguishable from one whose
+    condition simply has not occurred.
+
+    That is not hypothetical. On the live instance a child's PRONOTE resource
+    signature rotated, an automation kept pointing at the stranded device, and
+    the household noticed the missing announcement rather than the integration
+    noticing the broken trigger. Minting our own key stops the identifier
+    moving; it cannot resurrect a device the account no longer announces, so
+    for those the only useful answer is to say so.
+    """
+    del account
+    devices = dr.async_get(hass)
+    stranded = devices.async_get_or_create(
+        config_entry_id=mock_entry.entry_id,
+        identifiers={(DOMAIN, f"{mock_entry.entry_id}_child-does-not-exist")},
+        name="Un Enfant Parti",
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await async_attach_trigger(
+            hass,
+            {
+                "platform": "device",
+                "domain": DOMAIN,
+                "device_id": stranded.id,
+                "type": EVENT_LESSON_CANCELED,
+            },
+            lambda *_args, **_kwargs: None,
+            {},  # type: ignore[arg-type]
+        )
 
 
 # ---------------------------------------------------------------------------

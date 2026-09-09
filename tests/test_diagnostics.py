@@ -42,7 +42,7 @@ from custom_components.pronote_ng.diagnostics import (
     async_get_device_diagnostics,
 )
 
-from .conftest import CHILDREN, REQUIRES_HASS
+from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -232,7 +232,9 @@ def test_a_payload_that_is_not_an_object_at_all_counts_nothing() -> None:
 
 def _child_device(account: PronoteAccount, student_id: str) -> _Device:
     """A stand-in for the registry device of one child."""
-    return _Device((DOMAIN, f"{account.entry.entry_id}_{student_id}"))
+    return _Device(
+        (DOMAIN, f"{account.entry.entry_id}_{child_key(account.entry, student_id)}")
+    )
 
 
 def _descend(value: Any) -> list[Any]:

@@ -1,0 +1,145 @@
+"""Stable identities for the children of one account.
+
+PRONOTE writes a child's resource identifier as ``46#<signature>``, and that
+signature is **not stable between sessions**. Three distinct values were
+observed for a single pupil on a single account in one day. Because an
+entity's ``unique_id`` embedded that identifier, a rotation was
+indistinguishable from the arrival of a new child: a second device appeared,
+a full set of entities was created against it, and the previous set was
+orphaned in the registry for ever -- every dashboard, automation and helper
+pointing at it dead, with nothing logged anywhere.
+
+So the identifier the rest of the integration uses is one **we mint**, and the
+mapping from PRONOTE's rotating identifier to ours is stored in the config
+entry. That mapping table is the durable artefact; the key is merely what it
+contains. Re-pairing on every set-up is not a migration step that runs once,
+it is the normal mode of operation -- which is why it lives here rather than
+in a migration.
+
+**Why not the name.** It is the obvious alternative and it is wrong for the
+same reason: an establishment corrects a spelling, a family changes name, a
+school switches from ``DUPONT Marie`` to ``Marie DUPONT``. That moves the
+problem rather than removing it. The name is used only as the *second* way to
+recognise a record whose identifier has rotated -- never as the key.
+
+**Why not a position in the list.** §2.4 forbids it outright, and rightly: a
+sibling added or removed would renumber everybody.
+
+This module is deliberately free of Home Assistant and of ``pronotepy``: it is
+a pure function over two lists, so it can be tested exhaustively and runs in
+the HA-free half of the suite.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING, Final
+
+from .const import CHILD_KEY, CHILD_NAME, CHILD_RESOURCE_ID
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+#: One stored record, as it sits in the config entry.
+type Record = dict[str, str]
+
+#: A minted key. Readable on purpose -- it appears in every ``unique_id`` of
+#: the child's entities and in diagnostics, and "child-2" is far easier to
+#: reason about in a bug report than an opaque hash. It carries nothing from
+#: PRONOTE, so unlike the identifier it replaces it is safe to publish.
+_KEY_FORMAT: Final = "child-{number}"
+
+#: Reads the number back out of a minted key, to allocate the next one.
+_KEY_NUMBER: Final = re.compile(r"^child-(\d+)$")
+
+
+def _next_key(existing: Sequence[Record]) -> str:
+    """Mint a key no record in this table has ever used.
+
+    One above the highest ever allocated, rather than "length plus one":
+    records are never deleted, but if one ever were, counting would re-issue a
+    key that an orphaned registry row still carries -- and the registry would
+    then re-point that row at the new child instead of rejecting it.
+    """
+    used = [
+        int(match.group(1))
+        for record in existing
+        if (match := _KEY_NUMBER.match(record.get(CHILD_KEY, "")))
+    ]
+    return _KEY_FORMAT.format(number=max(used, default=0) + 1)
+
+
+def pair(
+    stored: Sequence[Mapping[str, str]],
+    announced: Sequence[tuple[str, str]],
+) -> tuple[dict[str, str], list[Record], list[str]]:
+    """Match the children the account announces against what we have seen.
+
+    ``announced`` is ``(resource_id, name)`` in the order PRONOTE gave them.
+    Returns the mapping the entities need, the table to store, and a list of
+    human-readable notes about anything that moved -- so a rotation is logged
+    once, plainly, instead of being absorbed in silence as it was before.
+
+    Matching is by resource identifier first, because while it holds it is
+    exact. Only children it does not place are then matched by name, and only
+    against records that no announced child has already claimed: without that
+    restriction two siblings sharing a name -- twins, which a school does not
+    disambiguate -- could both claim the same record and collapse onto one key.
+    Anything still unplaced is genuinely new and gets a fresh key.
+    """
+    records: list[Record] = [dict(record) for record in stored]
+    by_resource = {
+        record[CHILD_RESOURCE_ID]: record
+        for record in records
+        if record.get(CHILD_RESOURCE_ID)
+    }
+
+    keys: dict[str, str] = {}
+    claimed: set[str] = set()
+    notes: list[str] = []
+    unplaced: list[tuple[str, str]] = []
+
+    for resource_id, name in announced:
+        record = by_resource.get(resource_id)
+        if record is None:
+            unplaced.append((resource_id, name))
+            continue
+        claimed.add(record[CHILD_KEY])
+        keys[resource_id] = record[CHILD_KEY]
+        if record.get(CHILD_NAME) != name:
+            notes.append(
+                f"{record[CHILD_KEY]} is now announced as a different name; "
+                f"the stored one is updated and no entity changes"
+            )
+            record[CHILD_NAME] = name
+
+    for resource_id, name in unplaced:
+        match = next(
+            (
+                record
+                for record in records
+                if record.get(CHILD_NAME) == name and record[CHILD_KEY] not in claimed
+            ),
+            None,
+        )
+        if match is None:
+            record = {
+                CHILD_KEY: _next_key(records),
+                CHILD_RESOURCE_ID: resource_id,
+                CHILD_NAME: name,
+            }
+            records.append(record)
+            claimed.add(record[CHILD_KEY])
+            keys[resource_id] = record[CHILD_KEY]
+            notes.append(f"{record[CHILD_KEY]} is a child never seen before")
+            continue
+        notes.append(
+            f"{match[CHILD_KEY]} kept its identity across a changed PRONOTE "
+            f"resource identifier, recognised by name; its entities are "
+            f"untouched"
+        )
+        match[CHILD_RESOURCE_ID] = resource_id
+        claimed.add(match[CHILD_KEY])
+        keys[resource_id] = match[CHILD_KEY]
+
+    return keys, records, notes

@@ -18,6 +18,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.components.device_automation import DEVICE_TRIGGER_BASE_SCHEMA
+from homeassistant.components.device_automation.exceptions import (
+    InvalidDeviceAutomationConfig,
+)
 from homeassistant.components.homeassistant.triggers import event as event_trigger
 from homeassistant.const import (
     CONF_DEVICE_ID,
@@ -117,6 +120,24 @@ async def async_attach_trigger(
     student_id = _student_id(hass, device_id)
     entry_id = _entry_id(hass, device_id)
 
+    # Refusing beats attaching, and this is not defensive tidiness: a trigger
+    # built with `student_id: None` is a *valid* event filter that no real
+    # event can match. It attaches without error and fires nothing -- no
+    # trace, no log entry, no `unavailable` entity -- so it is indistinguishable
+    # from a quiet week. That happened: an automation on a child device whose
+    # PRONOTE resource signature had rotated went silent, and the missed
+    # announcement was noticed by the household, not by the integration.
+    #
+    # Minting our own child key (`child_keys.py`) stops the identifier moving,
+    # but it cannot help a device left behind by an account that no longer
+    # announces that child. For those, saying so is the only useful answer.
+    if student_id is None or entry_id is None:
+        raise InvalidDeviceAutomationConfig(
+            f"device {device_id} is not a child this account currently "
+            f"follows, so this trigger can never fire; re-select the device "
+            f"in the automation, or delete the stale one"
+        )
+
     event_config = event_trigger.TRIGGER_SCHEMA(
         {
             event_trigger.CONF_PLATFORM: "event",
@@ -172,11 +193,35 @@ def _entry_id(hass: HomeAssistant, device_id: str) -> str | None:
 def _student_id(hass: HomeAssistant, device_id: str) -> str | None:
     """The child a device belongs to, or ``None`` for the account device.
 
-    Device identifiers are ``<entry_id>_<student_id>`` for a child and a bare
+    Device identifiers are ``<entry_id>_<child_key>`` for a child and a bare
     ``<entry_id>`` for the account, so the presence of the suffix is the test.
+
+    The suffix is the key this integration minted, while the bus events the
+    trigger matches on carry the identifier PRONOTE announced this session --
+    so it is translated here.
+
+    Resolution happens at *attach* time and the stored trigger holds only a
+    device and a type, never an identifier. That is necessary for an automation
+    to survive a rotation but **not sufficient**, and the docstring here used
+    to claim it was: both sides are re-derived, from the device identifier --
+    which itself embedded the rotating `46#<signature>` until this integration
+    began minting its own key. So the two were re-derived from a value that had
+    also moved, and four automations out of four went silent on the live
+    instance while this sentence said they would survive. The guarantee holds
+    from the minted key onwards, and `async_attach_trigger` now refuses rather
+    than attach a filter that cannot match.
     """
     identifier = _identifier(hass, device_id)
     if identifier is None:
         return None
-    _entry, separator, student_id = identifier.partition("_")
-    return student_id if separator and student_id else None
+    entry_id, separator, child_key = identifier.partition("_")
+    if not separator or not child_key:
+        return None
+    account = hass.data.get(DOMAIN, {}).get(entry_id)
+    if account is None:
+        # The entry is not loaded, so nothing can be translated. Returning the
+        # suffix keeps `async_get_triggers` able to answer "this is a child
+        # device", which is all it asks; a trigger cannot fire meanwhile.
+        return child_key
+    resolved: str | None = account.student_id_for_key(child_key)
+    return resolved

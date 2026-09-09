@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING, Any, Final
 from homeassistant.components.diagnostics import async_redact_data
 
 from .const import (
+    CHILD_KEY,
+    CHILD_NAME,
+    CHILD_RESOURCE_ID,
     CONF_ACCOUNT_PIN,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_CLIENT_IDENTIFIER,
     CONF_PRONOTE_URL,
@@ -86,6 +90,32 @@ async def async_get_config_entry_diagnostics(
         if isinstance(selection, list):
             data[CONF_CHILDREN] = [_short_hash(str(child)) for child in selection]
 
+    # The child key table, reduced the same way and for a stronger reason: it
+    # is the one structure in the entry that holds a child's **name**, which
+    # §8.2 forbids in a file people attach to public issues -- and the name is
+    # there precisely because it is how a record is recognised when PRONOTE
+    # rotates the resource identifier.
+    #
+    # The minted key stays in clear. We own it, it grants nothing, and it is
+    # what makes the dump legible: it is the value in every `unique_id`, so a
+    # report saying "child-2 has no entities" can be acted on. The two
+    # fingerprints beside it let a reader see *that* an identifier rotated
+    # without being able to replay either.
+    if CONF_CHILD_KEYS in data:
+        table = data[CONF_CHILD_KEYS]
+        if isinstance(table, list):
+            data[CONF_CHILD_KEYS] = [
+                {
+                    CHILD_KEY: record.get(CHILD_KEY),
+                    CHILD_RESOURCE_ID: _short_hash(
+                        str(record.get(CHILD_RESOURCE_ID, ""))
+                    ),
+                    CHILD_NAME: _short_hash(str(record.get(CHILD_NAME, ""))),
+                }
+                for record in table
+                if isinstance(record, dict)
+            ]
+
     return {
         "entry": {
             "data": async_redact_data(data, TO_REDACT),
@@ -115,7 +145,13 @@ async def async_get_device_diagnostics(
     business in a file people paste into a public issue.
     """
     account = entry.runtime_data
-    student_id = _student_id(device, entry.entry_id)
+    # The device carries the *minted* key; the coordinators are keyed by the
+    # identifier PRONOTE announced this session. Translating here is what
+    # keeps a device stored months ago matched to today's child.
+    device_key = _student_id(device, entry.entry_id)
+    student_id = (
+        account.student_id_for_key(device_key) if device_key is not None else None
+    )
 
     tiers: dict[str, Any] = {}
     for tier, coordinator in account.coordinators.items():
@@ -130,8 +166,14 @@ async def async_get_device_diagnostics(
         }
 
     return {
+        # The minted key in clear, because we own it and it grants nothing --
+        # and the fingerprint of PRONOTE's identifier beside it, because the
+        # *pairing* between the two is exactly what one debugs when a child's
+        # entities go missing. Neither is replayable, and the fingerprint
+        # still matches the `students` block so the two can be read together.
+        "child_key": device_key,
         "student_id_hash": _short_hash(student_id) if student_id else None,
-        "is_account_device": student_id is None,
+        "is_account_device": device_key is None,
         "tiers": tiers,
     }
 

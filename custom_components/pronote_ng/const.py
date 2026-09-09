@@ -143,6 +143,30 @@ CONF_QR_PIN: Final = "qr_pin"
 CONF_CHILDREN: Final = "children"
 CONF_ACCOUNT_KIND: Final = "account_kind"
 
+#: The child key table: one record per child ever seen on this account, each
+#: ``{"key", "resource_id", "name"}``. **This table is the durable artefact,
+#: not the key.**
+#:
+#: PRONOTE writes a child's resource identifier as ``46#<signature>`` and that
+#: signature is *not stable between sessions*. Three distinct values were
+#: observed for one pupil on one account. Because an entity's ``unique_id``
+#: embedded it, a rotation looked like the arrival of a new child: a second
+#: device appeared, a full set of entities was created against it, and the
+#: previous set was orphaned in the registry -- every dashboard, automation and
+#: helper pointing at it dead, and nothing logged.
+#:
+#: So the integration mints a key it owns and pairs the announced children
+#: against this table at each set-up: by resource identifier while it still
+#: matches, by name when it does not. The name is not the key either -- an
+#: establishment fixes a spelling, a family changes name -- it is only the
+#: second way to recognise a record. §2.4 still forbids a position in the list.
+CONF_CHILD_KEYS: Final = "child_keys"
+
+#: Fields of one record in :data:`CONF_CHILD_KEYS`.
+CHILD_KEY: Final = "key"
+CHILD_RESOURCE_ID: Final = "resource_id"
+CHILD_NAME: Final = "name"
+
 OPT_MASTER_TICK: Final = "master_tick"
 OPT_TIER_INTERVAL: Final = "interval_{tier}"
 OPT_TIER_ENABLED: Final = "enabled_{tier}"
