@@ -475,6 +475,23 @@ def _lesson_dict(lesson: Lesson) -> dict[str, Any]:
     return {
         "id": lesson.id,
         "subject": lesson.subject,
+        # The subject IDENTIFIER, alongside the name. A card that maps subjects
+        # to something of its own -- a colour, an icon, a filter -- has to key
+        # that map on something, and the name is a bad key: PRONOTE writes it in
+        # capitals, with accents, and an establishment can rename it mid-year.
+        "subject_id": lesson.subject_id,
+        # The colour the establishment gives the subject, exactly as the server
+        # sent it, or None. Decoded by the gateway since day one and published
+        # nowhere until now, which is why a card asking for it always got
+        # nothing -- and why every dashboard needed a hand-written colour table
+        # to show what PRONOTE already knows.
+        #
+        # Published raw on purpose: no default, no colour derived from the name,
+        # no substitute of any kind. A fabricated colour looks exactly like a
+        # real one, so the moment one exists nobody can tell what the server
+        # actually sends -- and the consumer loses the only thing it needs to
+        # decide whether to fall back to its own table.
+        "background_color": lesson.background_color,
         "teachers": list(lesson.teachers),
         "classroom": lesson.classroom,
         "start": lesson.start.isoformat(),
@@ -564,6 +581,11 @@ def _homework_dict(item: Homework) -> dict[str, Any]:
         "description_text": item.description_text,
         "due": item.due.isoformat(),
         "done": item.done,
+        # Same field, same reason as on a lesson. Upstream resolves this one
+        # *strictly* (`dataClasses.py`, `Homework.background_color`), which is
+        # upstream saying the server always sends it on a homework entry -- so
+        # this is the tier where a colour is most likely to be there.
+        "background_color": item.background_color,
         "attachments": list(item.attachments),
     }
 
@@ -687,6 +709,9 @@ def _average_dict(average: Any) -> dict[str, Any]:
         "min": average.min_average,
         "max": average.max_average,
         "out_of": average.out_of,
+        # `couleur` here rather than `CouleurFond`: the marks tier spells it
+        # differently, and the gateway already absorbs that difference.
+        "background_color": average.background_color,
     }
 
 

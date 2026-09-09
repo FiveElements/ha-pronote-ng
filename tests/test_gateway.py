@@ -37,6 +37,8 @@ from custom_components.pronote_ng.gateway import (
     PronoteGateway,
     ProtocolChanged,
     RecipientNotFound,
+    _color_census,
+    _field_names,
     _food_names,
     _get,
     _grade_sentinel,
@@ -153,6 +155,74 @@ def test_a_shape_describes_without_disclosing(value: Any, expected: str) -> None
     case asserts the *value* never appears -- only its type.
     """
     assert _shape(value) == expected
+
+
+def test_the_colour_census_separates_absent_from_empty() -> None:
+    """Three buckets, because two of them have the same symptom.
+
+    "The server sends no colour" and "the server sends an empty one" are
+    different facts with different fixes, and a two-bucket count reports
+    "no colour" for both -- sending the next person to look in the wrong
+    place. ``pronotepy`` makes the distinction reachable: it resolves
+    ``CouleurFond`` with ``strict=False``, so an absent key arrives as
+    ``None`` and a present-but-empty one as ``""``.
+
+    Whitespace counts as empty rather than as a colour. A card handed
+    ``" "`` renders nothing at all, which is the same outcome as no colour
+    with none of the explanation.
+    """
+    sentence = _color_census(
+        "lesson colours", [None, "", "   ", "#336699", None, "#abc"]
+    )
+
+    assert sentence == "lesson colours: 2 absent, 2 empty, 2 present"
+
+
+def test_the_colour_census_of_nothing_is_not_a_crash() -> None:
+    """A holiday week decodes no lessons, and the line must still be true.
+
+    Reporting zeroes rather than raising or returning nothing matters because
+    this is a measurement someone reads once: "0 absent, 0 empty, 0 present"
+    says "there was nothing to look at", whereas a missing line is
+    indistinguishable from a build that never shipped the instrument.
+    """
+    assert _color_census("homework colours", []) == (
+        "homework colours: 0 absent, 0 empty, 0 present"
+    )
+
+
+def test_the_field_names_of_an_entry_are_names_and_never_values() -> None:
+    """The instrument that tells "not sent" from "sent and dropped" apart.
+
+    A census over decoded values reads zero in both cases, so the key set of
+    one raw entry is the only thing that answers it. It is safe to log for a
+    reason worth stating: a key name is protocol vocabulary -- the same words
+    appear in upstream's own source -- whereas the *values* on a timetable
+    entry are the subject, the room and the teacher of a named child. This
+    test asserts that asymmetry directly, because it is what makes the line
+    attachable to a public issue (§8.2).
+    """
+    names = _field_names(
+        {"DateDuCours": "12/03/2026 08:00:00", "N": "46#SECRET", "CouleurFond": ""}
+    )
+
+    assert names == "CouleurFond,DateDuCours,N"
+    assert "46#SECRET" not in names
+    assert "12/03/2026" not in names
+
+
+def test_field_names_of_something_that_is_not_an_entry_falls_back_to_the_shape() -> (
+    None
+):
+    """A protocol change can put a list or a string where a mapping was.
+
+    Falling back to ``_shape`` rather than raising keeps a *diagnostic* line
+    from becoming the failure it was added to diagnose -- and ``_shape`` is
+    already the vocabulary the rest of this module uses to describe a value
+    without disclosing it.
+    """
+    assert _field_names(None) == "absent"
+    assert _field_names([1, 2]) == "a list of 2"
 
 
 def test_a_required_list_refuses_to_be_empty_when_its_key_is_absent() -> None:
@@ -1890,3 +1960,87 @@ def test_marking_a_news_item_read_uses_the_write_tab(
     assert body["listeActualites"][0]["N"] == "INFORMATION-1"
     assert body["listeActualites"][0]["lue"] is True
     assert body["listeActualites"][0]["public"]["N"] == protocol.STUDENT_ID
+
+
+class TestTheColourInstruments:
+    """The two DEBUG readings that say whether PRONOTE sends a subject colour.
+
+    They exist because the field was decoded on four paths and published on
+    none, so the question "does the server send it?" had no answer anywhere --
+    and the two candidate answers, *the server sends nothing* and *we drop what
+    it sends*, both read as zero on any count of decoded values.
+    """
+
+    def test_the_census_separates_absent_from_empty(self) -> None:
+        """Three buckets, because two would merge two different faults.
+
+        ``strict=False`` yields ``None`` for a missing key and ``""`` for a
+        present but empty one. A two-bucket count reports "no colour" for both
+        and sends the next reader to the wrong layer.
+        """
+        assert (
+            _color_census("t", [None, "", "  ", "#336699", None])
+            == "t: 2 absent, 2 empty, 1 present"
+        )
+
+    def test_the_census_of_nothing_is_all_zeroes(self) -> None:
+        """An empty tier reads as zeroes, never as an absence of the line.
+
+        A missing log line is indistinguishable from a collection that never
+        ran, which is the reading this instrument exists to make impossible.
+        """
+        assert _color_census("t", []) == "t: 0 absent, 0 empty, 0 present"
+
+    def test_the_field_names_are_names_and_never_values(self) -> None:
+        """A timetable entry's keys are protocol words; its values are a child.
+
+        This is the whole safety argument for the second instrument: the same
+        key names appear in upstream's own source, whereas the values on a
+        lesson entry are the subject, the room and the teacher of a named
+        pupil. The line must be safe to paste into a bug report, and that is
+        what this test pins.
+        """
+        names = _field_names({"CouleurFond": "#336699", "N": "LESSON-1"})
+
+        assert names == "CouleurFond,N"
+        assert "#336699" not in names
+        assert "LESSON-1" not in names
+
+    def test_a_non_mapping_entry_reports_its_shape_instead(self) -> None:
+        """A response whose shape moved must not raise inside a debug line."""
+        assert _field_names([1, 2]) == _shape([1, 2])
+
+    def test_a_lesson_colour_reaches_the_dto_when_the_server_sends_one(
+        self, gateway: PronoteGateway, client: FakeClient
+    ) -> None:
+        """The publishing path, proven end to end on the gateway side.
+
+        Paired with the test below on purpose: alone, it would pass just as
+        well if the decoder ignored the field and something else supplied a
+        colour.
+        """
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [protocol.lesson(background_color="#336699")]
+        )
+
+        lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+
+        assert lesson.background_color == "#336699"
+
+    def test_a_lesson_without_the_field_carries_no_colour_at_all(
+        self, gateway: PronoteGateway, client: FakeClient
+    ) -> None:
+        """``None``, and never a colour derived from the subject name.
+
+        A fabricated colour is indistinguishable from a real one, so the moment
+        one exists nobody can tell what the server actually sends -- and the
+        consumer loses the only signal that lets it decide whether to fall back
+        to a table of its own.
+        """
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [protocol.lesson()]
+        )
+
+        lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+
+        assert lesson.background_color is None

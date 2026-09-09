@@ -638,3 +638,109 @@ class TestWhenTheWholeDayIsCancelled:
         assert state.attributes["canceled_after"] == 2
         # No lesson closes the day, so there is nothing to name.
         assert "subject" not in state.attributes
+
+
+class TestTheSubjectColourReachesTheStateMachine:
+    """The colour PRONOTE gives a subject, published where a card can read it.
+
+    This class exists because of a chain that was complete except for its last
+    metre: the gateway decoded ``CouleurFond`` on four paths, three DTOs
+    carried the field, and ``sensor.py`` mentioned it nowhere. Every dashboard
+    therefore had to hand-write a colour table to show what PRONOTE already
+    knew, and a card asking for the server's colour got nothing -- silently,
+    which is the worst form.
+
+    Three tiers and not one, because the field is spelled differently on each
+    (``CouleurFond`` on a lesson and on a homework item, ``couleur`` on a
+    subject average) and because upstream treats them differently: it resolves
+    the homework one *strictly*, which is upstream saying the server always
+    sends it there.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """One coloured lesson and one uncoloured one, in that order."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                protocol.lesson(
+                    identifier="LESSON-A",
+                    start=_day(8),
+                    end=_day(9),
+                    place=0,
+                    duration=2,
+                    subject="Mathematiques",
+                    background_color="#336699",
+                ),
+                protocol.lesson(
+                    identifier="LESSON-B",
+                    start=_day(9),
+                    end=_day(10),
+                    place=2,
+                    duration=2,
+                    subject="Histoire",
+                ),
+            ]
+        )
+        return client
+
+    async def test_a_lesson_publishes_the_colour_the_server_sent(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The requirement, stated as a dashboard experiences it."""
+        del account
+        lessons = _attributes(hass, "sensor.enfant_un_lessons_today")["lessons"]
+
+        assert lessons[0]["background_color"] == "#336699"
+
+    async def test_a_lesson_without_a_colour_publishes_the_key_holding_none(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The key is always there; only its value can be absent.
+
+        A key that appears and disappears makes every consumer write a
+        membership test before a value test, and a template that forgets it
+        renders the string ``None`` into a dashboard. Publishing ``None`` says
+        "asked, and there is none", which is a different sentence from "this
+        integration does not publish colours" -- and the two were confused for
+        long enough to cost an afternoon.
+        """
+        del account
+        lessons = _attributes(hass, "sensor.enfant_un_lessons_today")["lessons"]
+
+        assert "background_color" in lessons[1]
+        assert lessons[1]["background_color"] is None
+
+    async def test_a_lesson_publishes_the_subject_identifier_beside_the_name(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A card mapping subjects to something of its own needs a stable key.
+
+        The name is a bad one: PRONOTE writes it in capitals, with accents, and
+        an establishment can rename it mid-year. The identifier was already on
+        the DTO and published nowhere.
+        """
+        del account
+        lessons = _attributes(hass, "sensor.enfant_un_lessons_today")["lessons"]
+
+        assert lessons[0]["subject_id"] == "SUBJECT-MATHS"
+
+    async def test_a_homework_item_publishes_its_colour(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The tier upstream resolves strictly, so the likeliest to carry one."""
+        del account
+        items = _attributes(hass, "sensor.enfant_un_homework_todo")["items"]
+
+        assert items
+        assert items[0]["background_color"] == "#336699"
+
+    async def test_a_subject_average_publishes_its_colour(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Spelled ``couleur`` upstream, absorbed by the gateway."""
+        del account
+        items = _attributes(hass, "sensor.enfant_un_averages")["items"]
+
+        assert items
+        assert items[0]["background_color"] == "#AA3366"

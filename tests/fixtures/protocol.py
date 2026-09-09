@@ -157,9 +157,16 @@ def lesson(
     exempted: bool = False,
     test: bool = False,
     memo: str | None = None,
+    background_color: str | None = None,
     with_contents: bool = True,
 ) -> dict[str, Any]:
     """One ``ListeCours`` entry.
+
+    ``background_color`` defaults to *absent*, which is what makes this fixture
+    honest: upstream resolves ``CouleurFond`` on a lesson with
+    ``strict=False``, and on the establishment this was measured against the
+    key never arrives. A fixture that always supplied it would prove the
+    publishing path and hide the only question that matters.
 
     ``with_contents=False`` removes ``ListeContenus`` entirely, which is how
     PRONOTE serves a slot with no published content -- and how a cancellation
@@ -185,6 +192,8 @@ def lesson(
         entry["Statut"] = status
     if memo is not None:
         entry["memo"] = memo
+    if background_color is not None:
+        entry["CouleurFond"] = background_color
 
     if with_contents:
         contents: list[dict[str, Any]] = []

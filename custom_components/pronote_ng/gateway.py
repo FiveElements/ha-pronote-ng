@@ -345,6 +345,54 @@ def _required_list(source: Any, *path: str, what: str) -> list[Any]:
     return cursor
 
 
+def _color_census(kind: str, colors: Iterable[str | None]) -> str:
+    """Count how many entries of a tier carry a subject colour, in THREE buckets.
+
+    Three and not two, because the two questions "did the server send nothing"
+    and "did the server send an empty string" have different answers and the
+    same symptom. ``pronotepy`` resolves ``CouleurFond`` with ``strict=False``,
+    which yields ``None`` for an absent key and ``""`` for a present but empty
+    one, so a two-bucket count would report "no colour" for both and the next
+    person would look in the wrong place.
+
+    One honest limit, written here so the reading is not over-trusted: the raw
+    decode paths spell ``_get(entry, "CouleurFond") or None``, which folds the
+    empty string into ``None`` before the value reaches the DTO. ``empty`` can
+    therefore only ever be non-zero for lessons pronotepy decoded itself. When
+    it reads zero, that is not evidence the server sends no empty strings.
+
+    Returns the sentence rather than logging it, so the caller decides the
+    level and so a test can assert on the counting without a log fixture.
+    """
+    absent = empty = present = 0
+    for color in colors:
+        if color is None:
+            absent += 1
+        elif color.strip() == "":
+            empty += 1
+        else:
+            present += 1
+    return f"{kind}: {absent} absent, {empty} empty, {present} present"
+
+
+def _field_names(entry: Any) -> str:
+    """The KEY names of one raw entry, sorted, and nothing else.
+
+    This is the instrument that separates the two hypotheses the census cannot:
+    "the server does not send a colour" and "the server sends one and we drop
+    it". A census over decoded values reads zero in both cases.
+
+    Names only, never values. A key name is protocol vocabulary -- the same
+    words appear in upstream's own source -- whereas the values on a timetable
+    entry are the subject, the room and the teacher of a named child. This
+    distinction is what makes the line safe to paste into a bug report, and it
+    is the reason the function returns keys instead of a payload excerpt.
+    """
+    if not isinstance(entry, dict):
+        return _shape(entry)
+    return ",".join(sorted(str(key) for key in entry))
+
+
 def _number(raw: Any) -> float | None:
     """Parse a PRONOTE numeric string.
 
@@ -579,6 +627,18 @@ class PronoteGateway:
             calls += used
             lessons.extend(raw_lessons)
 
+        # A measurement, not an error trace: this path has decoded the colour
+        # field since day one and published it nowhere, so nobody knew whether
+        # it arrives empty. One line per collection, under
+        # `custom_components.pronote_ng` -- never under `pronotepy`, whose DEBUG
+        # writes the reversible hex of every request body.
+        _LOGGER.debug(
+            "%s",
+            _color_census(
+                "lesson colours", (lesson.background_color for lesson in lessons)
+            ),
+        )
+
         return GatewayResult(
             TimetableFacts(
                 lessons=deduplicate_lessons(lessons),
@@ -611,6 +671,11 @@ class PronoteGateway:
         }
         raw = client.post(FUNC_TIMETABLE[0], FUNC_TIMETABLE[1], payload)
         entries = _required_list(raw, "dataSec", "data", "ListeCours", what="timetable")
+        if entries:
+            # One entry is enough: entries of the same response share their key
+            # set. Looking for `CouleurFond` in this line answers the question
+            # the census cannot -- whether the server sends the field at all.
+            _LOGGER.debug("timetable entry fields: %s", _field_names(entries[0]))
 
         lessons = [
             lesson
@@ -811,6 +876,14 @@ class PronoteGateway:
             for item in (self._homework(entry) for entry in entries)
             if item is not None
         ]
+        _LOGGER.debug(
+            "%s",
+            _color_census(
+                "homework colours", (item.background_color for item in items)
+            ),
+        )
+        if entries:
+            _LOGGER.debug("homework entry fields: %s", _field_names(entries[0]))
         return GatewayResult(HomeworkFacts(homework=tuple(items)), calls=1)
 
     @staticmethod
@@ -907,6 +980,18 @@ class PronoteGateway:
         averages = tuple(
             self._average(entry)
             for entry in _required_list(data, "listeServices", what="subject averages")
+        )
+
+        _LOGGER.debug(
+            "%s",
+            _color_census(
+                "subject average colours",
+                (
+                    average.background_color
+                    for average in averages
+                    if average is not None
+                ),
+            ),
         )
 
         report: Report | None = None

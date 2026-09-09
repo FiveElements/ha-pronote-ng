@@ -177,13 +177,43 @@ deviné se vérifie contre lui-même. Il est donc écrit ici.
 Ces noms sont ceux des DTO de `models.py` et **ils sont stables** : un champ
 peut s'ajouter, aucun ne sera renommé sans annonce.
 
-**`lessons[]`** — `id`, `subject`, `teachers[]`, `classroom`, `start`, `end`
-(ISO 8601), `canceled`, `status`, `test`, `outing`, `detention`, `exempted`,
-`memo`, `end_inferred`.
+**`lessons[]`** — `id`, `subject`, **`subject_id`**, `teachers[]`,
+`classroom`, `start`, `end` (ISO 8601), `canceled`, `status`, `test`, `outing`,
+`detention`, `exempted`, `memo`, **`background_color`**, `end_inferred`.
 
 **`items[]` de devoirs** — `id`, `subject`, `description` (HTML tel que PRONOTE
 l'envoie), `description_text` (le même énoncé en texte simple), `due`, `done`,
-`attachments[]`.
+**`background_color`**, `attachments[]`.
+
+**`background_color`** — la couleur que l'établissement associe à la matière,
+**telle que le serveur l'envoie**, ou `null`. Elle apparaît sur les créneaux,
+sur les devoirs et sur les moyennes par matière : trois étages, une seule
+sémantique.
+
+Trois précisions, parce que les trois se devinent mal :
+
+- **la clé est toujours là, seule sa valeur peut manquer.** `null` dit « on a
+  demandé, il n'y en a pas » — ce qui n'est pas la même phrase que « cette
+  intégration ne publie pas de couleur ». Une clé qui apparaît et disparaît
+  obligerait chaque gabarit à tester l'appartenance avant la valeur, et celui
+  qui l'oublie écrit `None` dans un tableau de bord ;
+- **aucune valeur n'est inventée.** Pas de couleur par défaut, pas de couleur
+  dérivée du nom de la matière, pas de substitut. Une couleur fabriquée est
+  indiscernable d'une vraie : dès qu'il en existe une, plus personne ne peut
+  savoir ce que le serveur envoie, et le consommateur perd le seul signal qui
+  lui permet de décider s'il doit se replier sur une table à lui ;
+- **le serveur ne la remplit pas partout.** PRONOTE l'envoie sous
+  `CouleurFond` sur les devoirs et les créneaux, sous `couleur` sur les
+  moyennes par matière — et `pronotepy` résout celle des devoirs en mode
+  *strict* là où celle des créneaux est tolérante, ce qui est la bibliothèque
+  affirmant qu'un devoir en porte toujours une. Un créneau sans couleur n'est
+  donc pas un défaut de collecte.
+
+**`subject_id`** — l'identifiant de la matière, à côté de son nom. Une carte
+qui associe une matière à quelque chose qui lui appartient (une couleur, une
+icône, un filtre) doit poser cette association sur une clé, et le nom en est
+une mauvaise : PRONOTE l'écrit en capitales, avec des accents, et un
+établissement peut le renommer en cours d'année.
 
 **`grades[]`** — `id`, `subject`, **`value`** (et non `grade` — mais la charge
 de `event.<é>_nouvelle_note` nomme cette même valeur `grade` : les deux noms
@@ -196,7 +226,9 @@ l'un des deux est nul. C'est ce qui permet à l'état de
 `Absent`.
 
 **`averages[]`** — `subject_id`, `subject`, **`student`** (et non `average`),
-`class_average`, `min`, `max`, `out_of`. Clés par `subject_id` : `Average` n'a
+`class_average`, `min`, `max`, `out_of`, **`background_color`** (décodée ici
+sous `couleur` et non `CouleurFond` — même sémantique, orthographe amont
+différente, absorbée par la passerelle). Clés par `subject_id` : `Average` n'a
 pas d'identifiant propre et §2.4 interdit d'employer un rang.
 
 Ici `out_of` est le barème décodé (`baremeMoyEleve`). Sur
