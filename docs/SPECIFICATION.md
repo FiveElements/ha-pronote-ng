@@ -1427,7 +1427,7 @@ fusion :
 
 ### 11.1 Chaîne GitHub Actions
 
-**Exigence.** Quatre fichiers de workflow, séparés parce qu'ils n'ont ni le même
+**Exigence.** Cinq fichiers de workflow, séparés parce qu'ils n'ont ni le même
 déclencheur ni le même public :
 
 | Fichier | Déclencheur | Contenu |
@@ -1436,6 +1436,7 @@ déclencheur ni le même public :
 | `hassfest.yml` | idem | action officielle `home-assistant/actions/hassfest` |
 | `hacs.yml` | idem, plus `schedule` hebdomadaire | action `hacs/action` en mode `integration` |
 | `release.yml` | `push` d'une étiquette `v*` | archive `zip` de `custom_components/pronote_ng`, note de version, publication GitHub |
+| `pronotepy-watch.yml` | `schedule` hebdomadaire, `workflow_dispatch` | compare l'épingle `pronotepy` à PyPI et propose la montée de version en *pull request* (§11.1.1) |
 
 **Exigence.** `validate.yml` échoue si la couverture globale descend sous 80 %,
 ou si l'un des quatre modules critiques descend sous 100 %. Un seuil qui
@@ -1451,9 +1452,35 @@ sur la branche par défaut, et la validation HACS interroge l'API, pas les
 fichiers du checkout. Un `LICENSE` présent sur une branche de travail laisse le
 contrôle au rouge.
 
-**Exigence.** Aucun secret de dépôt n'est nécessaire à `validate.yml`,
-`hassfest.yml` ni `hacs.yml`. Seul `release.yml` utilise le jeton fourni par
-GitHub Actions, avec les permissions minimales déclarées dans le workflow.
+**Exigence.** Aucun secret de dépôt n'est nécessaire à aucun workflow.
+`validate.yml`, `hassfest.yml` et `hacs.yml` n'utilisent aucun jeton ;
+`release.yml` et `pronotepy-watch.yml` utilisent celui que GitHub Actions
+fournit, avec les permissions minimales déclarées **par job** dans le workflow.
+
+#### 11.1.1 La veille sur l'épingle `pronotepy`
+
+**Exigence.** L'épingle `pronotepy` est comparée une fois par semaine à ce que
+PyPI publie, et l'écart est signalé sans intervention humaine. La raison est un
+incident : un serveur d'établissement passé en PRONOTE 26.2.5 a fait échouer
+*toutes* les connexions sur un `CryptoError` que l'amont commente « probably the
+qr code has expired », alors que le correctif était publié depuis six jours et
+que son sujet de commit nommait la cause. Une version épinglée sans veille est
+une dette dont l'échéance est une panne totale.
+
+**Exigence.** Le signalement prend la forme d'une *pull request* qui relève
+l'épingle dans ses **deux** déclarations — `requirements_test.txt` et
+`manifest.json` — sur une branche par version amont. Une issue dirait qu'une
+version existe ; une *pull request* fait tourner `validate.yml` et dit si elle
+fonctionne. Elle porte la version épinglée, la nouvelle version, sa date et les
+sujets de commit entre les deux étiquettes amont.
+
+**Exigence.** Rien ne fusionne automatiquement, et aucune fusion automatique
+n'est activée : relever l'épingle oblige à relire chaque divergence documentée
+dans `hardened_client.py` (§3.2), ce qu'aucun portail ne sait faire.
+
+**Exigence.** Une indisponibilité de PyPI ou de l'API GitHub produit un rapport
+et une sortie au vert, jamais un échec. Un portail hebdomadaire qui rougit sur
+l'incident d'un tiers est un portail qu'on apprend à ignorer.
 
 **Exigence.** Aucun test ne touche le réseau. Les tests de la passerelle
 travaillent sur des réponses protocolaires enregistrées et **anonymisées**,

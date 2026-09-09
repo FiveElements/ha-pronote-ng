@@ -1,0 +1,241 @@
+name: Pronotepy watch
+
+# Why this workflow exists.
+#
+# One morning every login against a school failed with a `CryptoError` that
+# pronotepy labels "probably the qr code has expired". Hours went into the QR
+# code. The cause was elsewhere: the establishment's PRONOTE had moved to
+# 26.2.5, and upstream had already published `pronotepy` 2.15.7 -- six days
+# earlier -- under a commit named "fix compatibility with PRONOTE 2026.2.5.6"
+# that rewrites three lines of the challenge exchange in `_login`.
+#
+# The fix existed, it was public, and nothing in this repository said so.
+#
+# What this job does about it is open a *pull request* raising the pin, not an
+# issue announcing it. An issue says a newer release exists; a pull request
+# says whether it works, because `Validate` runs the whole suite and
+# `mypy --strict` against the new library on both socles. On the day of the
+# outage that evidence would have existed within minutes of the release.
+#
+# What it deliberately does not do is merge. `CONTRIBUTING.md` §5 requires
+# every divergence documented in `hardened_client.py` to be re-read against
+# the new version, and no gate can do that -- CI can see that a workaround
+# still passes, not that it has become superfluous or wrong.
+
+on:
+  schedule:
+    # Weekly. A release that fixes a live outage is worth knowing about within
+    # days; anything more frequent only adds runs that say nothing.
+    - cron: "17 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two runs racing to open the same pull request. Not
+  # `cancel-in-progress`: a run already pushing a branch should finish.
+  group: pronotepy-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Is the pronotepy pin behind upstream?
+    runs-on: ubuntu-latest
+    # Wider than every other workflow in this repository, which are all
+    # `contents: read`, and the reason is stated so the next reader does not
+    # have to guess:
+    #
+    # * `contents: write` -- the bump is pushed as a branch. Only ever to
+    #   `chore/pronotepy-<version>`, never to the default branch;
+    # * `pull-requests: write` -- to open and refresh that proposal;
+    # * `issues: write` -- for the fallback below. A repository can forbid
+    #   Actions from creating pull requests, and losing the report on that day
+    #   would reproduce the exact failure this job exists to prevent;
+    # * `actions: write` -- to dispatch `Validate` on the branch. GitHub does
+    #   not start workflows from events produced by `GITHUB_TOKEN`, so a pull
+    #   request opened here gets no checks unless they are asked for
+    #   explicitly, and unchecked is the one thing this proposal must not be.
+    #
+    # Declared on this job alone. No repository secret is involved.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          # `scripts/pronotepy_pin.py` is standard library only and installs
+          # nothing -- making this job build the Home Assistant test stack to
+          # compare two dotted numbers would be absurd. Kept in step with the
+          # other workflows all the same.
+          python-version: "3.14"
+
+      - name: Compare the pin against PyPI
+        id: compare
+        env:
+          # Only used to authenticate the tag comparison against
+          # api.github.com, where an unauthenticated runner shares its rate
+          # limit with every other job on the same egress address.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The pin is *read* from requirements_test.txt and manifest.json, which
+        # must agree, and never restated here: a third copy of the version
+        # would be a third thing to forget on the day the pin moves. A PyPI
+        # outage reports `outcome=unavailable` and exits 0 -- a weekly job that
+        # goes red when a third party hiccups is a weekly job people stop
+        # reading.
+        run: |
+          python scripts/pronotepy_pin.py --check-upstream \
+            --reports "$RUNNER_TEMP/pronotepy"
+
+      - name: Propose the bump as a pull request
+        id: propose
+        if: steps.compare.outputs.outcome == 'outdated'
+        # Everything that can be refused by repository policy is inside this
+        # one step, so any refusal routes to the fallback below instead of
+        # turning the weekly run red. `continue-on-error` is what makes that
+        # possible: the step's `outcome` stays readable while the job succeeds.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.compare.outputs.branch }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          PR_TITLE: ${{ steps.compare.outputs.pr_title }}
+          PR_BODY: ${{ steps.compare.outputs.pr_body_path }}
+          COMMIT_MESSAGE: ${{ steps.compare.outputs.commit_message_path }}
+        run: |
+          set -euo pipefail
+
+          # One branch per upstream version. If it is already there, the
+          # proposal exists and is not rewritten: a maintainer may have pushed
+          # a fixup onto it -- an adjusted divergence in hardened_client.py, a
+          # documentation line -- and force-pushing over that would destroy
+          # exactly the work this pull request is asking for.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "$BRANCH already exists upstream; leaving its commits alone."
+          else
+            python scripts/pronotepy_pin.py --bump "$LATEST"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$BRANCH"
+            git add requirements_test.txt custom_components/pronote_ng/manifest.json
+            git commit --file "$COMMIT_MESSAGE"
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+          # Refresh rather than duplicate. A second run for the same version
+          # finds the pull request and updates its body; a newer version is a
+          # different branch, so the proposal a maintainer is reading is never
+          # overwritten by the next one.
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --repo "$GITHUB_REPOSITORY" \
+              --title "$PR_TITLE" --body-file "$PR_BODY"
+            echo "number=$number" >> "$GITHUB_OUTPUT"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" \
+              --base "$GITHUB_REF_NAME" \
+              --head "$BRANCH" \
+              --title "$PR_TITLE" \
+              --body-file "$PR_BODY"
+            echo "number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+              --state open --json number --jq '.[0].number // empty')" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Never auto-merge, and nothing here enables it. The §5 re-read is
+          # the only thing separating a version bump from a silent regression,
+          # and it is a human's.
+
+      - name: Ask Validate to run on the branch
+        if: steps.compare.outputs.outcome == 'outdated' && steps.propose.outcome == 'success'
+        # Best effort, and never fatal. GitHub does not trigger workflows from
+        # events created with `GITHUB_TOKEN`, so the pull request above starts
+        # with no checks; `workflow_dispatch` is the documented exception, and
+        # it is what makes the proposal carry evidence rather than a question.
+        # If it fails, the pull request body says how to trigger the checks by
+        # hand -- so this failing must not fail the run.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.compare.outputs.branch }}
+        run: gh workflow run validate.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+
+      - name: Fall back to an issue when the pull request was refused
+        if: steps.compare.outputs.outcome == 'outdated' && steps.propose.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ steps.compare.outputs.issue_title }}
+          ISSUE_BODY: ${{ steps.compare.outputs.issue_body_path }}
+        # A repository can forbid Actions from opening pull requests, and a
+        # branch push can be refused. The report must still arrive: silence is
+        # the failure being corrected here, not the shape of the report. Found
+        # by a stable title prefix rather than by a label, because a label can
+        # be missing or renamed and the job would then file a fresh issue every
+        # week without anything looking wrong.
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+            --search 'in:title pronotepy-upstream' \
+            --json number,title \
+            --jq '[.[] | select(.title | startswith("[pronotepy-upstream]"))][0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" --body-file "$ISSUE_BODY"
+          else
+            gh label create pronotepy-upstream --repo "$GITHUB_REPOSITORY" \
+              --color 5319E7 \
+              --description "Une version de pronotepy plus recente que l'epingle" \
+              || true
+            label_args=()
+            if gh label list --repo "$GITHUB_REPOSITORY" --limit 200 --json name \
+                 --jq '.[].name' | grep -qxF 'pronotepy-upstream'; then
+              label_args=(--label pronotepy-upstream)
+            fi
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" --body-file "$ISSUE_BODY" "${label_args[@]}"
+          fi
+
+      - name: Retire a proposal the pin has caught up with
+        if: steps.compare.outputs.outcome != 'outdated' && steps.compare.outputs.outcome != 'unavailable'
+        # Best effort: tidying is not worth a red run.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+        # A pull request proposing the version now pinned is noise, and noise
+        # is what teaches a maintainer to ignore this job. It happens for a
+        # good reason: the pin is often raised by hand, in the middle of the
+        # incident that motivated it, without going through this proposal.
+        run: |
+          set -euo pipefail
+          branch="chore/pronotepy-$PINNED"
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr close "$number" --repo "$GITHUB_REPOSITORY" --delete-branch \
+              --comment "L'épingle est passée à $PINNED par ailleurs ; cette proposition n'a plus d'objet."
+          fi
+
+      - name: Say what happened in the run summary
+        if: always()
+        env:
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          OUTCOME: ${{ steps.compare.outputs.outcome }}
+          PROPOSAL: ${{ steps.propose.outcome }}
+          NUMBER: ${{ steps.propose.outputs.number }}
+        # So a run that proposed nothing still says why: a silent green tick is
+        # indistinguishable from a job that has quietly stopped working.
+        run: |
+          {
+            echo "### pronotepy"
+            echo
+            echo "- épingle : \`${PINNED:-?}\`"
+            echo "- PyPI : \`${LATEST:-?}\`"
+            echo "- verdict : \`${OUTCOME:-?}\`"
+            echo "- proposition : \`${PROPOSAL:-aucune}\`${NUMBER:+ (#$NUMBER)}"
+          } >> "$GITHUB_STEP_SUMMARY"

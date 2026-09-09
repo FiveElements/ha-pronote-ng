@@ -1887,6 +1887,18 @@ hebdomadaire pour qu'un changement de règle amont apparaisse sans push), et
 exactement la version du tag — une intégration HACS dont le manifest diverge du
 tag s'installe une fois et ne se met plus jamais à jour.
 
+Un dernier, qui ne garde rien mais surveille :
+`.github/workflows/pronotepy-watch.yml` compare une fois par semaine l'épingle
+`pronotepy` à ce que PyPI publie et, si l'amont est devant, ouvre une *pull
+request* qui relève l'épingle dans ses deux déclarations, avec la date de
+publication et les sujets de commit entre les deux étiquettes amont
+(spécification §11.1.1). Il existe parce qu'une version épinglée sans veille est
+une dette dont l'échéance a été une panne totale de connexion : le correctif
+amont était public depuis six jours et son sujet de commit nommait la cause.
+Rien n'y fusionne automatiquement — relever l'épingle oblige à relire chaque
+divergence documentée dans `hardened_client.py`, et c'est le travail que la
+proposition demande.
+
 La matrice de test comporte deux lignes : la référence épinglée
 (`pytest-homeassistant-custom-component==0.13.363`, qui porte Home Assistant
 **2026.9.0**) qui **porte le portail de couverture**, et une ligne flottante

@@ -10,6 +10,17 @@ Two of them, both from SPECIFICATION.md:
   of line someone adds while debugging and forgets to remove.
 * §11.1 -- on a release, ``version`` must equal the tag. A HACS integration
   whose manifest diverges from its tag installs once and never updates again.
+
+And one that comes from an outage rather than from the specification: the
+``pronotepy`` pin is declared twice, here and in ``requirements_test.txt``, and
+nothing made the two agree. ``manifest.json`` is what Home Assistant installs
+on a user's instance; ``requirements_test.txt`` is what the suite runs against.
+A divergence therefore means CI is green against a library nobody ships --
+which matters precisely because ``hardened_client.py`` corrects
+version-specific upstream behaviour, so "tested" and "installed" being
+different versions makes the corrections unverified. The parser lives in
+``scripts/pronotepy_pin.py``, shared with the weekly upstream watch, so the pin
+is read from the repository and never restated.
 """
 
 from __future__ import annotations
@@ -18,6 +29,12 @@ import argparse
 import json
 from pathlib import Path
 import sys
+
+# ``scripts/`` is not a package, and this file is only ever run as a script --
+# so its own directory is ``sys.path[0]`` and the sibling module imports
+# plainly. Making the directory importable any other way would be the check
+# dictating the repository layout.
+from pronotepy_pin import PinError, pinned_version
 
 MANIFEST = Path("custom_components/pronote_ng/manifest.json")
 
@@ -58,13 +75,19 @@ def main() -> int:
         if key not in manifest
     )
 
+    pin: str | None = None
+    try:
+        pin = pinned_version()
+    except (PinError, OSError) as error:
+        failures.append(str(error))
+
     if failures:
         print("Manifest check failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
 
-    print(f"manifest.json ok (version {manifest.get('version')})")
+    print(f"manifest.json ok (version {manifest.get('version')}, pronotepy=={pin})")
     return 0
 
 

@@ -206,8 +206,74 @@ Corollaires, si vous touchez à ces deux modules :
   « vide » ne sont pas la même information et qu'un changement de protocole
   doit se voir ;
 - `hardened_client.py` existe pour corriger des bugs de l'amont, avec la
-  version épinglée `pronotepy==2.15.6`. Si vous relevez cette épingle, relisez
+  version épinglée `pronotepy==2.15.7`. Si vous relevez cette épingle, relisez
   chaque divergence documentée dans ce fichier.
+
+### 5.1 L'épingle est surveillée
+
+Un matin, toutes les connexions à un établissement ont échoué sur un
+`CryptoError` que l'amont commente « *probably the qr code has expired* ». Le QR
+code était parfaitement valide : le serveur PRONOTE de l'établissement venait
+de passer en 26.2.5, et `pronotepy` avait publié six jours plus tôt une version
+dont un commit s'appelle littéralement *fix compatibility with PRONOTE
+2026.2.5.6* et réécrit trois lignes de l'échange de défi dans `_login`. Le
+correctif existait, il était public, et rien dans ce dépôt ne le disait — c'est
+la seule raison pour laquelle la panne a duré une matinée.
+
+`.github/workflows/pronotepy-watch.yml` le dit désormais. Une fois par semaine,
+il compare l'épingle à ce que PyPI publie et, si l'amont est devant, **ouvre une
+pull request qui relève l'épingle** sur la branche
+`chore/pronotepy-<version>`. Pas une issue : une issue annonce qu'une version
+existe, une pull request dit si elle *fonctionne*, parce que `Validate` y fait
+tourner la suite entière et `mypy --strict` contre la nouvelle bibliothèque sur
+les deux socles. Ce matin-là, cette réponse aurait été disponible quelques
+minutes après la publication amont au lieu d'exiger de refaire l'installation à
+la main.
+
+Une branche par version amont, ce qui rend le job idempotent : une deuxième
+exécution retrouve la branche et met la pull request à jour au lieu d'en
+empiler une par semaine, et une version *plus récente* obtient sa propre
+branche plutôt que d'écraser une proposition en cours de lecture. Si la branche
+existe déjà, ses commits ne sont pas réécrits — quelqu'un a pu y ajouter le
+correctif que la montée de version demandait, et le perdre serait exactement le
+contraire du but.
+
+La pull request porte la version épinglée, la nouvelle version, sa date de
+publication et **les sujets de commit entre les deux tags**. Ce dernier point
+est l'essentiel : ce qui a permis de conclure ce matin-là n'était pas un numéro
+de version, c'était une ligne de commit. Un rapport qui obligerait à aller la
+chercher n'aurait fait gagner la matinée à personne. Si la convention de
+nommage des tags amont change, la comparaison ne se résout plus et la pull
+request le dit, avec les seules informations de PyPI ; si PyPI est
+inaccessible, le job le note et sort au vert. Un portail hebdomadaire qui
+rougit parce qu'un tiers a hoqueté est un portail qu'on apprend à ignorer.
+
+**Rien de tout cela ne se fusionne tout seul**, et aucune fusion automatique
+n'est activée. La règle ci-dessus s'applique sans exception : relever l'épingle
+oblige à relire **chaque** divergence documentée dans `hardened_client.py`,
+parce qu'un correctif amont peut en avoir rendu une inutile, ou fausse. La CI
+voit qu'un contournement ne casse rien, pas qu'il est devenu superflu — c'est la
+seule chose qui distingue une montée de version d'une régression silencieuse, et
+elle ne se délègue pas. La pull request le rappelle avec une case à cocher, et
+la relecture est le travail réel que la proposition demande.
+
+Deux détails de fonctionnement, pour ne pas les redécouvrir en lisant les
+journaux. GitHub ne déclenche pas de workflow à partir d'un évènement produit
+par `GITHUB_TOKEN` — sinon un job pourrait s'auto-relancer sans fin — donc la
+pull request naît sans vérifications, et le job demande `Validate`
+explicitement sur la branche (c'est la raison du `workflow_dispatch` ajouté à
+`validate.yml`). Et si le dépôt interdit à Actions d'ouvrir une pull request,
+le rapport arrive quand même sous forme d'issue préfixée `[pronotepy-upstream]`
+en disant pourquoi : le silence est le défaut qu'on corrige ici, pas la forme
+du rapport.
+
+Enfin, la version est épinglée à deux endroits — `requirements_test.txt`, ce
+que la suite teste, et `manifest.json`, ce que Home Assistant installe chez
+l'utilisateur. Les deux bougent ensemble, dans la proposition comme à la main,
+et `scripts/check_manifest.py` échoue si elles divergent : une divergence
+signifie que les tests n'exercent pas la bibliothèque que les utilisateurs font
+tourner, ce qui rend précisément invérifiables les corrections de
+`hardened_client.py`.
 
 ---
 

@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  # So the gates can be asked for on a branch explicitly. `pronotepy-watch.yml`
+  # needs this: GitHub does not start workflows from events produced by
+  # `GITHUB_TOKEN`, so the pull request that job opens to raise the pronotepy
+  # pin would carry no checks at all -- and an unchecked bump proposal is worth
+  # less than no proposal. `workflow_dispatch` is the documented exception.
+  workflow_dispatch:
 
 # No repository secret is required by this workflow (SPECIFICATION.md §11.1).
 permissions:
