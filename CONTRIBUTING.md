@@ -152,6 +152,22 @@ mkdocs build --strict  # ce que la CI exige
 documents utilisent les *slugs* de GitHub — accents compris — pour se lire
 identiquement sur GitHub et sur le site.
 
+**Citez un symbole, jamais un numéro de ligne.** La documentation renvoie au
+code par le nom de ce qu'elle décrit et le fichier qui le porte —
+« `async_request_tick`, `account.py` » — et non par une plage de lignes. La
+règle vient d'un dégât mesuré : sur cent cinquante-deux plages citées, soixante
+et onze pointaient sur du code qui avait bougé, et les quatorze premières
+ouvertes étaient toutes fausses. Une plage fausse est plus coûteuse qu'une
+citation absente, parce qu'elle atterrit sur du code réel : le lecteur essaie de
+le réconcilier avec une affirmation qui, elle, est restée juste, et conclut
+contre l'affirmation. Un nom de symbole survit à un déplacement de fonction, se
+retrouve par recherche, et `scripts/check_doc_citations.py` reste là pour les
+plages qui subsistent.
+
+L'exception est `docs/revue-contradictoire-v1.md`, qui cite `pronotepy` 2.15.6
+par plages : c'est une archive de revue, ses citations portent sur du code
+extérieur au dépôt, et un avertissement en tête du document le dit.
+
 ---
 
 ## 4. Ce qui se génère et ne s'édite pas
