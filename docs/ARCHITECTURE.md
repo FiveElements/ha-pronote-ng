@@ -1467,8 +1467,10 @@ désarchive — et traiter tout son compteur de non-lus comme des arrivées
 rejouait le fil.
 
 Les événements sont diffusés sur le bus Home Assistant sous le signal
-`SIGNAL_DELTA` (`SIGNAL_DELTA` posé dans `const.py`, émis par `account.py`), et les neuf entités `event` s'y
-abonnent en filtrant sur `entry_id`, `student_id` et `entity_key`. Le détecteur
+`SIGNAL_DELTA`, défini **et** émis par `account.py` — `device_trigger.py` et
+`event.py` l'importent de là, et non de `const.py`, ce qui est l'exception à la
+règle « une constante partagée vit dans `const.py` ». Les neuf entités `event`
+s'y abonnent en filtrant sur `entry_id`, `student_id` et `entity_key`. Le détecteur
 ne conserve que le matériel d'identité dont il a besoin, jamais les instantanés
 eux-mêmes, pour qu'un trimestre de notes ne siège pas deux fois en mémoire.
 

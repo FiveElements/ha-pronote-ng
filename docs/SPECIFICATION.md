@@ -1511,10 +1511,10 @@ support client garanti.
 
 | Jalon | Contenu | Fin |
 | --- | --- | --- |
-| **M1** | Squelette, `manifest`, CI, fixtures anonymisées, `models.py`, `gateway.py` pour `DernieresNotes` et `PageEmploiDuTemps` | passerelle testée hors ligne |
+| **M1** | Squelette, manifeste, CI, fixtures anonymisées, `models.py`, puis `gateway.py` pour les onglets DernieresNotes et PageEmploiDuTemps | passerelle testée hors ligne |
 | **M2** | **client durci (§3.6)**, `session.py`, `ratelimit.py`, `scheduler.py`, `account.py`, diagnostics du limiteur | budget observable, aucune entité métier |
 | **M3** | `config_flow` (trois méthodes, enfants, options), ré-authentification, rotation d'identifiants | intégration installable |
-| **M4** | Emploi du temps : capteurs primitifs, `calendar`, `binary_sensor`, `delta.py` et `event` | premières automatisations réelles |
+| **M4** | Emploi du temps : capteurs primitifs, plateformes calendar, binary_sensor et event, plus `delta.py` | premières automatisations réelles |
 | **M5** | Devoirs (capteurs + `todo`), notes, moyennes, évènements associés | cœur fonctionnel |
 | **M6** | Absences, retards, punitions, évaluations, bulletins, actualités, discussions, menus, identité, équipe pédagogique | catalogue complet |
 | **M7** | `device_trigger` / `device_condition` / `device_action`, blueprints, `image`, services d'écriture, traductions fr/en, documentation | publication HACS |
