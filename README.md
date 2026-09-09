@@ -13,14 +13,16 @@
  Retrouvez dans Home Assistant les informations scolaires de vos enfants : **emploi du temps, devoirs, notes, moyennes, absences, retards, évaluations, actualités, discussions, menus et bien plus encore.**
 
  L'intégration est conçue pour les élèves comme pour les parents utilisant un compte PRONOTE ou un ENT.
+ > 🚀 **Pronote NG est la nouvelle génération de l'intégration PRONOTE pour Home Assistant.**
 
 
 <p align="center">
-  <a href="https://fiveelements.github.io/ha-pronote-ng/">Documentation</a>
+  <a href="https://fiveelements.github.io/ha-pronote-ng/">📖 Documentation</a>
   ·
-  <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">Guide de l'utilisateur</a>
+  <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
   ·
-  <a href="https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/">Architecture</a>
+  <a href="https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/">🐛 Signaler un problème · [💻 GitHub](<https://github.com/FiveElements/ha-pronote-ng>)
+</a>
 </p>
 
 <p align="center">
