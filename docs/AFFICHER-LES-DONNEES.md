@@ -97,7 +97,9 @@ entities:
 ```
 
 C'est le moyen le plus court d'obtenir une semaine lisible sans aucune carte
-tierce. Un cours **annulé** y reste, avec son statut en description et le mot
+tierce. Le détail de cette carte — chaque option, ce que contient chacun des
+trois agendas, et **jusqu'où il sait** — est sur
+[la page qui lui est consacrée](https://fiveelements.github.io/ha-pronote-ng-cards/ha-calendar/). Un cours **annulé** y reste, avec son statut en description et le mot
 « annulé » dans le résumé : le retirer donnerait l'illusion qu'il n'a jamais
 existé.
 
