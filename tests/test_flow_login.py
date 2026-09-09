@@ -57,6 +57,7 @@ from custom_components.pronote_ng.config_flow import (
     ProbeInvalidCredentials,
     ProbeMfaRequired,
     ProbeQrInvalid,
+    ProbeQrRefused,
 )
 from custom_components.pronote_ng.const import (
     CONF_ACCOUNT_PIN,
@@ -770,6 +771,80 @@ def test_a_qr_code_that_will_not_decrypt_does_not_blame_the_password(
         pytest.raises(ProbeQrInvalid),
     ):
         probe_account(_qr_data())
+
+
+def test_a_challenge_refused_while_enrolling_blames_the_qr_code_not_the_password(
+    client: FakeClient,
+) -> None:
+    """The same arm, the other side of its one branch.
+
+    A bare `CryptoError` -- not the `QRCodeDecryptError` above -- means the
+    payload decrypted locally and the *server* then refused the challenge. On
+    the credentials path that is a wrong password, and the test two functions
+    up asserts exactly that. On the enrolment path it cannot be: there is no
+    password. `qrcode_login` agrees the challenge from the payload's own
+    `login` and `jeton`, and the account's two-factor PIN never enters the key
+    -- `ClientBase._login` derives it as `username + SHA256(alea + password)`
+    and uses the PIN only in `_do_2fa`, after a challenge that has already
+    succeeded.
+
+    Reported as `ProbeQrInvalid` this would send the user to re-type a
+    four-digit code that decrypted correctly; reported as
+    `ProbeInvalidCredentials` -- which is what it was -- it sends a parent to
+    look at the one field that could not possibly matter, while the QR code
+    they actually need to re-generate expires. Upstream compounds it by
+    appending "probably the qr code has expired" to its own message on nothing
+    more than `login_mode == "qr_code"`.
+
+    This is the `enrolling` branch of the `CryptoError` arm, and it is the only
+    thing that distinguishes the two outcomes.
+    """
+    raised = CryptoError("the server refused the challenge")
+
+    with (
+        patch(
+            "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+            side_effect=raised,
+        ),
+        pytest.raises(ProbeQrRefused) as caught,
+    ):
+        probe_account(_qr_data())
+
+    # Chained, like every other arm: the original is what a diagnostic needs.
+    assert caught.value.__cause__ is raised
+
+
+def test_a_qr_entry_without_its_payload_is_not_enrolling_and_blames_the_password(
+    client: FakeClient,
+) -> None:
+    """The branch is on the *payload*, not on the mode, and that matters.
+
+    A QR-enrolled entry keeps `login_mode: qr_code` for the rest of its life,
+    long after the payload was dropped -- so every later login, the
+    re-authentication probe included, runs through pronotepy's token mode with
+    no enrolment in sight. Branching on the mode alone would classify a
+    genuinely rotten token as "the QR code was refused", offering to re-scan a
+    code when the fix is to re-authenticate.
+
+    Paired deliberately with the test above: same exception, same login mode,
+    opposite classification, and the payload is the only difference.
+    """
+    with (
+        patch(
+            "custom_components.pronote_ng.hardened_client.build_client",
+            side_effect=CryptoError("the server refused the challenge"),
+        ),
+        pytest.raises(ProbeInvalidCredentials),
+    ):
+        probe_account(
+            {
+                CONF_LOGIN_MODE: LoginMode.QR_CODE.value,
+                CONF_PRONOTE_URL: URL,
+                "username": "not-a-real-login",
+                "password": "not-a-real-rotated-token",
+                CONF_UUID: "UUID-UNDER-TEST",
+            }
+        )
 
 
 def test_a_school_whose_server_is_down_does_not_blame_the_password_either(
