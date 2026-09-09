@@ -37,9 +37,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pronote_ng.config_flow import (
     ProbeBootstrapFailed,
+    ProbeEntUnknown,
     ProbeInvalidCredentials,
     ProbeMfaRequired,
     ProbeQrInvalid,
+    ProbeQrRefused,
 )
 from custom_components.pronote_ng.const import (
     CONF_ACCOUNT_PIN,
@@ -55,6 +57,10 @@ from custom_components.pronote_ng.const import (
     LoginMode,
 )
 from custom_components.pronote_ng.login_guard import login_guard
+from custom_components.pronote_ng.ratelimit import (
+    REQUESTS_PER_LOGIN,
+    LoginOutcome,
+)
 from custom_components.pronote_ng.urls import public_url, url_host
 
 from .conftest import REQUIRES_HASS
@@ -73,8 +79,14 @@ PASTED_URL = (
 TRIMMED_URL = "https://demo.example.invalid/pronote/parent.html"
 
 QR_PAYLOAD = {
-    "jeton": "not-a-real-token",
-    "login": "not-a-real-login",
+    # Hexadecimal, and that is not cosmetic: `qrcode_login` runs
+    # `bytes.fromhex` on both of these before it does anything else
+    # (pronotepy 2.15.6, `clients.py:184-185`), so a payload that is not
+    # hex is rejected by `_parse_qr_payload` and never reaches the probe.
+    # A fixture written in prose was therefore testing a shape the code
+    # now refuses. Visibly fictional all the same, per CONTRIBUTING §1.1.
+    "jeton": "0bad0bad0bad0bad0bad0bad0bad0bad",
+    "login": "0badc0de0badc0de",
     "url": PASTED_URL,
 }
 
@@ -1126,25 +1138,29 @@ async def test_a_reconnection_does_not_widen_the_children_being_followed(
     assert entry.data[CONF_CHILDREN] == ["STUDENT-2"]
 
 
-async def test_a_refused_qr_enrolment_does_not_blame_a_password(
+async def test_a_qr_code_the_server_refuses_is_not_reported_as_bad_credentials(
     hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
 ) -> None:
-    """The message a real parent got, and why it was the wrong one.
+    """The message six real attempts got, and why it was the wrong one.
 
-    ``invalid_auth`` is shared by every step of the flow and tells the reader to
-    check their password. On a QR step there is none, so the message points at
-    the one thing that cannot be the cause. What the refusal actually rules
-    *out* is worth saying: the payload and its four-digit code were accepted,
-    because a wrong one of those raises ``QRCodeDecryptError`` and arrives as
-    ``invalid_qr``. What remains is the account's two-factor PIN -- a different
-    four-digit code, set on the account rather than chosen when generating the
-    QR code, and sitting two fields below in the same form.
+    ``pronotepy`` raises a plain ``CryptoError`` when the server refuses the
+    challenge, and the probe classified that as "the credentials were refused"
+    -- which on a QR enrolment names things that cannot be the cause. There is
+    no password. The account's two-factor PIN does not enter the key either:
+    ``ClientBase._login`` derives it as ``username + SHA256(alea + password)``
+    from the payload's own login and token, and uses the PIN only in
+    ``_do_2fa``, after a challenge that has already succeeded.
+
+    So the refusal is about the QR code, and it now says so. Upstream compounds
+    the confusion by appending "probably the qr code has expired" on nothing
+    more than ``login_mode == "qr_code"`` -- a guess, not a finding, and one
+    this integration must not relay as an answer.
     """
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
         "custom_components.pronote_ng.config_flow._probe",
-        side_effect=ProbeInvalidCredentials(),
+        side_effect=ProbeQrRefused("challenge refused"),
     ):
         again = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -1153,48 +1169,25 @@ async def test_a_refused_qr_enrolment_does_not_blame_a_password(
 
     assert again["type"] is FlowResultType.FORM
     assert again["step_id"] == "reauth_qr"
-    assert again["errors"] == {"base": "invalid_qr_auth"}
+    assert again["errors"] == {"base": "qr_refused"}
 
 
-async def test_a_refused_qr_enrolment_says_the_same_thing_when_adding(
-    hass: HomeAssistant, no_spacing: None
-) -> None:
-    """The enrolment form and the reconnection form are one problem.
-
-    Re-wording only the reconnection step would leave a parent adding the
-    account for the first time reading about a password they were never asked
-    for -- the same failure, on the screen it is most likely to be met on.
-    """
-    flow_id = await _start_qr(hass)
-
-    with patch(
-        "custom_components.pronote_ng.config_flow._probe",
-        side_effect=ProbeInvalidCredentials(),
-    ):
-        again = await hass.config_entries.flow.async_configure(
-            flow_id,
-            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
-        )
-
-    assert again["step_id"] == "qr_code"
-    assert again["errors"] == {"base": "invalid_qr_auth"}
-
-
-async def test_a_consumed_qr_code_keeps_its_own_message(
+async def test_the_two_qr_failures_stay_two_messages(
     hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
 ) -> None:
-    """The re-wording must not swallow the distinction it depends on.
+    """The distinction the new message rests on.
 
-    ``invalid_qr_auth`` claims the four-digit code was accepted. That claim is
-    only true because a wrong one arrives as ``invalid_qr`` instead -- so if the
-    re-wording ever caught that too, the new message would assert something
-    false and send the reader after the wrong code.
+    ``qr_refused`` tells the reader their four-digit code was right. That claim
+    is only true because a wrong one arrives as ``invalid_qr`` instead -- the
+    local AES pass in ``qrcode_login`` fails before a socket is opened. Collapse
+    the two and the message asserts something false and sends the reader after
+    the wrong field, which is exactly the mistake being corrected here.
     """
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
         "custom_components.pronote_ng.config_flow._probe",
-        side_effect=ProbeQrInvalid(),
+        side_effect=ProbeQrInvalid("invalid confirmation code"),
     ):
         again = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -1204,10 +1197,130 @@ async def test_a_consumed_qr_code_keeps_its_own_message(
     assert again["errors"] == {"base": "invalid_qr"}
 
 
+async def test_a_typo_in_the_four_digit_code_does_not_spend_the_rail(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """Three typos must not lock a parent out; three refusals must.
+
+    ``qrcode_login`` decrypts the payload with the four-digit code before it
+    opens a socket, so a wrong one never reaches the school. Counting it as a
+    refused credential spent the three-attempt rail on nothing -- and that rail
+    is the one thing standing between a parent retrying and an address PRONOTE
+    stops answering, so spending it on typos is spending it on the wrong thing.
+
+    What is *not* fixed here, and is stated rather than hidden: the daily
+    request budget is still charged, because `RateLimiter.login` charges at
+    admission, inside the lock, before the request goes out -- deliberately,
+    and there is no refund path by design. So a typo costs allowance it did not
+    use. The rail is the part that matters for staying logged in, and it is the
+    part this corrects.
+    """
+    guard = login_guard(hass)
+
+    for _attempt in range(3):
+        flow_id = await _start_qr(hass)
+        with patch(
+            "custom_components.pronote_ng.config_flow._probe",
+            side_effect=ProbeQrInvalid("invalid confirmation code"),
+        ):
+            await hass.config_entries.flow.async_configure(
+                flow_id,
+                {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "0000"},
+            )
+
+    assert guard.may_login().allowed, "three typos closed the door"
+
+
+async def test_three_refusals_that_reached_the_server_do_close_the_door(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """The other half, so the exemption above cannot widen unnoticed.
+
+    A challenge the server refused cost a real login, and repeating it is the
+    behaviour PRONOTE sanctions at the address. The rail has to see those.
+    """
+    guard = login_guard(hass)
+
+    for _attempt in range(3):
+        flow_id = await _start_qr(hass)
+        with patch(
+            "custom_components.pronote_ng.config_flow._probe",
+            side_effect=ProbeQrRefused("challenge refused"),
+        ):
+            await hass.config_entries.flow.async_configure(
+                flow_id,
+                {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+            )
+
+    assert not guard.may_login().allowed
+
+
+async def test_a_rejected_payload_is_logged_by_its_shape_and_not_its_content(
+    hass: HomeAssistant, no_spacing: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The rejection that never reaches the network, and logged nothing at all.
+
+    A parent's messaging app quietly added characters to the pasted JSON, and
+    this happened: the form said "that does not look like the content of a
+    PRONOTE QR code" while the log stayed silent, so there was no way to tell
+    that case from a payload of the wrong shape.
+
+    The content must never be logged -- it is a working credential, and this
+    log is the file users are invited to attach to a public issue (§8.2) -- so
+    what is recorded is the length and whether it starts like a JSON object.
+    That is enough to separate "pasted the wrong thing entirely" from "pasted
+    JSON missing a key".
+    """
+    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    flow_id = await _start_qr(hass)
+    pasted = '{"login": "SENTINEL-LOGIN-DO-NOT-LEAK"} trailing junk'
+
+    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+        again = await hass.config_entries.flow.async_configure(
+            flow_id, {CONF_QR_PAYLOAD: pasted, CONF_QR_PIN: "1234"}
+        )
+
+    assert again["errors"] == {CONF_QR_PAYLOAD: "invalid_qr_payload"}
+    assert probe.call_count == 0, "nothing may reach the school for a bad payload"
+
+    assert "the pasted QR code was rejected" in caplog.text
+    assert f"{len(pasted)} characters" in caplog.text
+    assert "starts with an object brace" in caplog.text
+    assert "SENTINEL-LOGIN-DO-NOT-LEAK" not in caplog.text
+
+
+async def test_something_that_is_not_json_at_all_is_described_as_such(
+    hass: HomeAssistant, no_spacing: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The distinction the log exists to draw.
+
+    "Not an object" is what a pasted image filename, a share link or a
+    truncated read looks like; "starts with an object brace" is what a real
+    payload of the wrong shape looks like. Same message on the screen, two
+    different things to tell the user, and only the log can separate them.
+    """
+    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    flow_id = await _start_qr(hass)
+
+    await hass.config_entries.flow.async_configure(
+        flow_id,
+        {CONF_QR_PAYLOAD: "IMG_20260909_qrcode.png", CONF_QR_PIN: "1234"},
+    )
+
+    assert "not an object" in caplog.text
+
+
 async def test_a_password_reconnection_still_reads_as_one(
     hass: HomeAssistant, mock_entry: MockConfigEntry, no_spacing: None
 ) -> None:
-    """The credentials step keeps the wording that is correct for it."""
+    """A credentials account keeps the message that is correct for it.
+
+    The same ``CryptoError`` means something different here: there *is* a
+    password, and a wrong one is exactly what a failed challenge indicates
+    (annexe B §3.1). The classification is what carries that difference now,
+    rather than a re-wording applied after the fact -- which is why the probe
+    decides it and the step does not.
+    """
     result = await mock_entry.start_reauth_flow(hass)
 
     with patch(
@@ -1322,3 +1435,181 @@ def test_the_flow_never_imports_pronotepy_to_be_added(
         assert config_flow._probe({"any": "data"})["account_id"] == "a"
 
     assert probe_account.call_args.args == ({"any": "data"},)
+
+
+# ---------------------------------------------------------------------------
+# What the payload check has to catch before the network
+#
+# `_parse_qr_payload` used to verify that three keys were *present*. Presence is
+# not the contract: `qrcode_login` runs `bytes.fromhex` on `login` and on
+# `jeton` before the `try` that turns a decryption failure into
+# `QRCodeDecryptError`, so a mangled hex string raises a bare `ValueError` from
+# inside upstream -- not a `PronoteAPIError`, so past every classified arm, into
+# the last-resort `except Exception`.
+#
+# Two things went wrong there, and only one of them was visible. The screen said
+# "unexpected error" for a copy-paste problem; the limiter was told `TRANSPORT`,
+# which opens an exponential backoff hold on the *instance-wide* guard and
+# blocks every other config flow -- for an attempt that never opened a socket.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("payload", "why"),
+    [
+        pytest.param(
+            {**QR_PAYLOAD, "login": "0badc0de0badc0d"},
+            "an odd number of hex digits, which is what a truncated paste gives",
+            id="login-truncated",
+        ),
+        pytest.param(
+            {**QR_PAYLOAD, "jeton": "0bad 0bad 12:07 0bad"},
+            "a messaging app inserting a timestamp into the pasted text",
+            id="jeton-with-inserted-text",
+        ),
+        pytest.param(
+            {**QR_PAYLOAD, "login": 1234},
+            "a number where a hex string belongs",
+            id="login-not-a-string",
+        ),
+        pytest.param(
+            {**QR_PAYLOAD, "url": ""},
+            "an empty address, which `urlparse` accepts and nothing can use",
+            id="url-empty",
+        ),
+    ],
+)
+async def test_a_payload_of_the_right_shape_but_wrong_content_costs_nothing(
+    hass: HomeAssistant,
+    no_spacing: None,
+    payload: dict[str, object],
+    why: str,
+) -> None:
+    """The three keys were there, and the payload was still unusable.
+
+    Each case is something a real paste produces, and each one used to reach
+    ``bytes.fromhex`` inside pronotepy and come back as "unexpected error"
+    *plus* a backoff hold on the guard every other config flow shares. Nothing
+    here has any business touching the network, so the assertions are that the
+    probe was never called and the budget never moved -- not merely that the
+    message improved.
+    """
+    guard = login_guard(hass)
+    before = guard.calls_today
+    flow_id = await _start_qr(hass)
+
+    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+        again = await hass.config_entries.flow.async_configure(
+            flow_id, {CONF_QR_PAYLOAD: json.dumps(payload), CONF_QR_PIN: "1234"}
+        )
+
+    assert again["errors"] == {CONF_QR_PAYLOAD: "invalid_qr_payload"}, why
+    assert probe.call_count == 0, "nothing may reach the school for a bad payload"
+    assert guard.calls_today == before, "and nothing may be charged for it"
+
+
+async def test_a_wrong_four_digit_code_settles_the_charge_it_incurred(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The charge cannot be refunded, so it must at least be *closed*.
+
+    ``RateLimiter.login`` commits at admission -- inside the lock, before the
+    call, and with no refund path -- and records the cost in ``_login_charged``
+    for ``note_login`` to reconcile. The arm that handles a wrong four-digit
+    code called no ``note_login`` at all, deliberately, on the belief that a
+    purely local failure was not charged. It was: the flag stayed armed.
+
+    An armed flag is not inert. ``note_login`` reads it as "this attempt was
+    already paid for", so the next caller to report an outcome without having
+    gone through ``login()`` -- which the limiter documents as the honest
+    accounting for anything logging in outside the gate -- billed itself
+    nothing. This test spends that second report and checks the budget moves.
+    """
+    result = await qr_entry.start_reauth_flow(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeQrInvalid("invalid confirmation code"),
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+        )
+
+    guard = login_guard(hass)
+    before = guard.calls_today
+    guard.note_login(LoginOutcome.SUCCESS, requests_used=REQUESTS_PER_LOGIN)
+
+    assert guard.calls_today - before == REQUESTS_PER_LOGIN
+
+
+async def test_three_wrong_four_digit_codes_still_leave_the_door_open(
+    hass: HomeAssistant, qr_entry: MockConfigEntry, no_spacing: None
+) -> None:
+    """The half of the exemption that must survive the fix above.
+
+    Settling the charge must not turn a typo into a failed *login*: the
+    three-attempt rail exists for credentials PRONOTE actually refused, and a
+    four-digit code that fails locally never left the house. Three of them in a
+    row must therefore still leave a fourth attempt possible -- which is the
+    difference between a parent mistyping and a parent locked out of their own
+    school account.
+    """
+    guard = login_guard(hass)
+    for _ in range(3):
+        result = await qr_entry.start_reauth_flow(hass)
+        with patch(
+            "custom_components.pronote_ng.config_flow._probe",
+            side_effect=ProbeQrInvalid("invalid confirmation code"),
+        ):
+            await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {CONF_QR_PAYLOAD: json.dumps(QR_PAYLOAD), CONF_QR_PIN: "1234"},
+            )
+
+    assert guard.may_login().allowed, "a typo is not a refused credential"
+
+
+async def test_an_unknown_ent_provider_is_reported_on_the_provider_field(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """The failure that used to send an ENT password to the wrong server.
+
+    The provider selector accepts a typed value, and an unresolvable name
+    returned ``None`` -- which reads as a graceful fallback and is the opposite
+    of one: ``build_client`` then runs in direct mode and sends the *ENT
+    portal's* username and password to the PRONOTE server. It cannot succeed, so
+    the user was shown "invalid credentials" for a typo in a provider name, and
+    one of the three slots on the IP guard was spent proving it.
+
+    The error belongs on ``CONF_ENT`` and not on ``base``, because that is the
+    single box to correct; the address, the username and the password are all
+    fine.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ent"}
+    )
+
+    guard = login_guard(hass)
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        side_effect=ProbeEntUnknown("ac_nowhere"),
+    ):
+        refused = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_PRONOTE_URL: PASTED_URL,
+                "username": "parent-under-test",
+                "password": "not-a-real-password",
+                CONF_ENT: "ac_nowhere",
+            },
+        )
+
+    assert refused["type"] is FlowResultType.FORM
+    assert refused["step_id"] == "ent"
+    assert refused["errors"] == {CONF_ENT: "unknown_ent"}
+    # The credentials were never submitted to anybody, so the rail that guards
+    # the address against refused logins must not have moved.
+    assert guard.may_login().allowed

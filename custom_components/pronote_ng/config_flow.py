@@ -209,6 +209,34 @@ _NEVER_PERSISTED: Final = frozenset(
 )
 
 
+def _log_rejected_payload(error: Exception, raw: object) -> None:
+    """Say *why* a pasted QR code was rejected, without echoing it.
+
+    This rejection is the one flow failure that never reaches the network, and
+    it logged nothing at all -- so a parent whose messaging app had quietly
+    added characters to the JSON, and this happened, saw only "that does not
+    look like the content of a PRONOTE QR code" while the log stayed silent.
+
+    What is recorded is the *shape*: the exception's own message, the length of
+    what was pasted, and whether it even starts like a JSON object. Never the
+    content, because the content is a working credential -- the ``login`` and
+    ``jeton`` of the QR code -- and this log is what a user is invited to
+    attach to a public issue (§8.2). A length and a first character are enough
+    to tell "pasted an image filename" from "pasted valid JSON of the wrong
+    shape", which is the whole question here.
+    """
+    text = raw if isinstance(raw, str) else ""
+    _LOGGER.debug(
+        "the pasted QR code was rejected: %s(%s); %d characters, %s",
+        type(error).__name__,
+        error,
+        len(text),
+        "starts with an object brace"
+        if text.strip().startswith("{")
+        else "not an object",
+    )
+
+
 def _log_refusal(error: BaseException) -> None:
     """Say *why* a login was refused, on this integration's own logger.
 
@@ -236,26 +264,6 @@ def _log_refusal(error: BaseException) -> None:
         type(cause).__name__ if cause is not None else "nothing",
         cause if cause is not None else "",
     )
-
-
-#: Errors whose wording assumes a password, and what a QR step says instead.
-#:
-#: `invalid_auth` is shared by every step of the flow and tells the reader to
-#: check their password. On a QR step there is no password, so the message is
-#: worse than unhelpful: it points at the one thing that cannot be the cause.
-#: What *can* be, once PRONOTE has accepted the payload and its four-digit code
-#: -- a wrong one of those raises `QRCodeDecryptError`, which surfaces as
-#: `invalid_qr` -- is the account's two-factor PIN. That is a *different*
-#: four-digit code, and it sits in the same form, two fields below.
-_QR_ERROR_WORDING: Final = {"invalid_auth": "invalid_qr_auth"}
-
-
-@callback
-def _requalify_for_qr(errors: dict[str, str]) -> None:
-    """Re-word a shared error for a step that has no password."""
-    base = errors.get("base")
-    if base is not None and base in _QR_ERROR_WORDING:
-        errors["base"] = _QR_ERROR_WORDING[base]
 
 
 def _account_identity(account_id: str | None) -> tuple[str, str]:
@@ -355,7 +363,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 payload = _parse_qr_payload(user_input[CONF_QR_PAYLOAD])
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
+                _log_rejected_payload(error, user_input[CONF_QR_PAYLOAD])
                 errors[CONF_QR_PAYLOAD] = "invalid_qr_payload"
             else:
                 self._data = {
@@ -545,7 +554,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None and entry is not None:
             try:
                 payload = _parse_qr_payload(user_input[CONF_QR_PAYLOAD])
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
+                _log_rejected_payload(error, user_input[CONF_QR_PAYLOAD])
                 errors[CONF_QR_PAYLOAD] = "invalid_qr_payload"
             else:
                 # Before the attempt, for the reason `async_step_reauth_confirm`
@@ -563,7 +573,6 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
 
                 outcome = await self._async_probe(self._data, errors)
-                _requalify_for_qr(errors)
                 if outcome is not None:
                     # A QR code is the one reconnection input that can name a
                     # *different* account: a parent with two children in two
@@ -609,8 +618,18 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             for key, value in merged.items()
             if key not in _NEVER_PERSISTED and value is not None
         }
+        # `reload_even_if_entry_is_unchanged=False` because this entry *has* an
+        # update listener (`__init__.py`, `add_update_listener`), and HA 2026.9
+        # reports leaving the default on such an entry as a mistake:
+        # `report_usage("has an update listener and should use it for scheduling
+        # a reload", breaks_in_ha_version="2026.12.0")`. The listener does the
+        # reload, so asking for one here as well is either redundant or a second
+        # reload.
         return self.async_update_reload_and_abort(
-            entry, data=persisted, reason="reauth_successful"
+            entry,
+            data=persisted,
+            reason="reauth_successful",
+            reload_even_if_entry_is_unchanged=False,
         )
 
     # -- shared login plumbing ---------------------------------------------
@@ -648,7 +667,6 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         """Re-display the form the user came from, with its errors."""
         mode = self._data.get(CONF_LOGIN_MODE)
         if mode == LoginMode.QR_CODE.value:
-            _requalify_for_qr(errors)
             return self.async_show_form(
                 step_id=STEP_QR_CODE, data_schema=QR_SCHEMA, errors=errors
             )
@@ -722,12 +740,62 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             guard.note_login(LoginOutcome.BOOTSTRAP, requests_used=cost)
             errors["base"] = "bootstrap_failed"
         except ProbeQrInvalid as error:
-            # A single-use payload that PRONOTE has already consumed. Charged
-            # to the credentials guard, because from the server's point of view
-            # it is a refused authentication like any other.
+            # A four-digit code that cannot decrypt the payload. Purely local:
+            # `qrcode_login` does that AES pass before it opens a socket, so
+            # nothing reached the school.
+            #
+            # It is charged all the same, and saying otherwise would be wrong.
+            # `RateLimiter.login` commits at admission -- inside the lock,
+            # before the call, deliberately and with no refund path -- so by the
+            # time this arm runs, `_commit_login` has already recorded the ten
+            # requests and incremented `logins_today`. What this arm can decide
+            # is where the failure is *attributed*, and there the answer is
+            # clear: it must not eat one of the three slots on the IP guard,
+            # because that rail exists for credentials PRONOTE actually refused
+            # and a typo never left the house.
+            #
+            # `note_login` is still called, for a reason that is not cosmetic.
+            # It is what consumes `_login_charged`; skipping it leaves the flag
+            # armed, and the next caller to report an outcome without having
+            # gone through `login()` reads a charge that was already settled and
+            # bills itself nothing. `counts_against_guard=False` is the same
+            # exemption QR enrolment's deliberate double login uses
+            # (annexe B §3.3).
+            #
+            # What remains unfixed, and is not hidden: twenty-four wrong
+            # four-digit codes exhaust `max_logins_per_day` until midnight. The
+            # cure is a refund path in the limiter, which is a decision about
+            # `ratelimit.py`, not a line to slip into an except arm.
+            _log_refusal(error)
+            guard.note_login(
+                LoginOutcome.BAD_CREDENTIALS,
+                requests_used=cost,
+                counts_against_guard=False,
+            )
+            errors["base"] = "invalid_qr"
+        except ProbeQrRefused as error:
+            # The payload decrypted and the server then refused the challenge.
+            # Charged to the credentials guard, because from PRONOTE's point of
+            # view it is a refused authentication like any other.
             _log_refusal(error)
             guard.note_login(LoginOutcome.BAD_CREDENTIALS, requests_used=cost)
-            errors["base"] = "invalid_qr"
+            errors["base"] = "qr_refused"
+        except ProbeEntUnknown as error:
+            # Nothing was attempted: the resolver refuses before `build_client`
+            # is constructed, so no handshake happened. The charge stands for
+            # the reason the `ProbeQrInvalid` arm gives at length -- admission
+            # already committed it -- but the IP guard must not see it, because
+            # the credentials were never submitted to anyone.
+            #
+            # The error goes on the provider field rather than on `base`, since
+            # that is the box to correct and the other three fields are fine.
+            _log_refusal(error)
+            guard.note_login(
+                LoginOutcome.BAD_CREDENTIALS,
+                requests_used=cost,
+                counts_against_guard=False,
+            )
+            errors[CONF_ENT] = "unknown_ent"
         except (TimeoutError, OSError) as error:
             _log_refusal(error)
             guard.note_login(LoginOutcome.TRANSPORT, requests_used=cost)
@@ -1061,6 +1129,40 @@ def _parse_qr_payload(raw: str) -> dict[str, Any]:
     missing = {"login", "jeton", "url"} - set(payload)
     if missing:
         raise ValueError(f"missing keys: {', '.join(sorted(missing))}")
+
+    # Presence is not enough, and the gap was expensive. `qrcode_login` does
+    # `bytes.fromhex(qr_code["login"])` and the same for `jeton` **before** the
+    # `try` that turns a decryption failure into `QRCodeDecryptError`
+    # (pronotepy 2.15.6, `clients.py:184-191`). A truncated or mangled hex
+    # string therefore raises a bare `ValueError` from inside upstream, which is
+    # not a `PronoteAPIError`, escapes every classified arm of the probe, and
+    # lands in the last-resort `except Exception`.
+    #
+    # Two consequences, neither of them the user's fault. The screen said
+    # "unexpected error" for what is a copy-paste problem, and the limiter was
+    # told `TRANSPORT` -- which calls `note_failure()` and opens an exponential
+    # backoff hold on the *instance-wide* guard, blocking every other config
+    # flow, and growing on each retry. All of it for an attempt that never
+    # opened a socket. A messaging app inserting a timestamp into the pasted
+    # JSON is enough to produce it.
+    for key in ("login", "jeton"):
+        value = payload[key]
+        if not isinstance(value, str):
+            # A `ValueError`, like every other refusal in this function,
+            # for the reason the comment above `not a JSON object` gives:
+            # the one caller catches `ValueError`, and a `TypeError` here
+            # would escape the flow entirely.
+            raise ValueError(  # noqa: TRY004 -- see the comment above
+                f"{key} is not a string"
+            )
+        try:
+            bytes.fromhex(value)
+        except ValueError as error:
+            raise ValueError(f"{key} is not hexadecimal") from error
+    if not isinstance(payload["url"], str) or not payload["url"]:
+        # `urlparse` is called on it a few lines further up in upstream, and it
+        # is what the entry's address is rebuilt from.
+        raise ValueError("url is not a usable string")
     return payload
 
 
@@ -1082,3 +1184,24 @@ class ProbeBootstrapFailed(ProbeError):  # noqa: N818 -- a flow outcome, not an 
 
 class ProbeQrInvalid(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
     """The QR payload or its PIN was rejected."""
+
+
+class ProbeEntUnknown(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
+    """The named ENT provider does not exist in the installed ``pronotepy``.
+
+    Its own category because the alternative was silence: the resolver returned
+    ``None`` and the login proceeded in direct mode, sending the ENT portal's
+    credentials to the PRONOTE server. See :func:`.flow_login._ent_provider`.
+    """
+
+
+class ProbeQrRefused(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
+    """The QR code decrypted, and then PRONOTE would not honour it.
+
+    Distinct from :class:`ProbeQrInvalid`, which is the *local* failure: a
+    four-digit code that cannot decrypt the payload at all. This one is the
+    server refusing the challenge afterwards, and separating them is the whole
+    point -- the first is a typo the user can fix, the second is about the QR
+    code's own validity and cannot be fixed by re-reading any field on the
+    form.
+    """

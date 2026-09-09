@@ -52,6 +52,7 @@ import pytest
 
 from custom_components.pronote_ng.config_flow import (
     ProbeBootstrapFailed,
+    ProbeEntUnknown,
     ProbeError,
     ProbeInvalidCredentials,
     ProbeMfaRequired,
@@ -89,8 +90,14 @@ URL = "https://demo.example.invalid/pronote/parent.html"
 #: A QR payload of the right *shape* and none of the right content. `probe`
 #: never looks inside it; `pronotepy` would, and is mocked.
 QR_PAYLOAD = {
-    "jeton": "not-a-real-token",
-    "login": "not-a-real-login",
+    # Hexadecimal, and that is not cosmetic: `qrcode_login` runs
+    # `bytes.fromhex` on both of these before it does anything else
+    # (pronotepy 2.15.6, `clients.py:184-185`), so a payload that is not
+    # hex is rejected by `_parse_qr_payload` and never reaches the probe.
+    # A fixture written in prose was therefore testing a shape the code
+    # now refuses. Visibly fictional all the same, per CONTRIBUTING §1.1.
+    "jeton": "0bad0bad0bad0bad0bad0bad0bad0bad",
+    "login": "0badc0de0badc0de",
     "url": URL,
 }
 
@@ -395,23 +402,35 @@ def test_a_named_ent_is_resolved_to_the_upstream_function(
     assert build.call_args.kwargs["ent"] is ent_module.ac_reunion
 
 
-def test_an_unknown_ent_is_reported_and_falls_back_to_no_ent(
+def test_an_unknown_ent_refuses_instead_of_degrading_to_a_direct_login(
     client: FakeClient,
     build: Any,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Upstream renames providers, and a stored name can stop resolving.
+    """This test used to assert the opposite, and the reasoning was wrong.
 
-    Degrading to a direct login is the right failure -- it produces "wrong
-    credentials", which is recoverable -- but it has to be *said*, or the only
-    symptom is a login that mysteriously stopped working after a dependency
-    bump.
+    It read: "degrading to a direct login is the right failure -- it produces
+    'wrong credentials', which is recoverable". Both halves are false. What a
+    direct login does with ENT credentials is send the *portal's* username and
+    password to the PRONOTE server, which is not a fallback but a disclosure to
+    the wrong party; and "wrong credentials" is only recoverable if it names
+    something the user can act on, whereas here it points at two fields that
+    are correct and hides the one that is not.
+
+    It also spends a slot on the three-attempt IP guard to establish something
+    that was knowable without asking anybody, since the provider list comes
+    from the installed library.
+
+    Upstream does rename providers, which is the case this test was written
+    for, and a stored name that stops resolving is when it matters most: the
+    runtime login path resolves the same name on every reconnection.
     """
     caplog.set_level(logging.ERROR)
 
-    probe_account(_credentials_data(**{CONF_ENT: "no_such_ent_provider"}))
+    with pytest.raises(ProbeEntUnknown):
+        probe_account(_credentials_data(**{CONF_ENT: "no_such_ent_provider"}))
 
-    assert build.call_args.kwargs["ent"] is None
+    assert build.call_count == 0, "nothing may be sent under a name we cannot resolve"
     assert "no_such_ent_provider" in caplog.text
 
 
@@ -429,9 +448,10 @@ def test_an_ent_name_that_resolves_to_something_uncallable_is_refused(
     """
     caplog.set_level(logging.ERROR)
 
-    probe_account(_credentials_data(**{CONF_ENT: "__doc__"}))
+    with pytest.raises(ProbeEntUnknown):
+        probe_account(_credentials_data(**{CONF_ENT: "__doc__"}))
 
-    assert build.call_args.kwargs["ent"] is None
+    assert build.call_count == 0
     assert "__doc__" in caplog.text
 
 

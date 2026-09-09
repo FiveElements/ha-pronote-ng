@@ -268,6 +268,49 @@ def _patched_communication(
         _TIMEOUTS.value = previous
 
 
+def _log_identification(response: Mapping[str, Any]) -> None:
+    """Log the three flags that decide whether a login can possibly succeed.
+
+    This exists because upstream's own diagnostic is unusable here.
+    ``pronotepy.clients`` has no logger of its own -- ``clients.log is
+    pronoteAPI.log`` -- so the DEBUG line that would show the ``Identification``
+    response shares a logger with ``pronoteAPI`` line 139, which writes the hex
+    of every request body, credentials included (§8.2). Turning that on to read
+    one field would write a parent's token into a file they are then invited to
+    attach to a public issue.
+
+    So the client reads the response it already holds, and logs only what
+    decides the key agreement in ``ClientBase._login``:
+
+    * ``modeCompMdp`` -- when true, upstream lowercases the password *before*
+      hashing it. Harmless for a human password; destructive for a token or a
+      QR code's ``jeton``, which are case-sensitive. A login that fails at the
+      challenge with a correct token looks exactly like a wrong one.
+    * ``modeCompLog`` -- the same for the username.
+    * ``alea`` -- the salt prefixed to the password before the SHA-256. Its
+      presence changes the key; only whether it is there and how long it is are
+      recorded.
+
+    Never the ``challenge`` and never the credentials: the point of this
+    function is to make the pronotepy logger unnecessary, not to reproduce it.
+    """
+    try:
+        data = response["dataSec"]["data"]
+    except (KeyError, TypeError):
+        _LOGGER.debug("the identification response had no data section")
+        return
+
+    alea = data.get("alea") or ""
+    _LOGGER.debug(
+        "identification: modeCompLog=%s modeCompMdp=%s alea=%s(%d chars) keys=%s",
+        data.get("modeCompLog"),
+        data.get("modeCompMdp"),
+        "present" if alea else "absent",
+        len(str(alea)),
+        sorted(data),
+    )
+
+
 class HardenedClient(pronotepy.Client):
     """A PRONOTE client that never reconnects on its own.
 
@@ -362,6 +405,8 @@ class HardenedClient(pronotepy.Client):
             post_data["data"] = data
 
         result: dict[str, Any] = self.communication.post(function_name, post_data)
+        if function_name == "Identification":
+            _log_identification(result)
         return result
 
     def refresh(self) -> None:
