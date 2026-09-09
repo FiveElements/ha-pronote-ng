@@ -348,15 +348,16 @@ donne 37 créneaux sur 37 déduits. Une carte qui marque chaque ligne d'un
 c'est l'établissement qui ne publie rien. Sur un établissement qui publie ses
 heures de fin, le même marqueur discrimine.
 
-**Et il existe un cas que ce drapeau ne signale pas.** Le drapeau dit exactement
-une chose : le champ d'heure de fin était **absent** de la réponse. Quand le
-serveur l'envoie mais qu'elle est impossible — antérieure ou égale au début, ce
-qui arrive sur les derniers créneaux de la journée — l'intégration la remplace
-par un créneau d'une heure pour ne pas produire d'intervalle inversé, et le
-drapeau reste « faux ». L'heure affichée est alors fabriquée sans que rien ne le
-dise. C'est rare, et le remplacement vaut mieux qu'un cours qui finirait avant de
-commencer ; mais si vous appuyez quelque chose de sensible sur une heure de fin,
-`end_inferred` à « faux » ne vaut pas garantie.
+**Le drapeau couvre deux situations, pas une.** La première est celle qu'on
+attend : PRONOTE n'a pas envoyé d'heure de fin. La seconde est plus rare et vaut
+d'être connue — PRONOTE en envoie une, mais elle est **impossible**, antérieure
+ou égale au début, ce qui arrive sur les derniers créneaux de la journée.
+L'intégration la remplace alors par un créneau d'une heure, pour ne pas publier
+un cours qui finirait avant de commencer, et **elle lève le drapeau**.
+
+Retenez donc `end_inferred` comme une réponse à « puis-je faire confiance à
+cette heure de fin ? » et non à « d'où vient-elle ? ». Quand il vaut « faux »,
+l'heure est celle du serveur, telle quelle.
 
 L'entité **Vacances** est une déduction, et son attribut `inferred` le dit
 franchement : PRONOTE ne publie pas de calendrier des vacances, la seule preuve
