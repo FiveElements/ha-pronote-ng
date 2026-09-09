@@ -233,6 +233,56 @@ Si ce bandeau reste allumé, ce n'est pas un problème d'affichage : voyez
 [Si rien n'arrive jamais](BLUEPRINTS.md#si-rien-narrive-jamais), et notamment
 l'automatisation de surveillance du limiteur.
 
+### Vieux et mort ne se lisent pas de la même façon
+
+Le bandeau ci-dessus ne couvre **qu'un** des deux cas, et l'autre est celui où
+il ne fonctionne pas. Une entité **périmée** appartient à une intégration
+vivante dont la dernière collecte a échoué. Une entité **restaurée** n'appartient
+plus à rien : elle survit dans le registre après la disparition de ce qui
+l'alimentait — un enfant qui n'est plus suivi, un appareil dédoublé (§ 10.5 du
+guide), une catégorie désactivée dans les options.
+
+| | Collecte échouée | Entité restaurée |
+| --- | --- | --- |
+| L'intégration l'alimente encore | oui | **non** |
+| État | la dernière valeur, conservée | **`unavailable`** |
+| `stale` | `true` | **absent** |
+| `fetched_at` | présent, ancien | **absent** |
+| `restored` | absent | **présent** |
+| Durée | passager | **définitif** |
+
+**Une entité restaurée perd `stale` et `fetched_at`**, parce que le code qui les
+calculait n'est plus là. Le bandeau ci-dessus ne s'allumera donc **jamais**
+dessus : `state_attr(..., 'stale')` rend `None`, la condition est fausse, et il
+ne reste que `restored`, `state_class`, `friendly_name` et les capacités. Le
+mécanisme d'observation s'éteint exactement dans le cas où l'on en aurait le plus
+besoin.
+
+Le piège n'est pas qu'une entité morte ait l'air saine — elle est
+`unavailable`, donc visiblement dégradée. Le piège est qu'elle ait l'air
+**passagère** : sur un tableau de bord, « indisponible » se lit comme un creux
+de collecte qui va se résorber, et une entité morte ne se résorbera jamais. Sur
+une installation réelle, 56 entités orphelines étaient toutes `unavailable` avec
+`restored` — et le diagnostic a pris des heures parce que les deux cas se
+ressemblent.
+
+Retenez une ligne : **`stale` répond à « est-ce vieux ? », `restored` à « est-ce
+mort ? », et la seconde question ne se pose jamais à la première.** Pour
+distinguer les deux sur un tableau de bord :
+
+```yaml
+type: conditional
+conditions:
+  - condition: template
+    value_template: >-
+      {{ state_attr('sensor.enfant_un_cours_du_jour', 'restored') is not none }}
+card:
+  type: markdown
+  content: >-
+    ⛔ Cette entité n'est plus alimentée par l'intégration. Elle ne reviendra
+    pas d'elle-même — voyez le § 10.5 du guide.
+```
+
 ---
 
 ## Ce qu'aucune carte ne montrera
