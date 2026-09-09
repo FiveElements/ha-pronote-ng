@@ -358,9 +358,19 @@ source de vérité sur le calendrier scolaire.
 | **Devoirs** *(agenda)* | Un évènement d'une journée par échéance ; les devoirs faits sont préfixés d'une coche. | — |
 | **Devoirs** *(liste de tâches)* | Un élément par devoir : matière en titre, énoncé en description, échéance. Cochable **seulement si vous avez activé l'écriture** (§ [7](#7-écrire-dans-pronote)). | — |
 
-Chaque élément de `items` contient `id`, `subject`, `description`, `due`, `done`
-et `attachments`. Le champ `id` est celui à fournir au service « Cocher un
-devoir ».
+Chaque élément de `items` contient `id`, `subject`, `description`,
+`description_text`, `due`, `done` et `attachments`. Le champ `id` est celui à
+fournir au service « Cocher un devoir ».
+
+**Deux champs pour un seul énoncé, et il faut choisir le bon.** Les professeurs
+saisissent dans un éditeur riche, donc PRONOTE renvoie du HTML : `description`
+le porte tel quel, balises et entités comprises (`&#039;` pour une apostrophe,
+`<br>` pour un saut de ligne). `description_text` est le même énoncé converti en
+texte simple. **Dans une notification, un message vocal ou une carte Markdown,
+prenez `description_text`** — sinon le parent s'entend lire des balises.
+`description` ne sert qu'à un affichage qui sait interpréter le HTML, et rend
+l'emphase et les liens. La liste de tâches **Devoirs**, elle, utilise déjà la
+forme simple.
 
 L'« horizon des devoirs » est un filtre d'affichage, réglable dans les options
 (14 jours par défaut). **Le modifier ne change pas le nombre de requêtes** :
@@ -448,7 +458,7 @@ liste de ses messages (auteur et date, pas le corps du message).
 
 | Entité | État | Attributs utiles |
 | --- | --- | --- |
-| **Menu du jour** | Nombre de plats au repas du jour. Vide s'il n'y a pas de menu publié. | `first_meal`, `main_meal`, `side_meal`, `other_meal`, `cheese`, `dessert`, `is_lunch` |
+| **Menu du jour** | Nombre de plats au repas du jour. Vide s'il n'y a pas de menu publié. | `first_meal`, `main_meal`, `side_meal`, `other_meal`, `cheese`, `dessert`, `is_lunch`, `published` |
 | **Menu de demain** | Idem, pour le lendemain. | Idem |
 
 Chaque attribut est une liste de noms de plats : `first_meal` pour l'entrée,
@@ -460,6 +470,24 @@ jour s'il n'y en a pas.
 
 Les menus ne sont relus qu'une fois par jour, ce qui est amplement suffisant, et
 beaucoup d'établissements n'en publient pas du tout.
+
+**« Pas de menu publié aujourd'hui » s'écrit avec `published`.** C'est le seul
+attribut qui distingue les deux situations, parce que les six listes de plats
+sont vides dans les deux cas : quand rien n'est publié, l'entité vaut `unknown`,
+les six listes sont présentes mais vides, `is_lunch` vaut `null` et `published`
+vaut `false`. Un modèle qui teste seulement `state_attr(..., 'main_meal')`
+obtient une liste vide sans savoir si l'établissement n'a rien publié ou si le
+repas du jour ne comporte pas de plat principal.
+
+```yaml
+condition: template
+value_template: >
+  {{ state_attr('sensor.enfant_un_menu_du_jour', 'published') }}
+```
+
+Et l'état reste `unknown`, jamais `0` : zéro plat serait une affirmation sur un
+menu qui existe. Une automatisation qui compare l'état à un nombre doit donc
+d'abord vérifier `published`, ou tester `has_value`.
 
 ### 4.8 L'élève et l'établissement
 
@@ -763,12 +791,24 @@ mettent plus à jour ».
 | **Appels du jour** | Nombre d'appels au serveur depuis minuit. | `by_tier`, `logins`, `failed_logins` |
 | **Budget restant** | Appels restants avant le plafond du jour. | `daily_cap`, `hourly_rate`, `tokens` |
 | **Dernière collecte** | Date et heure de la dernière collecte réussie. | `tier`, `duration_ms`, `calls` |
-| **Prochaine collecte** | Date et heure de la prochaine collecte prévue. | `tiers_due` |
+| **Prochaine collecte** | Date et heure de la prochaine collecte prévue. | `tiers_due`, `overdue_by`, `failing` |
 | **Âge de la session** | Âge de la session ouverte, en secondes. | — |
 | **Durée de vie de la session** | Durée de vie **mesurée** de la session, en minutes. | `samples`, `last_expiry`, `strategy`, `effective_strategy` |
 | **Connexions du jour** | Nombre de connexions réussies aujourd'hui. | `failed`, `cap` |
 | **État du limiteur** | `Nominal`, `Bridé`, `Temporisation`, `Heures calmes`, `Connexions suspendues` ou `Page de session illisible`. | `reason`, `until`, `consecutive_failures` |
 | **Collectes bridées** *(binaire)* | Actif quand le limiteur reporte des collectes. | `since`, `state`, `consecutive_failures` |
+
+**Une « prochaine collecte » dans le passé n'est pas un bug.** Cette tuile porte
+une échéance, pas un décompte : un horodatage dépassé signifie qu'une catégorie
+est en retard, et ses deux autres attributs disent laquelle des deux causes est
+en jeu. `overdue_by` donne l'ampleur du retard en secondes ; `failing` nomme les
+catégories dont la dernière tentative a échoué, avec leur nombre d'échecs — par
+exemple `{"static": 2}` pour l'équipe pédagogique. Sans ces deux attributs,
+« l'échéance est passée et rien n'a tourné » et « ça tourne et ça échoue à
+chaque fois » se lisent exactement pareil sur la tuile ; avec eux, une catégorie
+qui figure dans `failing` est une donnée que l'établissement ne publie
+probablement pas, et une échéance dépassée avec `failing` vide renvoie à
+« État du limiteur » ci-dessous.
 
 **« État du limiteur » est l'entité à regarder en premier** quand quelque chose
 ne se met plus à jour. Elle donne la cause en un mot :
