@@ -340,6 +340,12 @@ grande majorité des cas, mais elle est une déduction : si vous affichez cette
 heure sur un tableau de bord, `end_inferred` vous permet d'ajouter un
 « environ ».
 
+Ne comptez pas sur ce drapeau pour distinguer quelques cours des autres :
+**certains établissements ne publient aucune heure de fin**, et le drapeau vaut
+alors « vrai » sur la journée entière. Un relevé sur une installation réelle
+donne 37 créneaux sur 37 déduits. Un marqueur « environ » posé par cours devient
+alors du bruit ; une mention unique en bas de la carte dit la même chose mieux.
+
 L'entité **Vacances** est une déduction, et son attribut `inferred` le dit
 franchement : PRONOTE ne publie pas de calendrier des vacances, la seule preuve
 disponible est l'absence de cours. Elle sera donc également active si
@@ -432,6 +438,21 @@ sont relues qu'une fois par jour : une période close ne change plus.
 Une absence se mesure en **heures et en jours** (`hours`, `days`) ; un retard se
 mesure en **minutes** (`minutes`). Ce ne sont pas les mêmes données, et c'est
 pourquoi ce sont deux évènements séparés côté automatisation.
+
+**`hours` est du texte, pas un nombre.** C'est la durée telle que
+l'établissement l'a écrite — « 2h00 » — et elle est reproduite sans être
+convertie. Un modèle qui la multiplie affiche `NaN` ; si vous avez besoin d'une
+durée calculable, utilisez `from_date` et `to_date`. `days`, lui, est bien un
+entier.
+
+**`justified` et `reasons` ne disent pas la même chose, et peuvent sembler se
+contredire.** Le motif est le texte saisi par l'établissement, le drapeau est la
+décision de la vie scolaire. Une absence peut donc porter le motif
+« MALADIE SANS CERTIFICAT » **et** `justified: true` : la famille n'a pas fourni
+de certificat, et l'établissement a justifié quand même. Les deux sont vrais et
+il n'y a rien à réconcilier — c'est même l'information la plus intéressante des
+deux. Une automatisation qui veut savoir si une absence est justifiée doit lire
+`justified`, **jamais** chercher un mot dans `reasons`.
 
 Toutes ces entités n'existent pas partout : un établissement qui ne publie pas
 la vie scolaire par PRONOTE n'alimentera rien ici, et les entités resteront
@@ -1409,8 +1430,8 @@ Ces messages apparaissent dans **Paramètres → Système → Réparations**.
 
 Sur certaines installations, la liste des appareils montre **deux** appareils
 pour le même enfant : un dont les entités se mettent à jour, un dont les entités
-restent figées à leur dernière valeur. C'est la trace d'un défaut réparé, et
-l'appareil figé se supprime sans risque.
+restent figées à leur dernière valeur. C'est la trace d'un défaut réparé en
+**v0.0.10**, et l'appareil figé se supprime sans risque.
 
 **Ce qui s'est passé.** PRONOTE identifie chaque enfant par un numéro de son
 côté, et ce numéro **change** — il est lié à la session, pas à l'élève.
@@ -1424,7 +1445,7 @@ plus du numéro de PRONOTE, donc le dédoublement ne peut plus se produire.
 reconnaître à coup sûr :
 
 - ouvrez une de ses entités et regardez **Dernière modification** : sur
-  l'appareil mort, elle date d'avant la mise à jour ;
+  l'appareil mort, elle date d'avant la mise à jour en v0.0.10 ;
 - l'appareil vivant est celui que « Prochain cours » et « Cours du jour »
   suivent au fil de la journée.
 
