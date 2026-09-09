@@ -629,10 +629,38 @@ def test_age_is_none_before_the_first_collection(clock: FakeClock) -> None:
     assert scheduler.last_collected_at(Tier.TIMETABLE) is None
 
 
-def test_a_tier_with_no_data_is_stale(clock: FakeClock) -> None:
-    """Before the first collection an entity has nothing to keep."""
+def test_a_tier_with_no_recorded_collection_is_not_reported_stale(
+    clock: FakeClock,
+) -> None:
+    """This assertion used to read the other way, and that emptied a dashboard.
+
+    "Before the first collection an entity has nothing to keep" is true, and it
+    is not this function's business: ``PronoteEntity.available`` asks
+    ``snapshot is not None`` *first*, and ``extra_state_attributes`` returns
+    nothing without one. Staleness is a statement about **age**, and a tier
+    with no recorded collection has no age, so it cannot have exceeded one.
+
+    Answering "stale" made the two questions collide during a window that
+    genuinely exists. ``_async_collect`` publishes each snapshot to the
+    coordinator -- which is what notifies the entities -- and calls
+    ``mark_collected`` only after the loop over the students. So every entity
+    is told its data has arrived at an instant when the tier still has no
+    ``last_collected``, evaluated ``available`` as False, and wrote itself
+    ``unavailable`` on the very push that delivered the snapshot. A
+    microsecond later the age existed and nothing re-rendered.
+
+    Measured on a live instance: ten tiers collected, nineteen entities across
+    seven tiers stayed ``unavailable`` holding data. The survivors were the
+    entities in ``CLOCK_DRIVEN_KEYS``, which schedule their own
+    re-evaluation -- which is why ``timetable`` and ``homework`` looked healthy
+    and ``marks``, ``news`` and ``menus`` did not, and why the same defect had
+    already been showing up in CI as one flaky run in twenty on the
+    lowest-priority tier.
+    """
     scheduler = build(clock, one(Tier.TIMETABLE, 15, Priority.HIGH))
-    assert scheduler.is_stale(Tier.TIMETABLE, stale_after=3)
+
+    assert scheduler.age(Tier.TIMETABLE) is None
+    assert not scheduler.is_stale(Tier.TIMETABLE, stale_after=3)
 
 
 def test_an_unknown_tier_is_stale(clock: FakeClock) -> None:

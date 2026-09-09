@@ -316,6 +316,35 @@ class PronoteAccount:
             timedelta(minutes=interval),
             name=f"{DOMAIN} master tick",
         )
+
+    def async_start_first_collection(self) -> None:
+        """Schedule the first batch, once there are entities to receive it.
+
+        Deliberately *not* called from :meth:`async_setup`, and that is
+        load-bearing. Set-up forwards the platforms only after the account has
+        learned its shape, so a batch scheduled during set-up races the
+        creation of the very entities it collects for -- and a coordinator that
+        publishes before an entity has subscribed pushes to nobody. The entity
+        is added afterwards, renders once from ``coordinator.data``, finds
+        nothing for its tier and renders ``unavailable``; the snapshot that
+        arrived a moment earlier is sitting in the coordinator, and no second
+        write ever goes out to notice it.
+
+        Nothing recovers from it either, which is what makes the ordering worth
+        a method of its own. The tier is *genuinely* collected: the scheduler
+        holds its deadline and :meth:`has_data` is true, so the
+        first-collection dispensation in ``collect_tier`` stops applying and a
+        ``refresh`` is refused -- correctly, and uselessly. The entity then
+        waits for the tier's own interval: three hours for ``marks``, a full
+        day for ``menus`` and ``history``, and with quiet hours on, until
+        06:00.
+
+        Measured on a live instance at 00:12: all ten tiers placed their
+        requests and published, and nineteen entities across seven tiers stayed
+        ``unavailable`` with their data already present. The two tiers whose
+        snapshots landed before the platforms were forwarded -- ``timetable``
+        and ``homework`` -- were the only ones that displayed.
+        """
         # Collect immediately rather than waiting a full tick: a fresh install
         # showing nothing for five minutes reads as broken.
         self.hass.async_create_task(

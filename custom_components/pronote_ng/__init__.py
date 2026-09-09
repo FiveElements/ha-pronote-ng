@@ -149,6 +149,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Only now, and never before this line: the entities exist and have
+    # subscribed to their coordinators, so the first batch's snapshots reach
+    # them instead of being published to nobody. See
+    # `PronoteAccount.async_start_first_collection`.
+    account.async_start_first_collection()
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
 

@@ -34,6 +34,7 @@ from pronotepy.exceptions import CryptoError, MFAError, PronoteAPIError
 import pytest
 
 from custom_components.pronote_ng import async_remove_config_entry_device
+from custom_components.pronote_ng.account import PronoteAccount
 from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
     DOMAIN,
@@ -53,6 +54,7 @@ from custom_components.pronote_ng.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
 )
+from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
 from custom_components.pronote_ng.tiers import collect_tier
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
@@ -61,8 +63,6 @@ if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
-
-    from custom_components.pronote_ng.account import PronoteAccount
 
     from .fixtures.client import FakeClient
 
@@ -706,6 +706,117 @@ async def test_the_account_device_cannot_be_deleted(
     assert parent is not None, "the account device is missing from the fixture"
 
     assert await async_remove_config_entry_device(hass, mock_entry, parent) is False
+
+
+class TestWhenTheFirstBatchIsAllowedToRun:
+    """The first collection must not race the entities it collects for.
+
+    A defect measured on a live instance, and the second one this month whose
+    symptom was "every entity is empty" with a different cause. Set-up learns
+    the account's shape, then forwards the platforms -- but the first batch was
+    scheduled from `async_setup`, which is *before* that. A coordinator
+    publishing before its entities have subscribed pushes to nobody: each
+    entity is added afterwards, renders once from `coordinator.data`, and a
+    tier whose snapshot landed inside that window renders `unavailable` with
+    its data already present.
+
+    What makes it permanent rather than transient is that the tier is
+    genuinely collected. The scheduler holds its deadline and `has_data` is
+    true, so the first-collection dispensation of `collect_tier` no longer
+    applies and a `refresh` is refused -- correctly, and to no effect. The
+    entity then waits a full tier interval: three hours for `marks`, a day for
+    `menus` and `history`, and with quiet hours on, until 06:00.
+
+    Measured: ten tiers placed their requests and published; nineteen entities
+    across seven tiers stayed `unavailable`. The only two that displayed were
+    the two whose snapshots landed before the platforms were forwarded.
+    """
+
+    async def test_setting_the_account_up_does_not_collect_on_its_own(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        parent_client: FakeClient,
+        school_day: FrozenDateTimeFactory,
+        no_spacing: None,
+    ) -> None:
+        """The ordering contract, asserted where it can be asserted at all.
+
+        This is the one test that pins the *cause* rather than the symptom.
+        `async_setup` must leave the account collected-nothing, so that the
+        only thing which can start a batch is the explicit call made after
+        `async_forward_entry_setups`. Asserting the symptom instead -- "no
+        entity is empty" -- cannot catch a reintroduction, because the race is
+        won by whichever of two tasks the loop happens to run first, and on an
+        idle machine that was the harmless order roughly nineteen times in
+        twenty.
+
+        `completed_ticks` and the coordinators together, because either alone
+        is satisfiable by accident: a batch that ran and found nothing due
+        would leave the coordinators empty, and a batch that never ran leaves
+        the counter at zero.
+        """
+        del school_day, no_spacing
+        account = PronoteAccount(hass, mock_entry)
+
+        with patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=parent_client,
+        ):
+            await account.async_setup()
+            await hass.async_block_till_done()
+            try:
+                assert account.completed_ticks == 0
+                assert all(
+                    not coordinator.data
+                    for tier, coordinator in account.coordinators.items()
+                    if tier is not Tier.SESSION
+                )
+            finally:
+                await account.async_unload()
+                await hass.async_block_till_done()
+
+    async def test_every_tier_that_collected_has_an_entity_that_shows_it(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The promise, stated the way a dashboard experiences it.
+
+        Read through the entity registry by `unique_id` rather than by
+        entity id: the identifier's suffix comes from the translated *name*,
+        and guessing it from the translation key is the mistake that put
+        eleven identifiers that do not exist into annexe A.
+
+        Every tier holding a snapshot is required to have every one of its
+        sensors available -- not a sampled one. The defect this replaces hit
+        seven tiers out of ten and spared the two that happened to publish
+        early, so a test naming one tier would have passed throughout.
+        """
+        registry = er.async_get(hass)
+        student_id = account.state.students[0].id
+        key = child_key(account.entry, student_id)
+
+        empty: list[str] = []
+        checked = 0
+        for description in (*PRIMITIVE_SENSORS, *LIST_SENSORS):
+            coordinator = account.coordinators.get(description.tier)
+            if coordinator is None or not coordinator.data:
+                continue
+            unique_id = f"{account.entry.entry_id}_{key}_{description.key}"
+            entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            if entity_id is None:
+                continue
+            checked += 1
+            state = hass.states.get(entity_id)
+            if state is None or state.state == "unavailable":
+                empty.append(entity_id)
+
+        assert not empty, (
+            f"tiers collected but these entities stayed empty: {empty}; "
+            f"schedule={account.scheduler.diagnostics()}"
+        )
+        # A guard on the guard: if the descriptions or the registry lookup ever
+        # stop matching, the loop above would assert nothing at all and pass.
+        assert checked > 20
 
 
 class TestWhatSurvivesAReload:

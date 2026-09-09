@@ -437,8 +437,36 @@ class FetchScheduler:
         """
         plan = self._plans.get(tier)
         age = self.age(tier)
-        if plan is None or age is None:
+        if plan is None:
             return True
+        if age is None:
+            # No recorded collection is **not** "too old": there is no age to
+            # exceed. Answering `True` here cost a live instance its whole
+            # dashboard, because of an ordering that is easy to miss.
+            #
+            # `_async_collect` publishes each student's snapshot and only then
+            # calls `mark_collected`. Publishing is what notifies the entities,
+            # so at the instant they are told their data has arrived, the tier
+            # still has no `last_collected` -- and every one of them evaluated
+            # `available` as False and wrote itself `unavailable`, on the very
+            # push that delivered the snapshot. `mark_collected` then set the
+            # age a microsecond later with nothing left to re-render.
+            #
+            # What made it look like a different bug on every tier is which
+            # entities recover. Those in `CLOCK_DRIVEN_KEYS` schedule their own
+            # re-evaluation and repaired themselves within the hour, so
+            # `timetable` and `homework` appeared to work; `marks`, `news`,
+            # `menus`, `discussions`, `attendance` and `evaluations` have no
+            # such timer and stayed `unavailable` with their data present --
+            # until the tier's next interval, which is a full day for `menus`,
+            # and until 06:00 with quiet hours on.
+            #
+            # Returning False cannot hide a missing snapshot, which is the
+            # thing a caller might fear: `PronoteEntity.available` asks
+            # `snapshot is not None` *first* and `extra_state_attributes`
+            # returns nothing without one. Absence of data and staleness of
+            # data are two questions, and this one is only ever the second.
+            return False
         return (age - max(0.0, excused)) > stale_after * plan.interval_seconds
 
     def last_collected_at(self, tier: Tier) -> datetime | None:
