@@ -1,4 +1,10 @@
 # Pronote NG — PRONOTE pour Home Assistant
+[![Validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&label=validate&logo=github)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml)
+[![Hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml)
+[![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&label=HACS)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml)
+![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?logo=homeassistant&logoColor=white)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 
 <p align="center">
   <img src="docs/assets/logo.png" alt="Pronote NG" width="180">
@@ -25,13 +31,7 @@
 
 </p>
 
-<p align="center">
-  <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&label=validate&logo=github" alt="Validate"></a>
-  <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white" alt="Hassfest"></a>
-  <a href="https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml"><img src="https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&label=HACS" alt="HACS"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?logo=homeassistant&logoColor=white" alt="Home Assistant 2026.9.0 minimum">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-green" alt="Licence MIT"></a>
-</p>
+
 
 ## Les points forts
 
