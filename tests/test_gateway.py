@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -45,6 +46,7 @@ from custom_components.pronote_ng.gateway import (
     _parse_date,
     _parse_datetime,
     _required_list,
+    _shape,
     _strings,
     _supersedes,
     deduplicate_lessons,
@@ -123,6 +125,34 @@ def test_list_reads_the_v_wrapper_or_gives_up_quietly() -> None:
     assert _list({"a": [1, 2]}, "a") == [1, 2]
     assert _list({"a": {"V": None}}, "a") == []
     assert _list({}, "a") == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(None, "absent", id="a key that is not there"),
+        pytest.param({}, "an empty mapping", id="a section that is there and empty"),
+        pytest.param(
+            {"b": 1, "a": 2},
+            "a mapping of ['a', 'b']",
+            id="a section carrying other keys, named and sorted",
+        ),
+        pytest.param([1, 2, 3], "a list of 3", id="a collection, counted not printed"),
+        pytest.param("Prof. Secret", "a str", id="a value, described by type alone"),
+    ],
+)
+def test_a_shape_describes_without_disclosing(value: Any, expected: str) -> None:
+    """Every branch, because each answers a different maintenance question.
+
+    "absent" says the path is wrong and the protocol changed; "an empty
+    mapping" says this establishment publishes nothing there; a named key set
+    says what it publishes *instead*, which is what turns "the protocol
+    changed" into "the protocol changed to this". A count and a type name are
+    for the cases where the content itself is a child's school record: this
+    text lands in the file users attach to public issues (§8.2), so the last
+    case asserts the *value* never appears -- only its type.
+    """
+    assert _shape(value) == expected
 
 
 def test_a_required_list_refuses_to_be_empty_when_its_key_is_absent() -> None:
@@ -481,6 +511,37 @@ def test_an_inverted_interval_is_refused(
     lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
 
     assert lesson.end > lesson.start
+
+
+def test_an_end_the_guard_had_to_invent_is_flagged_even_when_one_was_sent(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """A fabricated hour must never be declared reliable.
+
+    ``end_inferred`` used to be exactly ``DateDuCoursFin is None``, while
+    ``_sane_end`` replaces any end that is not after the start -- whatever the
+    field said. So a server publishing a *present but impossible* end got
+    ``start + 1h`` with the flag still ``False``: an hour this gateway made up,
+    announced as the server's own, and announced so precisely where the data
+    is least trustworthy. Every entity that stays silent on a doubtful end
+    reads that flag, so they would all have asserted this one.
+
+    Whether a real server sends an inverted end is unknown, and the test does
+    not depend on it: the guard's docstring asserted this could not happen,
+    nothing enforced it, and that gap is what is closed here.
+    """
+    client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+        [
+            protocol.lesson(
+                start=dt.datetime(2026, 3, 12, 10, 0),
+                end=dt.datetime(2026, 3, 12, 9, 0),
+            )
+        ]
+    )
+    lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+
+    assert lesson.end == dt.datetime(2026, 3, 12, 11, 0, tzinfo=PARIS)
+    assert lesson.end_inferred is True
 
 
 def test_a_slot_with_no_published_content_still_decodes(
@@ -1512,9 +1573,77 @@ def test_a_teaching_staff_response_without_its_list_names_what_it_did_carry(
         gateway.static(client)
 
     assert "the teaching staff" in caplog.text
-    assert "liste" in caplog.text
+    assert "dataSec.data.liste" in caplog.text
     # The keys it *does* carry, which is the whole point of the change.
     assert "listeEquipePedagogique" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        pytest.param(
+            {"dataSec": {"data": {}}},
+            "dataSec.data carries no 'liste'",
+            id="the section is reached and lacks the collection",
+        ),
+        pytest.param(
+            {"dataSec": {}},
+            "dataSec carries no 'data'",
+            id="the walk stops one level higher",
+        ),
+    ],
+)
+def test_a_missing_section_and_an_empty_one_are_not_reported_alike(
+    gateway: PronoteGateway,
+    client: FakeClient,
+    caplog: pytest.LogCaptureFixture,
+    response: dict[str, Any],
+    expected: str,
+) -> None:
+    """The warning existed to make this distinction and could not make it.
+
+    Both cases used to print ``[]``, because the caller walked the path first
+    and passed ``_get(...) or {}`` -- so "absent" had already become "empty"
+    before the reader saw it. A live establishment reported that exact line and
+    the question "is the field renamed, or does this school publish nothing?"
+    could not be answered from the log, which is the only question the warning
+    is for.
+
+    Reporting the shape at the failure point was not enough either, and this
+    test is what caught that: both responses below stop on an empty mapping,
+    and from the outside both are "a mapping of ['dataSec']". Only naming the
+    level actually reached and the key it lacks separates a section this
+    school does not publish from a path that broke one level higher.
+    """
+    caplog.set_level(logging.WARNING)
+    client.responses["PageEquipePedagogique"] = response
+
+    with pytest.raises(ProtocolChanged):
+        gateway.static(client)
+
+    assert expected in caplog.text
+
+
+def test_the_warning_names_shapes_and_never_a_value(
+    gateway: PronoteGateway, client: FakeClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """It lands in a file users attach to public issues (§8.2).
+
+    Key names and types are what makes a protocol change diagnosable; the
+    values behind them are a child's school record. A helper that printed the
+    response to describe it would be a leak in the one place we ask people to
+    publish.
+    """
+    caplog.set_level(logging.WARNING)
+    client.responses["PageEquipePedagogique"] = {
+        "dataSec": {"data": {"listeEquipePedagogique": {"V": [{"L": "Prof. Secret"}]}}}
+    }
+
+    with pytest.raises(ProtocolChanged):
+        gateway.static(client)
+
+    assert "listeEquipePedagogique" in caplog.text
+    assert "Prof. Secret" not in caplog.text
 
 
 def test_an_empty_teaching_staff_list_is_not_a_failure(

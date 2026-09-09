@@ -255,6 +255,29 @@ def _list(source: Any, *path: str) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _shape(value: Any) -> str:
+    """What a value *is*, named without quoting anything it contains.
+
+    Key names and types only, never a value: this ends up in the warning a
+    user is invited to attach to a public issue (§8.2).
+
+    The distinction between an empty mapping and a missing one is the whole
+    point, and the first version of this warning lost it: both printed ``[]``,
+    because a caller passing ``_get(...) or {}`` turns "absent" into "empty"
+    before the reader ever sees it. A live establishment then reported "what it
+    does carry is ``[]``" and nobody could tell whether the section was empty
+    or the path was wrong -- which is exactly the question the warning exists
+    to answer.
+    """
+    if value is None:
+        return "absent"
+    if isinstance(value, dict):
+        return "an empty mapping" if not value else f"a mapping of {sorted(value)}"
+    if isinstance(value, list):
+        return f"a list of {len(value)}"
+    return f"a {type(value).__name__}"
+
+
 def _required_list(source: Any, *path: str, what: str) -> list[Any]:
     """Read a collection the protocol is expected to provide.
 
@@ -273,8 +296,16 @@ def _required_list(source: Any, *path: str, what: str) -> list[Any]:
     was renamed is not.
     """
     cursor: Any = source
-    for key in path:
+    for depth, key in enumerate(path):
         if not isinstance(cursor, dict) or key not in cursor:
+            # *Which* key of the path is missing, not just the path. Reporting
+            # the whole path and the shape at the failure point still cannot
+            # tell `{"dataSec": {}}` from `{"dataSec": {"data": {}}}`: both
+            # stop at an empty mapping, and both responses are "a mapping of
+            # ['dataSec']" from the outside. Naming the level reached and the
+            # key it lacks is the only version of this warning that answers
+            # the question it is for.
+            reached = ".".join(path[:depth]) if depth else "the response"
             # The key names actually present, which is the single piece of
             # information that turns "the protocol changed" into "the protocol
             # changed *to this*". Names only, never a value: this warning lands
@@ -284,16 +315,18 @@ def _required_list(source: Any, *path: str, what: str) -> list[Any]:
             # dropped one key, the log said `KeyError: 'liste'`, and there was
             # no way to tell a renamed field from a section the establishment
             # does not publish without shipping a build just to look.
-            seen = sorted(cursor) if isinstance(cursor, dict) else type(cursor).__name__
             _LOGGER.warning(
-                "PRONOTE returned no %s: the response carries no %s. What it "
-                "does carry at that level is %s. This usually means the "
-                "protocol changed and the integration needs an update; "
-                "treating the collection as failed rather than as empty so the "
-                "previous data is kept",
+                "PRONOTE returned nothing usable for %s: %s carries no %r, so "
+                "%s could not be read. What %s does carry is %s. This usually "
+                "means the protocol changed and the integration needs an "
+                "update; treating the collection as failed rather than as "
+                "empty so the previous data is kept",
                 what,
+                reached,
+                key,
                 ".".join(path),
-                seen,
+                reached,
+                _shape(cursor),
             )
             raise ProtocolChanged(what, ".".join(path))
         cursor = cursor[key]
@@ -614,7 +647,7 @@ class PronoteGateway:
             return fallback
 
         start = self._instant(upstream.start)
-        end = self._sane_end(start, self._instant(upstream.end), upstream.id)
+        end, made_up = self._sane_end(start, self._instant(upstream.end), upstream.id)
 
         subject = upstream.subject
         return Lesson(
@@ -640,13 +673,15 @@ class PronoteGateway:
             duration=int(entry.get("duree", 1) or 1),
             # `Util.place2time` carries the upstream comment "might be wrong...
             # works with demo", and everything downstream depends on `end`.
-            end_inferred=_get(entry, "DateDuCoursFin", "V") is None,
+            # `or made_up`: an end the guard had to fabricate is inferred
+            # too, even when the field was present. See `_sane_end`.
+            end_inferred=_get(entry, "DateDuCoursFin", "V") is None or made_up,
         )
 
     def _sane_end(
         self, start: dt.datetime, end: dt.datetime, identifier: object
-    ) -> dt.datetime:
-        """Guarantee ``end > start``, re-deriving the end if it is not.
+    ) -> tuple[dt.datetime, bool]:
+        """Guarantee ``end > start``, and say whether the end had to be made up.
 
         When ``DateDuCoursFin`` is absent, upstream infers the end as
         ``place % (len(end_times) - 1) + duree - 1`` and then feeds *that*
@@ -658,21 +693,31 @@ class PronoteGateway:
         ``sensor.<eleve>_fin_des_cours`` wrong for the whole day.
 
         §4.1 makes this gateway the single place ``end`` is established, so it
-        is also the only place that can refuse an impossible one. The fallback
-        is a plain hour: never earlier than the start, and ``end_inferred`` is
-        already ``True`` on every entry this can touch, so the entities that
-        must not assert a doubtful end stay silent regardless.
+        is also the only place that can refuse an impossible one.
+
+        **Returning the substitution rather than hiding it** is the point of
+        the second element. This used to claim that ``end_inferred`` was
+        already ``True`` on every entry it could touch -- but that flag is
+        exactly ``DateDuCoursFin is None``, while this guard fires on
+        ``end <= start`` whatever the field said. A server publishing a
+        present-but-impossible end therefore got a fabricated ``start + 1h``
+        with the flag still ``False``: an invented hour declared reliable,
+        which is the opposite of what the flag is for, and worst precisely
+        where the data is least trustworthy. Whether a server ever does that
+        is unknown and does not matter -- the caller ORs this into
+        ``end_inferred``, so the invariant now holds by construction instead
+        of by circumstance.
         """
         if end > start:
-            return end
+            return end, False
         _LOGGER.debug(
             "lesson %s came back ending before it starts (%s -> %s); using a "
-            "one-hour slot instead",
+            "one-hour slot instead and marking the end as inferred",
             identifier,
             start.isoformat(),
             end.isoformat(),
         )
-        return start + dt.timedelta(hours=1)
+        return start + dt.timedelta(hours=1), True
 
     def _lesson_raw(self, entry: dict[str, Any]) -> Lesson | None:
         """Decode the minimum a timetable slot needs, from raw JSON only.
@@ -699,6 +744,8 @@ class PronoteGateway:
         raw_end = self._aware(_parse_datetime(_get(entry, "DateDuCoursFin", "V")))
         end = raw_end if raw_end is not None else start + dt.timedelta(hours=duration)
 
+        end, made_up = self._sane_end(start, end, identifier)
+
         return Lesson(
             id=str(identifier),
             subject=None,
@@ -707,7 +754,7 @@ class PronoteGateway:
             classrooms=(),
             groups=(),
             start=start,
-            end=self._sane_end(start, end, identifier),
+            end=end,
             canceled=bool(entry.get("estAnnule", False)),
             status=_get(entry, "Statut") or None,
             detention=bool(entry.get("estRetenue", False)),
@@ -720,7 +767,7 @@ class PronoteGateway:
             num=int(entry.get("P", 0) or 0),
             place=int(entry.get("place", 0) or 0),
             duration=duration,
-            end_inferred=raw_end is None,
+            end_inferred=raw_end is None or made_up,
         )
 
     # -- homework ----------------------------------------------------------
@@ -1396,8 +1443,16 @@ class PronoteGateway:
         the keys the response did carry -- which is the difference between a
         diagnosable outage and a guess.
         """
+        # The whole response and the whole path, not a pre-walked fragment.
+        # This first read `_get(..., "dataSec", "data") or {}` and asked for
+        # `liste` alone, which meant the warning could not tell an empty
+        # `data` from a missing one -- the `or {}` had already turned the
+        # second into the first. A live establishment then reported exactly
+        # that ambiguity and the question could not be answered from the log.
         entries = _required_list(
-            _get(client.post("PageEquipePedagogique", 37), "dataSec", "data") or {},
+            client.post("PageEquipePedagogique", 37),
+            "dataSec",
+            "data",
             "liste",
             what="the teaching staff",
         )
