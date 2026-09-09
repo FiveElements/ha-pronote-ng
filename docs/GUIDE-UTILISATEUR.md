@@ -343,8 +343,20 @@ heure sur un tableau de bord, `end_inferred` vous permet d'ajouter un
 Ne comptez pas sur ce drapeau pour distinguer quelques cours des autres :
 **certains établissements ne publient aucune heure de fin**, et le drapeau vaut
 alors « vrai » sur la journée entière. Un relevé sur une installation réelle
-donne 37 créneaux sur 37 déduits. Un marqueur « environ » posé par cours devient
-alors du bruit ; une mention unique en bas de la carte dit la même chose mieux.
+donne 37 créneaux sur 37 déduits. Une carte qui marque chaque ligne d'un
+« environ » les marquera donc toutes, et ce n'est **pas** un défaut d'affichage :
+c'est l'établissement qui ne publie rien. Sur un établissement qui publie ses
+heures de fin, le même marqueur discrimine.
+
+**Et il existe un cas que ce drapeau ne signale pas.** Le drapeau dit exactement
+une chose : le champ d'heure de fin était **absent** de la réponse. Quand le
+serveur l'envoie mais qu'elle est impossible — antérieure ou égale au début, ce
+qui arrive sur les derniers créneaux de la journée — l'intégration la remplace
+par un créneau d'une heure pour ne pas produire d'intervalle inversé, et le
+drapeau reste « faux ». L'heure affichée est alors fabriquée sans que rien ne le
+dise. C'est rare, et le remplacement vaut mieux qu'un cours qui finirait avant de
+commencer ; mais si vous appuyez quelque chose de sensible sur une heure de fin,
+`end_inferred` à « faux » ne vaut pas garantie.
 
 L'entité **Vacances** est une déduction, et son attribut `inferred` le dit
 franchement : PRONOTE ne publie pas de calendrier des vacances, la seule preuve
