@@ -350,8 +350,20 @@ if HAS_HASS_HARNESS:
             # test that happened to expose its absence. Waiting on the tick
             # lock, and not on any tier having data, is deliberate: tests that
             # break a tier on purpose must still get past this line.
+            # Waiting on `completed_ticks` and not on the lock, because the
+            # lock could not distinguish "the batch is over" from "the batch
+            # has not begun". Set-up schedules the first collection as a task,
+            # so on a loaded machine this loop ran before that task had taken
+            # the lock, read it as free and broke out immediately -- having
+            # waited for nothing. The symptom was the previous comment's, one
+            # run in twenty, on the gated CI row: the lowest-priority tier's
+            # entity `unavailable` because its snapshot had not landed.
+            # `completed_ticks` only ever goes up, and counts empty batches
+            # too, so a test that deliberately leaves nothing due still gets
+            # past this line -- which is the property the lock had and that
+            # waiting on any tier having data would lose.
             for _ in range(_BATCH_DRAIN_ATTEMPTS):
-                if not account._tick_lock.locked():
+                if account.completed_ticks and not account._tick_lock.locked():
                     break
                 await hass.async_block_till_done()
             else:  # pragma: no cover - a batch that never ends is a defect

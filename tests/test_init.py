@@ -611,3 +611,45 @@ async def test_a_stale_child_selection_says_so_instead_of_recovering_quietly(
 
         await hass.config_entries.async_unload(mock_entry.entry_id)
         await hass.async_block_till_done()
+
+
+async def test_a_finished_batch_is_counted_so_a_caller_can_wait_for_it(
+    hass: HomeAssistant,
+    account: PronoteAccount,
+) -> None:
+    """The lock could not tell "over" from "not begun", and that flaked CI.
+
+    Set-up schedules the first collection as a task. A caller that checked
+    ``_tick_lock`` before that task had taken it read the lock as free and
+    concluded the batch was finished, having waited for nothing -- so the
+    lowest-priority tier's entity was still ``unavailable`` when the test read
+    it. It failed about one run in twenty, on the *gated* CI row, which is the
+    worst place for it: a barrier that flickers either lets something through
+    or blocks a release at random.
+
+    ``completed_ticks`` is incremented at the end of a batch, so a non-zero
+    value cannot mean "not started yet".
+    """
+    assert account.completed_ticks >= 1, (
+        "set-up returned before its own first collection had finished"
+    )
+    assert not account._tick_lock.locked()
+
+
+async def test_a_batch_with_nothing_due_is_still_counted(
+    hass: HomeAssistant,
+    account: PronoteAccount,
+) -> None:
+    """Counting only *productive* batches would reintroduce the same hang.
+
+    Some tests deliberately leave no tier due -- that is how a broken tier or
+    a spent budget is exercised -- and a wait that required a collection would
+    never be satisfied by them. So an empty batch counts too, which is the one
+    property the discarded lock check did have.
+    """
+    before = account.completed_ticks
+
+    # Nothing has become due since the fixture drained the first batch.
+    await account._async_tick()
+
+    assert account.completed_ticks == before + 1

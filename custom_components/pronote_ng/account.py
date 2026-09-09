@@ -218,6 +218,16 @@ class PronoteAccount:
         self._child_keys: dict[str, str] = {}
         self._unsub_tick: Any | None = None
         self._tick_lock = asyncio.Lock()
+        #: Batches that have run to completion, empty ones included. It exists
+        #: because "has the first collection finished?" had no answer a caller
+        #: could wait on: the lock is only held *while* a batch runs, so a test
+        #: that checked it before the first-collection task had started read
+        #: `False` and concluded the batch was over. That produced the
+        #: lowest-priority tier's entity `unavailable` on a loaded machine,
+        #: about one run in twenty, on the gated row -- a flaky gate, which
+        #: lets something through or blocks a release at random. Counted at the
+        #: end and not at the start, so it means finished.
+        self._completed_ticks = 0
         self._unread_by_student: dict[str, dict[str, int]] = {}
         self._shutting_down: bool = False
         #: Registry id of this entry's account device, filled in by
@@ -619,27 +629,39 @@ class PronoteAccount:
             return
 
         async with self._tick_lock:
-            due = self.scheduler.due()
-            if not due:
-                return
-            _LOGGER.debug("batch: %s", ", ".join(str(tier) for tier in due))
-            # Declaring the batch is load-bearing twice over. The limiter needs
-            # it so that entering quiet hours halfway through lets the batch
-            # finish rather than refusing its remaining tiers (annexe B §8);
-            # the session needs it because `per_batch` means one login per
-            # *batch*, and without a boundary it meant one login per
-            # `(child, tier)` -- 36 logins in a single tick for a two-child
-            # account with three closed periods, against a cap of 24.
-            self.limiter.begin_batch()
-            self.session.begin_batch()
             try:
-                for tier in due:
-                    if self._stopping():
-                        return
-                    await self._async_collect(tier)
+                await self._async_run_batch()
             finally:
-                self.limiter.end_batch()
-            self._async_sync_issues()
+                self._completed_ticks += 1
+
+    @property
+    def completed_ticks(self) -> int:
+        """How many batches have finished, empty ones included."""
+        return self._completed_ticks
+
+    async def _async_run_batch(self) -> None:
+        """One batch, under the tick lock the caller already holds."""
+        due = self.scheduler.due()
+        if not due:
+            return
+        _LOGGER.debug("batch: %s", ", ".join(str(tier) for tier in due))
+        # Declaring the batch is load-bearing twice over. The limiter needs
+        # it so that entering quiet hours halfway through lets the batch
+        # finish rather than refusing its remaining tiers (annexe B §8);
+        # the session needs it because `per_batch` means one login per
+        # *batch*, and without a boundary it meant one login per
+        # `(child, tier)` -- 36 logins in a single tick for a two-child
+        # account with three closed periods, against a cap of 24.
+        self.limiter.begin_batch()
+        self.session.begin_batch()
+        try:
+            for tier in due:
+                if self._stopping():
+                    return
+                await self._async_collect(tier)
+        finally:
+            self.limiter.end_batch()
+        self._async_sync_issues()
 
     async def async_request_tick(self) -> None:
         """Serve what is due now, without waiting for the next heartbeat.
@@ -990,6 +1012,12 @@ class PronoteAccount:
             "limiter": self.limiter.snapshot_counters(),
             "session": self.session.diagnostics(),
             "scheduler": self.scheduler.diagnostics(),
+            # Batches finished since start-up. Reported because a tier with no
+            # data is two different faults depending on this number: zero means
+            # no batch has run at all -- a heartbeat that never started, or a
+            # set-up that never got past the login -- while a number that keeps
+            # climbing against an empty tier points at that tier's collector.
+            "completed_ticks": self._completed_ticks,
             "students": [
                 {
                     "id_hash": _short_hash(student.id),
