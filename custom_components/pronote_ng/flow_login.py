@@ -204,10 +204,24 @@ def _qr_login(data: Mapping[str, Any]) -> HardenedClient:
 
 
 def _ent_provider(data: Mapping[str, Any]) -> Callable[..., Any] | None:
-    """Resolve the named ENT provider, or ``None``.
+    """Resolve the named ENT provider, or refuse.
 
     Resolved by name at call time rather than stored, because a config entry
     holds JSON and ``pronotepy.ent`` exposes plain functions.
+
+    An unresolvable name **raises**, and it used to return ``None``. That looks
+    like a graceful degradation and is the opposite of one: ``build_client``
+    then runs with ``ent=None`` in ``mode="normal"``, which sends the *ENT
+    portal's* username and password straight to the PRONOTE server. The login
+    cannot succeed -- so the user was shown "invalid credentials" for what is a
+    typo in a provider name, and one of the three slots on the IP guard was
+    spent proving it. The provider list is a free-text-capable selector
+    (``custom_value=True``), so a typo is not a remote possibility.
+
+    Two names can reach here: one the user typed, and one persisted long ago
+    that a ``pronotepy`` upgrade has since removed. The second is why the check
+    cannot live only in the flow's form validation -- the runtime login path
+    resolves the same stored name on every reconnection.
     """
     name = data.get(CONF_ENT)
     if not name:
@@ -215,10 +229,15 @@ def _ent_provider(data: Mapping[str, Any]) -> Callable[..., Any] | None:
 
     from pronotepy import ent as ent_module  # noqa: PLC0415 -- optional dependency
 
+    from .config_flow import ProbeEntUnknown  # noqa: PLC0415 -- the flow owns it
+
     provider = getattr(ent_module, str(name), None)
     if provider is None or not callable(provider):
+        # The name is the user's own input, not a secret: it names a public
+        # regional portal and is what has to appear in the log for the message
+        # on the screen to be actionable.
         _LOGGER.error("unknown ENT provider %r", name)
-        return None
+        raise ProbeEntUnknown(str(name))
     return provider  # type: ignore[no-any-return]
 
 

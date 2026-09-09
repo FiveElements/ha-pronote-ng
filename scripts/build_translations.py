@@ -343,7 +343,15 @@ CONFIG_EN: dict[str, Any] = {
         ),
         "invalid_qr_payload": (
             "That does not look like the content of a PRONOTE QR code. It "
-            "should be a JSON object with login, jeton and url."
+            "should be a JSON object with login, jeton and url -- the first "
+            "two written in hexadecimal. Paste it whole, exactly as the app "
+            "gives it."
+        ),
+        "unknown_ent": (
+            "No ENT provider by that name is installed. Pick one from the list "
+            "rather than typing it in: an unrecognised name does not fall back "
+            "to anything sensible, it sends this portal's username and "
+            "password to the PRONOTE server instead."
         ),
         "cannot_connect": "Could not reach the server.",
         "rate_limited": (
@@ -548,7 +556,16 @@ CONFIG_FR: dict[str, Any] = {
         ),
         "invalid_qr_payload": (
             "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit "
-            "s'agir d'un objet JSON avec login, jeton et url."
+            "s'agir d'un objet JSON avec login, jeton et url — les deux "
+            "premiers en hexadécimal. Collez-le en entier, exactement tel que "
+            "l'application le donne."
+        ),
+        "unknown_ent": (
+            "Aucun fournisseur ENT de ce nom n'est installé. Choisissez-en un "
+            "dans la liste plutôt que de le saisir : un nom non reconnu ne "
+            "retombe pas sur quelque chose de raisonnable, il envoie "
+            "l'identifiant et le mot de passe de ce portail au serveur "
+            "PRONOTE."
         ),
         "cannot_connect": "Impossible de joindre le serveur.",
         "rate_limited": (
