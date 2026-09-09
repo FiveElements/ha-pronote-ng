@@ -59,6 +59,7 @@ theme:
 nav:
   - Accueil: index.md
   - Guide de l'utilisateur: GUIDE-UTILISATEUR.md
+  - Afficher les données: AFFICHER-LES-DONNEES.md
   - Les sept blueprints: BLUEPRINTS.md
   - "Migrer depuis pronote": MIGRATION-AUTOMATISATIONS.md
   - Architecture: ARCHITECTURE.md

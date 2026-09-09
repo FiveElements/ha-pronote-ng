@@ -281,6 +281,11 @@ Les tableaux ci-dessous sont organisés par ce que vous cherchez, pas par
 mécanisme interne. Pour chaque entité : à quoi elle sert, ce que vaut son état,
 et les attributs qui servent vraiment.
 
+Ce paragraphe dit ce qui existe. Pour le **montrer** dans un tableau de bord —
+avec les cartes intégrées de Home Assistant, ou avec la bibliothèque de neuf
+cartes faite pour cette intégration — voyez
+[Afficher les données](AFFICHER-LES-DONNEES.md).
+
 ### Deux avertissements utiles avant de commencer
 
 **Les identifiants d'entités dépendent de la langue.** Home Assistant fabrique
@@ -1762,6 +1767,7 @@ disparaît au redémarrage.
 | Document | Pour qui |
 | --- | --- |
 | `README.md` | Présentation du projet |
+| `docs/AFFICHER-LES-DONNEES.md` | Construire un tableau de bord, avec ou sans la bibliothèque de cartes |
 | `docs/BLUEPRINTS.md` | Chaque réglage des sept blueprints, et le piège que chacun évite |
 | `docs/ARCHITECTURE.md` | Développeurs : comment c'est construit |
 | `docs/annexe-b-rate-limit.md` | Le détail du limiteur de débit, si le § 8 vous a donné envie de creuser |
