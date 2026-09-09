@@ -5,15 +5,6 @@
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?logo=homeassistant&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-
-<p align="center">
-  <img src="docs/assets/logo.png" alt="Pronote NG" width="180">
-</p>
-
-<p align="center">
-  <strong>Intégration Home Assistant pour PRONOTE — seconde génération.</strong>
-</p>
-
  **Pronote NG** est une intégration [Home Assistant](<https://www.home-assistant.io/>) permettant d'intégrer **PRONOTE** directement dans votre installation domotique.
 
  Retrouvez dans Home Assistant les informations scolaires de vos enfants : **emploi du temps, devoirs, notes, moyennes, absences, retards, évaluations, actualités, discussions, menus et bien plus encore.**
