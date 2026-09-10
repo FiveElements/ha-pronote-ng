@@ -491,9 +491,19 @@ deviendrait une requête toutes les trente secondes.
 a-t-il porté ? », et il faut deux attributs pour ça parce qu'il y a trois
 réponses. `boosted` liste les catégories dont la demande est **armée et pas
 encore servie** ; `boost_served_at` donne, par catégorie, l'heure à laquelle la
-dernière demande a effectivement été suivie d'une collecte ; et l'absence des
-deux signifie que le plafond a refusé la demande, une ayant déjà été servie dans
-l'intervalle — c'est-à-dire « c'est déjà demandé, ça viendra ».
+dernière demande a effectivement été suivie d'une collecte.
+
+L'absence des deux ne signifie **rien** en soi, et la formulation courte — « pas
+dans `boosted`, pas dans `boost_served_at`, donc refusé » — est fausse. Ces
+attributs portent un **état**, pas une issue : sur une instance qui vient de
+démarrer les deux sont vides parce que personne n'a rien pressé, et non parce
+qu'un plafond a refusé quoi que ce soit. La lecture juste demande une troisième
+information que l'intégration n'a pas et que l'appelant a : *l'instant de
+l'appui*. Si un appui de moins d'un intervalle existe et que la catégorie
+n'apparaît dans aucun des deux, alors le plafond a refusé — une demande ayant
+déjà été servie dans l'intervalle, c'est-à-dire « c'est déjà demandé, ça
+viendra ». Sans cette condition, une interface fraîchement ouverte annonce
+« refusé » à quelqu'un qui vient d'arriver.
 
 Ni l'un ni l'autre ne redit `failing`, ni les reports du limiteur : ceux-là
 répondent à « le limiteur a-t-il refusé », qui est une autre question. Un boost

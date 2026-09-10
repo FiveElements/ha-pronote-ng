@@ -1898,8 +1898,18 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                 # from outside the integration: the ceiling refused it because
                 # one was already served inside this interval, it is armed and
                 # waiting for the next heartbeat (`boosted`), or it has been
-                # served (`boost_served_at`, with the time of day). Absence
-                # from both is the first.
+                # served (`boost_served_at`, with the time of day).
+                #
+                # Absence from both is **not** the first outcome, and writing
+                # that shortcut down is the mistake to avoid: these carry a
+                # *state*, not an outcome. On an instance that has just
+                # started both are empty because nobody pressed anything. The
+                # third fact needed to read them is the instant of the press,
+                # which this integration does not have and the caller does --
+                # so "refused" is only legible as "a recent press exists and
+                # the tier is in neither". A reader without that condition
+                # tells a freshly opened dashboard that its request was
+                # refused.
                 #
                 # Neither is a restatement of `failing` or of the limiter's
                 # `deferrals`: those answer "did the limiter refuse", which is
