@@ -64,7 +64,7 @@ authentification, et aucun mot de passe n'est conservé.
 - **Écritures optionnelles**, coupées par défaut : cocher un devoir, marquer
   une actualité comme lue, envoyer un message.
 - **Automatisations d'appareil** : 14 déclencheurs, 10 conditions, 4 actions,
-  plus sept blueprints livrés en français et en anglais.
+  plus huit blueprints livrés en français et en anglais.
 - **Trois modes de connexion** : QR code (recommandé), identifiants directs,
   ENT.
 - **Comptes parents multi-enfants**, chaque enfant étant un appareil distinct.

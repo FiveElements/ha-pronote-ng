@@ -167,7 +167,7 @@ l'afficher promettrait une donnée qui n'existe pas côté Home Assistant.
 
 Pour être **prévenu** plutôt que d'aller voir, ces deux familles ont leurs
 déclencheurs d'appareil — « nouvelle actualité » et « nouveau message » — et
-c'est le bon outil : voyez [Les sept blueprints](BLUEPRINTS.md).
+c'est le bon outil : voyez [Les huit blueprints](BLUEPRINTS.md).
 
 ### Les listes en Markdown
 
@@ -420,4 +420,5 @@ normalement.
 | [Documentation des cartes](https://fiveelements.github.io/ha-pronote-ng-cards/) | Les neuf cartes, réglage par réglage |
 | [§ 4 du guide](GUIDE-UTILISATEUR.md#4-catalogue-des-entités) | Le catalogue des entités et de leurs attributs |
 | [§ 5.1 du guide](GUIDE-UTILISATEUR.md#51-les-quatre-services-qui-renvoient-une-réponse) | Les services à réponse, pour l'iCal et le PDF |
-| [Les sept blueprints](BLUEPRINTS.md) | Automatiser, plutôt qu'afficher |
+| [Les huit blueprints](BLUEPRINTS.md) | Automatiser, plutôt qu'afficher |
+| [Exemples d'utilisation](EXEMPLES-BLUEPRINTS.md) | Une automatisation complète par blueprint |

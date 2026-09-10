@@ -52,7 +52,7 @@
  - 14 déclencheurs d'appareil
 - 10 conditions
 - 4 actions
-- [7 blueprints prêts à l'emploi](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/)
+- [8 blueprints prêts à l'emploi](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/)
 - des blueprints disponibles en français et en anglais
 
  Aucune programmation en YAML n'est nécessaire pour les automatisations courantes.
@@ -284,7 +284,8 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 - [Catalogue des entités et services](https://fiveelements.github.io/ha-pronote-ng/annexe-a-entites/) — l'origine de chaque champ publié
 - [Configuration du limiteur de requêtes](https://fiveelements.github.io/ha-pronote-ng/annexe-b-rate-limit/) — couches, options, arithmétique du budget
 - [Création de tableaux de bord](https://fiveelements.github.io/ha-pronote-ng/AFFICHER-LES-DONNEES/)
-- [Blueprints](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/) — chaque réglage des sept blueprints, et le piège que chacun évite
+- [Blueprints](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/) — chaque réglage des huit blueprints, et le piège que chacun évite
+- [Exemples d'utilisation](https://fiveelements.github.io/ha-pronote-ng/EXEMPLES-BLUEPRINTS/) — une automatisation complète et deux variantes d'action par blueprint
 - [Documentation technique pour les contributeurs](CONTRIBUTING.md) — et la [spécification](https://fiveelements.github.io/ha-pronote-ng/SPECIFICATION/)
 
 ---

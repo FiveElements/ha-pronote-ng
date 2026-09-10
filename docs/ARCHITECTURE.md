@@ -57,7 +57,7 @@ n'est pas « afficher PRONOTE » mais **rendre les automatisations simples à
 ordinaire doit pouvoir s'écrire sans template Jinja. Cet objectif est ce qui
 explique la forme de presque tout le reste — des états numériques plutôt que
 du texte formaté, des `binary_sensor` pour les prédicats, des entités `event`
-pour les changements, des *device triggers* nommés, et sept blueprints livrés
+pour les changements, des *device triggers* nommés, et huit blueprints livrés
 en français et en anglais dans `blueprints/automation/pronote_ng/{fr,en}/`.
 
 La contrainte structurante, elle, vient d'ailleurs. PRONOTE ne publie aucune

@@ -1,13 +1,15 @@
-# Les sept blueprints, en détail
+# Les huit blueprints, en détail
 
 Un blueprint est un modèle d'automatisation : vous choisissez l'élève et ce
-qu'il faut faire, le modèle fournit le reste. Les sept livrés avec Pronote NG
-existent parce que sept automatisations scolaires reviennent tout le temps, et
+qu'il faut faire, le modèle fournit le reste. Les huit livrés avec Pronote NG
+existent parce que huit automatisations scolaires reviennent tout le temps, et
 que chacune contient un piège qu'on ne voit qu'après s'être fait prendre.
 
 Ce document explique chaque réglage et nomme chaque piège. Pour la vue
 d'ensemble et **la procédure d'import**, voyez le
-[§ 9.1 du guide de l'utilisateur](GUIDE-UTILISATEUR.md#91-les-sept-blueprints-livrés).
+[§ 9.1 du guide de l'utilisateur](GUIDE-UTILISATEUR.md#91-les-huit-blueprints-livrés).
+Pour des automatisations complètes, prêtes à coller, voyez
+[Exemples d'utilisation des blueprints](EXEMPLES-BLUEPRINTS.md).
 Si vous arrivez de l'intégration `pronote` avec des automatisations déjà
 écrites, lisez d'abord
 [Migrer ses automatisations](MIGRATION-AUTOMATISATIONS.md).
@@ -16,7 +18,7 @@ Si vous arrivez de l'intégration `pronote` avec des automatisations déjà
 
 ## Sommaire
 
-- [Ce que les sept ont en commun](#ce-que-les-sept-ont-en-commun)
+- [Ce que les huit ont en commun](#ce-que-les-huit-ont-en-commun)
 - [1. Réveil adaptatif](#1-réveil-adaptatif)
 - [2. Rappel des devoirs du lendemain](#2-rappel-des-devoirs-du-lendemain)
 - [3. Cours annulé ou modifié](#3-cours-annulé-ou-modifié)
@@ -24,11 +26,12 @@ Si vous arrivez de l'intégration `pronote` avec des automatisations déjà
 - [5. Nouvelle note](#5-nouvelle-note)
 - [6. Nouveau message ou information](#6-nouveau-message-ou-information)
 - [7. Menu de la cantine](#7-menu-de-la-cantine)
+- [8. Retour de l'école](#8-retour-de-lécole)
 - [Si rien n'arrive jamais](#si-rien-narrive-jamais)
 
 ---
 
-## Ce que les sept ont en commun
+## Ce que les huit ont en commun
 
 **Rien n'est codé en dur, et c'est délibéré.** Home Assistant fabrique
 l'identifiant d'une entité à partir de son nom **traduit** : « Prochain
@@ -295,6 +298,47 @@ Message fourni : `Au menu aujourd'hui : Salade de tomates, Poulet rôti, Haricot
 
 ---
 
+## 8. Retour de l'école
+
+Exécute l'action de votre choix quand les cours de l'élève se terminent.
+
+| Réglage | Défaut | À quoi ça sert |
+| --- | --- | --- |
+| **Capteur « Fin des cours »** | — | L'heure de sortie **réelle** : les cours annulés et les dispenses en sont déjà retirés. |
+| **Écart** | 0 | S'**ajoute** à l'heure de sortie. Négatif pour partir avant la sonnerie, positif pour le temps du trajet. |
+| **Seulement les journées écourtées par une annulation** | désactivé | Ne rien faire les jours normaux. Voir ci-dessous. |
+| **Pas avant** | 10:00 | Garde-fou : un emploi du temps aberrant ne doit pas ouvrir le portail en pleine nuit. |
+| **Pas après** | 22:00 | Garde-fou symétrique. |
+| **Action à la fin des cours** | — | Notification, portail, chauffage de la chambre, message vocal… |
+
+**Le piège évité : « la journée finit plus tôt » n'est pas « un cours a été
+annulé ».** C'est la raison d'être de ce blueprint. Une **dispense** décale
+l'heure de sortie exactement comme une annulation le ferait, et un test
+`fin prévue ≠ fin réelle` annoncerait donc une annulation le jour où le cours a
+bien lieu — l'élève n'est simplement pas tenu d'y être. L'option ci-dessus ne
+compare pas deux horaires : elle lit l'attribut `canceled_after`, qui compte les
+cours **annulés** finissant après l'heure de sortie retenue. Un test juste, et
+non un test qui a l'air juste.
+
+**Les jours sans cours sont gratuits.** Le capteur n'a alors pas de valeur, et
+un déclencheur horaire sans valeur **ne s'arme pas**. Aucun calendrier à écrire,
+aucun test « est-on en vacances ? ».
+
+**C'est le blueprint le plus exposé aux heures de fin déduites.** Les heures de
+début sont publiées par PRONOTE ; les heures de **fin** ne le sont pas toujours,
+et sont alors calculées à partir de la durée du créneau. Sur certains
+établissements, c'est le cas de **toutes** les fins de cours. L'attribut
+`end_inferred` le dit, et le § 4.1 du guide l'explique. Tant que l'action est
+« préviens-moi », l'approximation est sans conséquence ; avant d'y accrocher
+l'ouverture d'un portail ou un départ en voiture, vérifiez cet attribut.
+
+**Il ne remplace pas le suivi de présence.** Il dit quand les cours finissent,
+pas quand l'enfant est parti ni quand il est arrivé.
+
+Message fourni : `Sortie à 16:00 après ÉDUCATION MUSICALE. 1 cours annulé ensuite.`
+
+---
+
 ## Si rien n'arrive jamais
 
 Un blueprint qui ne se déclenche pas n'est presque jamais un blueprint cassé.
@@ -317,6 +361,7 @@ d'un palier, réglable dans les options de l'intégration :
 | Nouvelle note | `marks` | « Notes », « Dernière note » |
 | Message ou information | `discussions`, `news` | « Messages non lus », « Actualités non lues » |
 | Menu de la cantine | `menus` | « Menu du jour » |
+| Retour de l'école | `timetable` | « Fin des cours » |
 
 **3. Les collectes sont arrêtées, et rien n'en a l'air.** Pronote NG applique
 « périmé plutôt qu'indisponible » : quand une collecte échoue, les entités
@@ -353,4 +398,5 @@ autres entités de diagnostic, et le § 8 les réglages de cadence.
 | --- | --- |
 | [§ 9 du guide](GUIDE-UTILISATEUR.md#9-automatisations) | Écrire une automatisation sans blueprint : déclencheurs, conditions, actions disponibles |
 | [Migrer ses automatisations](MIGRATION-AUTOMATISATIONS.md) | Vous arrivez de l'intégration `pronote` |
+| [Exemples d'utilisation](EXEMPLES-BLUEPRINTS.md) | Une automatisation complète et deux variantes d'action par blueprint |
 | [Annexe A](annexe-a-entites.md) | L'origine exacte de chaque donnée, et les attributs de chaque évènement |

@@ -1189,17 +1189,18 @@ déjà. Pour ça, lisez
 avant de retirer l'ancienne intégration, car c'est ce retrait, et non
 l'installation de Pronote NG, qui casse vos automatisations existantes.
 
-### 9.1 Les sept blueprints livrés
+### 9.1 Les huit blueprints livrés
 
-Sept modèles d'automatisation en français sont fournis avec l'intégration. Ils
+Huit modèles d'automatisation en français sont fournis avec l'intégration. Ils
 font le travail délicat — remise à l'échelle des notes, filtrage des jours sans
 cours, distinction entre absence et retard — et ne vous demandent que de choisir
 un élève et une action de notification.
 
 Le tableau ci-dessous les résume. **Chaque réglage est expliqué, et chaque piège
-nommé, dans [Les sept blueprints, en détail](BLUEPRINTS.md)** — à lire avant de
+nommé, dans [Les huit blueprints, en détail](BLUEPRINTS.md)** — à lire avant de
 remplir un formulaire, et surtout avant de conclure qu'un blueprint ne se
-déclenche pas.
+déclenche pas. Pour une automatisation complète et prête à coller par
+blueprint, voyez [Exemples d'utilisation](EXEMPLES-BLUEPRINTS.md).
 
 | Blueprint | Ce qu'il fait |
 | --- | --- |
@@ -1210,6 +1211,7 @@ déclenche pas.
 | **PRONOTE - Rappel des devoirs du lendemain** | Rappelle le soir, à heure fixe, les devoirs à rendre le lendemain. Ne dit rien s'il n'y a rien à faire, ni les soirs de vacances. Réglages : heure du rappel (19 h 30 par défaut), nombre minimum de devoirs, et une option pour ne compter que les devoirs non cochés. |
 | **PRONOTE - Menu de la cantine** | Annonce le menu du jour, le matin à heure fixe. Se tait les jours sans menu publié, sans cours ou de vacances. |
 | **PRONOTE - Nouveau message ou information** | Notifie à l'arrivée d'un message dans la messagerie PRONOTE, ou à la publication d'une information par l'établissement. Les deux sources sont activables séparément, et une option ne retient que les informations contenant un sondage — celles qui demandent une réponse. |
+| **PRONOTE - Retour de l'école** | Exécute une action à la fin des cours : notification, portail, chauffage. L'heure vient du capteur « Fin des cours », qui a déjà retiré les cours annulés et les dispenses. Une option restreint l'automatisation aux journées écourtées par une annulation — et ce test compte les annulations au lieu de comparer deux horaires, une dispense n'étant pas une annulation. |
 
 **Comment les importer.** Les blueprints sont livrés dans le dossier de
 l'intégration mais ne sont pas installés automatiquement.
@@ -1824,7 +1826,7 @@ tant que les appareils existent encore :
 
 #### Les blueprints importés
 
-Les sept blueprints livrés (§ [9.1](#91-les-sept-blueprints-livrés)) ne sont pas
+Les huit blueprints livrés (§ [9.1](#91-les-huit-blueprints-livrés)) ne sont pas
 installés par l'intégration : vous les avez importés vous-même, et ils ne partent
 donc pas avec elle. **Deux choses distinctes sont à retirer**, dans cet ordre :
 
@@ -1997,7 +1999,7 @@ disparaît au redémarrage.
 | --- | --- |
 | `README.md` | Présentation du projet |
 | `docs/AFFICHER-LES-DONNEES.md` | Construire un tableau de bord, avec ou sans la bibliothèque de cartes |
-| `docs/BLUEPRINTS.md` | Chaque réglage des sept blueprints, et le piège que chacun évite |
+| `docs/BLUEPRINTS.md` | Chaque réglage des huit blueprints, et le piège que chacun évite |
 | `docs/ARCHITECTURE.md` | Développeurs : comment c'est construit |
 | `docs/annexe-b-rate-limit.md` | Le détail du limiteur de débit, si le § 8 vous a donné envie de creuser |
 | `docs/MIGRATION-AUTOMATISATIONS.md` | Vous arrivez de l'intégration `pronote` et vos automatisations sont déjà écrites |
