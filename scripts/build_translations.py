@@ -640,9 +640,15 @@ GENERAL_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "Establishment timezone",
         "Fuseau de l'établissement",
         "PRONOTE returns local times with no timezone. This is the timezone "
-        "they are interpreted in.",
+        "they are interpreted in. Leave it empty to follow Home Assistant's "
+        "own timezone, which is what you want unless the establishment is in "
+        "a different one from you. Written as Region/City, for example "
+        "Europe/Paris.",
         "PRONOTE renvoie des heures locales sans fuseau. C'est le fuseau dans "
-        "lequel elles sont interprétées.",
+        "lequel elles sont interprétées. Laissez la case vide pour suivre le "
+        "fuseau de Home Assistant, ce qui est le bon choix sauf si "
+        "l'établissement est dans un autre fuseau que vous. S'écrit "
+        "Région/Ville, par exemple Europe/Paris.",
     ),
     (
         "session_strategy",
@@ -1325,7 +1331,21 @@ def _options(index: int) -> dict[str, Any]:
         "l'intégration.",
     )[pick]
 
+    timezone_error = (
+        "Not a timezone this system knows. It is written Region/City -- "
+        "Europe/Paris, not Paris -- and it has to match the zone database "
+        "exactly. Leave the box empty to follow Home Assistant's own "
+        "timezone.",
+        "Ce n'est pas un fuseau connu de ce système. Il s'écrit Région/Ville "
+        "-- Europe/Paris, et non Paris -- et doit correspondre exactement à "
+        "la base des fuseaux. Laissez la case vide pour suivre le fuseau de "
+        "Home Assistant.",
+    )[pick]
+
     return {
+        # A field error rather than a `base` one: there is exactly one box to
+        # correct, and the other six fields on the page are fine.
+        "error": {"invalid_timezone": timezone_error},
         "step": {
             "init": {
                 "title": titles["init"],
@@ -1349,7 +1369,7 @@ def _options(index: int) -> dict[str, Any]:
                 "data": limit_data,
                 "data_description": limit_help,
             },
-        }
+        },
     }
 
 

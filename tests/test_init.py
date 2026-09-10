@@ -34,7 +34,10 @@ from pronotepy.exceptions import CryptoError, MFAError, PronoteAPIError
 import pytest
 
 from custom_components.pronote_ng import async_remove_config_entry_device
-from custom_components.pronote_ng.account import PronoteAccount
+from custom_components.pronote_ng.account import (
+    PronoteAccount,
+    _establishment_timezone,
+)
 from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
     DOMAIN,
@@ -42,6 +45,7 @@ from custom_components.pronote_ng.const import (
     FUNC_TIMETABLE,
     ISSUE_ACCOUNT_UNREADABLE,
     ISSUE_BOOTSTRAP_FAILED,
+    OPT_ESTABLISHMENT_TIMEZONE,
     OPT_TIER_ENABLED,
     SERVICE_GET_RATE_LIMIT_STATUS,
     SERVICE_REFRESH,
@@ -1102,3 +1106,118 @@ class TestWhatSurvivesAReload:
 
         assert recorded == [TIER_PRIORITY[Tier.MENUS]]
         assert TIER_PRIORITY[Tier.MENUS] is not Priority.CRITICAL
+
+
+class TestWhichTimezonePronotesNaiveTimesAreReadIn:
+    """The one option whose default is another system's setting, not a constant.
+
+    §4.2: PRONOTE sends local times with no offset, the conversion happens once
+    in the gateway, and the zone is `establishment_timezone` "whose default is
+    Home Assistant's". Two consequences are asserted below, and both were
+    wrong at some point.
+
+    A *default* is not a stored value. The options page used to submit the
+    instance's zone back as though the user had typed it, which pinned it: from
+    then on the account never looked at `hass.config.time_zone` again, so
+    correcting the instance's timezone -- the ordinary fix after a move, or
+    after a first install left it on UTC -- silently changed nothing here.
+
+    And a stored value is not necessarily a zone. The field is free text, and
+    the string reaches `ZoneInfo` on the set-up path, where an unknown name
+    fails the entry outright.
+    """
+
+    def test_nothing_stored_means_follow_the_instance(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Absence is the default, and the default is live rather than copied.
+
+        Read at every set-up, so a user who fixes their instance's timezone
+        gets the correction on the next reload without touching this
+        integration.
+        """
+        assert _establishment_timezone(hass, {}) == str(hass.config.time_zone)
+
+    def test_an_empty_string_is_not_a_timezone_either(
+        self, hass: HomeAssistant
+    ) -> None:
+        """An emptied box must read as absence, not as a zone named "".
+
+        Home Assistant's frontend may send a cleared optional text field as
+        `""` rather than omitting it, and an entry stored before the field
+        became clearable can carry one. `ZoneInfo("")` raises, so treating it
+        as a value would fail the entry on a value nobody chose.
+        """
+        assert _establishment_timezone(hass, {OPT_ESTABLISHMENT_TIMEZONE: ""}) == str(
+            hass.config.time_zone
+        )
+
+    def test_a_stored_zone_overrides_the_instance(self, hass: HomeAssistant) -> None:
+        """The reason the option exists at all.
+
+        A family in one timezone may follow a school in another, and PRONOTE
+        never says which -- the protocol does not carry it. So a deliberate pin
+        has to win over the instance, or the option would be decoration.
+        """
+        assert (
+            _establishment_timezone(
+                hass, {OPT_ESTABLISHMENT_TIMEZONE: "Pacific/Noumea"}
+            )
+            == "Pacific/Noumea"
+        )
+
+    def test_an_unusable_stored_zone_falls_back_and_says_which(
+        self, hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Falling back beats raising, for the reason `bounded_option` exists.
+
+        The options page is the only place that checks this string, and it is
+        not on the path a restored backup or a hand-edited `.storage` takes.
+        Raising there costs every entity of the account with `unavailable` as
+        the only explanation; falling back costs an hour of offset on a school
+        abroad and writes down what it did.
+        """
+        caplog.set_level(logging.WARNING)
+
+        resolved = _establishment_timezone(
+            hass, {OPT_ESTABLISHMENT_TIMEZONE: "Europe/Pariss"}
+        )
+
+        assert resolved == str(hass.config.time_zone)
+        assert "Europe/Pariss" in caplog.text
+        assert str(hass.config.time_zone) in caplog.text
+
+    async def test_an_entry_pinned_to_a_nonsense_zone_still_loads(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        parent_client: FakeClient,
+        school_day: Any,
+        no_spacing: None,
+    ) -> None:
+        """The failure this is about, at the altitude a user sees it from.
+
+        `PronoteGateway.__init__` calls `ZoneInfo(name)` and
+        `PronoteAccount.__init__` calls that, so an unknown zone used to raise
+        out of `async_setup_entry`: no session, no entities, and a log line
+        about zone files rather than about a setting. The account is the
+        application's data source, so a typo in one text box must not be able
+        to take it off the air.
+        """
+        del school_day, no_spacing
+        hass.config_entries.async_update_entry(
+            mock_entry,
+            options={**mock_entry.options, OPT_ESTABLISHMENT_TIMEZONE: "Paris"},
+        )
+
+        with patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=parent_client,
+        ):
+            assert await hass.config_entries.async_setup(mock_entry.entry_id)
+            await hass.async_block_till_done()
+
+        assert mock_entry.state is ConfigEntryState.LOADED
+        assert str(mock_entry.runtime_data.gateway.timezone) == str(
+            hass.config.time_zone
+        )

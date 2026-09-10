@@ -50,6 +50,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
     TimeSelector,
 )
+from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from .const import (
@@ -850,10 +851,33 @@ class PronoteOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Cadence, horizons, timezone and the write switch."""
-        if user_input is not None:
-            return self._save(user_input)
-
         options = self.config_entry.options
+        errors: dict[str, str] = {}
+        # What to show in the timezone box: the stored pin, or -- after a
+        # refusal -- what the user just typed, so a single wrong character
+        # does not cost them the whole string.
+        shown = options.get(OPT_ESTABLISHMENT_TIMEZONE)
+
+        if user_input is not None:
+            typed = str(user_input.get(OPT_ESTABLISHMENT_TIMEZONE) or "").strip()
+            if typed and await dt_util.async_get_time_zone(typed) is None:
+                # Refused here rather than at set-up. The string reaches
+                # `ZoneInfo` in `PronoteGateway.__init__`, which raises
+                # `ZoneInfoNotFoundError` on the set-up path -- so "Paris"
+                # instead of "Europe/Paris" used to take every entity of the
+                # account down and explain itself as `unavailable`.
+                errors[OPT_ESTABLISHMENT_TIMEZONE] = "invalid_timezone"
+                shown = typed
+            else:
+                # Trimmed, not refused: a pasted zone carries whitespace, and
+                # that is somebody saying the right thing with an invisible
+                # character attached. An empty string reaches `_save` as the
+                # instruction to un-pin.
+                return self._save(
+                    {**user_input, OPT_ESTABLISHMENT_TIMEZONE: typed},
+                    clearable=(OPT_ESTABLISHMENT_TIMEZONE,),
+                )
+
         schema = vol.Schema(
             {
                 vol.Required(
@@ -872,13 +896,18 @@ class PronoteOptionsFlow(OptionsFlow):
                     OPT_STALE_AFTER,
                     default=options.get(OPT_STALE_AFTER, DEFAULT_STALE_AFTER),
                 ): _number(OPT_STALE_AFTER, "x"),
-                vol.Required(
-                    OPT_ESTABLISHMENT_TIMEZONE,
-                    default=options.get(
-                        OPT_ESTABLISHMENT_TIMEZONE,
-                        str(self.hass.config.time_zone),
-                    ),
-                ): _TEXT,
+                # The only field on these three pages whose default is not
+                # a constant but a live reading of another system's mutable
+                # setting -- Home Assistant's own timezone (§4.2). So it is
+                # the only one where storing the displayed value is not a
+                # no-op, and it is deliberately *not* prefilled with that
+                # reading: Home Assistant submits a form back as displayed, so
+                # a `default` here turned merely visiting this page into a
+                # decision, pinning a snapshot of `hass.config.time_zone` that
+                # the account then never consulted again. An empty box is not
+                # an omission, it is how the value "follow Home Assistant" is
+                # shown -- and the only way back once a pin exists.
+                _optional_text(OPT_ESTABLISHMENT_TIMEZONE, shown): _TEXT,
                 # Both strategies are offered because the server's inactivity
                 # timeout is not published and cannot be assumed. `lazy` starts
                 # pessimistic and degrades to `per_batch` on measured evidence,
@@ -910,6 +939,7 @@ class PronoteOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="general",
             data_schema=schema,
+            errors=errors,
             description_placeholders=self._estimate_placeholders(options),
         )
 
@@ -1036,13 +1066,30 @@ class PronoteOptionsFlow(OptionsFlow):
             description_placeholders=self._estimate_placeholders(options),
         )
 
-    def _save(self, user_input: dict[str, Any]) -> ConfigFlowResult:
+    def _save(
+        self, user_input: dict[str, Any], *, clearable: tuple[str, ...] = ()
+    ) -> ConfigFlowResult:
         """Merge one section's answers into the stored options.
 
         Merged rather than replaced: each section shows a subset, and replacing
         would silently reset everything the user did not have on screen.
+
+        `clearable` names the keys of *this* section for which an empty answer
+        is itself an answer -- remove the stored value, so the option goes back
+        to deriving itself. A merge alone can never express that, because a
+        merge can only add: without this, an option pinned once could not be
+        un-pinned from the interface at all.
+
+        Passed per step rather than held as a module constant, and that is the
+        load-bearing part. "Absent from the answers means cleared" is only true
+        of the section on screen; applied to the whole merge it would wipe
+        every limiter tunable each time somebody saved the "general" page,
+        which is the exact failure this method was written to prevent.
         """
         merged = {**self.config_entry.options, **user_input}
+        for key in clearable:
+            if not merged.get(key):
+                merged.pop(key, None)
         return self.async_create_entry(title="", data=merged)
 
     def _estimate_placeholders(self, options: Mapping[str, Any]) -> dict[str, str]:
@@ -1087,6 +1134,30 @@ def _default(options: Mapping[str, Any], key: str) -> Any:
     from . import const  # noqa: PLC0415 -- one lookup, keeps the table in const
 
     return options.get(key, getattr(const, f"DEFAULT_{key.upper()}"))
+
+
+def _optional_text(key: str, current: str | None) -> vol.Optional:
+    """A text field that may be left empty, prefilled only if something is set.
+
+    `vol.Optional` with neither a `default` nor a `suggested_value` is what
+    puts an empty box on screen, and emptiness has to be reachable for a field
+    whose absence is a value. The distinction is not cosmetic: Home Assistant
+    sends a form back as displayed, so anything prefilled here -- default or
+    suggestion -- is submitted and stored by a user who only came to change
+    another field on the same page.
+
+    A stored value is still prefilled, and through `suggested_value` rather
+    than `default` on purpose. That the frontend submits a suggestion back is
+    the contract of `FlowHandler.add_suggested_values_to_schema`, which core
+    options flows use precisely to open a form on its current values and save
+    them unchanged -- so a deliberate pin survives a visit. The difference from
+    `default` is what happens when the box is emptied: voluptuous re-applies a
+    `default` to a field the frontend then omits, which would make the pin
+    impossible to remove.
+    """
+    if not current:
+        return vol.Optional(key)
+    return vol.Optional(key, description={"suggested_value": current})
 
 
 def _number(key: str, unit: str, *, step: float = 1) -> NumberSelector:

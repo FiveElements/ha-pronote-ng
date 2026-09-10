@@ -96,6 +96,9 @@
     }
   },
   "options": {
+    "error": {
+      "invalid_timezone": "Not a timezone this system knows. It is written Region/City -- Europe/Paris, not Paris -- and it has to match the zone database exactly. Leave the box empty to follow Home Assistant's own timezone."
+    },
     "step": {
       "init": {
         "title": "PRONOTE options",
@@ -123,7 +126,7 @@
           "homework_horizon": "How many days of homework to display. This does not change the number of requests: PRONOTE returns a week range either way.",
           "wake_margin": "Minutes subtracted from the first lesson of the day to produce the wake-up sensor.",
           "stale_after": "Multiples of a tier's interval after which its entities are marked stale. They keep their last value rather than going unavailable, because an entity that flickers unavailable fires automations spuriously.",
-          "establishment_timezone": "PRONOTE returns local times with no timezone. This is the timezone they are interpreted in.",
+          "establishment_timezone": "PRONOTE returns local times with no timezone. This is the timezone they are interpreted in. Leave it empty to follow Home Assistant's own timezone, which is what you want unless the establishment is in a different one from you. Written as Region/City, for example Europe/Paris.",
           "session_strategy": "Whether to keep one session alive between collections (lazy) or open a new one for each batch. Lazy starts cautious and switches by itself if the server turns out to expire sessions quickly, so it is never worse than the alternative.",
           "write_operations_enabled": "Off by default. When on, ticking a homework item, marking news read and sending messages become possible, and the establishment sees those actions."
         }

@@ -664,6 +664,28 @@ passerelle**, une seule fois, avec le fuseau de l'établissement.
 `establishment_timezone`, dont la valeur par défaut est celle de Home
 Assistant. Il ne se déduit pas du serveur : le protocole ne le transmet pas.
 
+**Exigence.** Cette valeur par défaut est **dérivée à chaque démarrage**, pas
+recopiée une fois. L'absence de l'option *est* la valeur « suivre Home
+Assistant », et c'est la seule option de l'entrée dont le défaut soit la
+lecture d'un réglage mutable d'un autre système plutôt qu'une constante. Deux
+conséquences, tenues par `account._establishment_timezone` :
+
+- la page d'options ne doit **jamais** enregistrer le fuseau de l'instance à la
+  place de l'utilisateur. Home Assistant renvoie un formulaire tel qu'il est
+  affiché, donc un champ pré-rempli transforme la simple visite de la page en
+  décision : le fuseau se retrouve figé, et corriger celui de l'instance — le
+  geste ordinaire après un déménagement, ou après une première installation
+  restée en UTC — ne change plus rien ici. La case s'affiche donc **vide** tant
+  que rien n'est choisi, et la vider est le chemin de retour ;
+- une valeur enregistrée illisible **se rabat** sur le fuseau de l'instance,
+  avec un avertissement au journal, au lieu de lever. `ZoneInfo` lève
+  `ZoneInfoNotFoundError`, et cet appel est sur le chemin d'installation : lever
+  y coûte toutes les entités du compte pour un unique caractère de trop dans
+  une case de texte, avec « indisponible » pour seule explication. La page,
+  elle, refuse la saisie sur le champ — c'est le seul endroit où la vérification
+  peut être faite avant qu'elle ne coûte quelque chose, et ce n'est pas le
+  chemin qu'emprunte une sauvegarde restaurée.
+
 **Exigence.** Aucune comparaison temporelle n'utilise `datetime.now()` ni
 `date.today()` sans fuseau, ni dans le code ni dans les tests.
 

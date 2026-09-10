@@ -134,6 +134,43 @@ class AccountState:
     last_collection_tier: Tier | None = None
 
 
+def _establishment_timezone(hass: HomeAssistant, options: Mapping[str, Any]) -> str:
+    """The zone PRONOTE's naive local times are read in.
+
+    Absence is a value here, not a gap. §4.2 makes the default "Home
+    Assistant's own", which means this has to be *read* at every set-up rather
+    than copied once -- so that somebody who corrects their instance's timezone
+    gets the correction here on the next reload without touching this
+    integration. The options page is careful not to store a snapshot of it for
+    the same reason.
+
+    An unusable stored name falls back instead of raising, for exactly the
+    reason `bounded_option` exists a few lines below. `PronoteGateway.__init__`
+    calls `ZoneInfo(name)`, which raises `ZoneInfoNotFoundError`, and this runs
+    on the set-up path -- while the options page, the only place that checks
+    this string, is not on the path a restored backup or a hand-edited
+    `.storage` takes. Raising there costs every entity of the account and
+    offers `unavailable` as the whole explanation. Falling back costs an hour
+    of offset on a school abroad, and says so.
+    """
+    fallback = str(hass.config.time_zone)
+    stored = options.get(OPT_ESTABLISHMENT_TIMEZONE)
+    if not stored:
+        return fallback
+    name = str(stored)
+    if dt_util.get_time_zone(name) is None:
+        _LOGGER.warning(
+            "the configured establishment timezone %r is not a zone this "
+            "system knows; reading PRONOTE's local times in %s instead. "
+            "Correct it on the integration's options page -- leaving the box "
+            "empty follows Home Assistant's own timezone",
+            name,
+            fallback,
+        )
+        return fallback
+    return name
+
+
 class PronoteAccount:
     """Orchestrates one PRONOTE account: session, budget, cadence, snapshots."""
 
@@ -143,8 +180,7 @@ class PronoteAccount:
         self.state = AccountState()
 
         options = entry.options
-        timezone = options.get(OPT_ESTABLISHMENT_TIMEZONE, str(hass.config.time_zone))
-        self.gateway = PronoteGateway(timezone)
+        self.gateway = PronoteGateway(_establishment_timezone(hass, options))
 
         # Clamped, like everything else read out of the options mapping. A
         # stored read timeout of 0 makes every request time out before it is

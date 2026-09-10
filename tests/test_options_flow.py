@@ -44,6 +44,7 @@ from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
     DEFAULT_MASTER_TICK,
     DEFAULT_TIER_INTERVALS,
+    OPT_ESTABLISHMENT_TIMEZONE,
     OPT_MASTER_TICK,
     OPT_MAX_REQUESTS_PER_DAY,
     OPT_QUIET_HOURS_ENABLED,
@@ -66,22 +67,58 @@ if TYPE_CHECKING:
 SECTIONS = ("general", "tiers", "rate_limit")
 
 
+#: The fields that are allowed to open empty, and why each one is.
+#:
+#: The rule this suspends is worth keeping for everything else: a field with no
+#: value on screen is a field the page cannot be saved from without filling it
+#: in, which reads as a broken integration. The timezone is the exception
+#: because for that one field emptiness *is* a value -- "follow Home
+#: Assistant" -- and a value has to be representable on screen to be
+#: choosable. Naming it here rather than relaxing the assertion keeps the next
+#: field that loses its default a failure.
+_MAY_OPEN_EMPTY: frozenset[str] = frozenset({OPT_ESTABLISHMENT_TIMEZONE})
+
+
 def _form_defaults(schema: vol.Schema) -> dict[str, Any]:
     """The form exactly as it is displayed, ready to be submitted back.
 
     Submitting the displayed values is what makes these tests check the
     defaults rather than merely check that a form appears: every value goes
     back through the selector that produced it.
+
+    "As displayed" is the whole contract, so a field prefilled by a
+    `suggested_value` instead of a `default` is filled in here too -- Home
+    Assistant sends back whatever is in the box, and a helper that dropped the
+    suggestion would be modelling a user who deliberately cleared it. A field
+    with neither is displayed empty and is omitted here, which is what the
+    frontend does with an empty optional box.
     """
     filled: dict[str, Any] = {}
     for key in schema.schema:
         default = getattr(key, "default", None)
-        assert default is not None, f"{key} carries no default at all"
-        assert default is not vol.UNDEFINED, (
-            f"{key} has no default, so the page opens with an empty required field"
+        if default is not None and default is not vol.UNDEFINED:
+            filled[str(key)] = default()
+            continue
+        suggested = (getattr(key, "description", None) or {}).get("suggested_value")
+        if suggested is not None:
+            filled[str(key)] = suggested
+            continue
+        assert str(key) in _MAY_OPEN_EMPTY, (
+            f"{key} has neither a default nor a suggestion, so the page opens "
+            "with an empty field. If that is deliberate, say why in "
+            "_MAY_OPEN_EMPTY"
         )
-        filled[str(key)] = default()
     return filled
+
+
+def _marker(schema: vol.Schema) -> Any:
+    """The timezone field's voluptuous marker, which carries its prefill.
+
+    Read off the schema because the two ways a field can be prefilled --
+    `default` and `description["suggested_value"]` -- are not
+    interchangeable here, and which one is used is the fix.
+    """
+    return next(key for key in schema.schema if str(key) == OPT_ESTABLISHMENT_TIMEZONE)
 
 
 async def _open(hass: HomeAssistant, entry: MockConfigEntry, section: str) -> Any:
@@ -232,6 +269,237 @@ async def test_quiet_hours_can_be_switched_off_from_the_rate_limit_page(
     )
 
     assert result["data"][OPT_QUIET_HOURS_ENABLED] is False
+
+
+# ---------------------------------------------------------------------------
+# The timezone, the one field whose absence is a value
+# ---------------------------------------------------------------------------
+#
+# Every other field on these three pages defaults to a constant, so storing
+# that default explicitly is a no-op and nobody could tell. This one defaults
+# to a *live reading of another system's mutable setting* -- Home Assistant's
+# own timezone -- and §4.2 says so in as many words: the option's default "is
+# Home Assistant's".
+#
+# That asymmetry is the whole defect. The page prefilled the box with
+# `hass.config.time_zone` and Home Assistant submits a form back as displayed,
+# so merely opening the "general" page to change the heartbeat converted a
+# derived value into a pinned snapshot. Nothing said so, and there was no way
+# back: the box could not be emptied, so once pinned, moving the instance to
+# another timezone left every lesson time an hour out for ever.
+
+
+def _unpin(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    """Take the timezone out of the entry's options.
+
+    The suite's `FAST_OPTIONS` pins it, which is right for the collection tests
+    -- they assert on wall-clock instants -- and wrong for these, whose whole
+    subject is what happens when nothing is stored.
+    """
+    hass.config_entries.async_update_entry(
+        entry,
+        options={
+            key: value
+            for key, value in entry.options.items()
+            if key != OPT_ESTABLISHMENT_TIMEZONE
+        },
+    )
+
+
+@REQUIRES_HASS
+async def test_visiting_the_general_page_does_not_pin_the_timezone(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """The defect, stated as the invariant it broke.
+
+    A user opening this page to change the heartbeat has said nothing about
+    timezones, so nothing about timezones may be decided on their behalf. Once
+    the value is stored here, `PronoteAccount` stops consulting
+    `hass.config.time_zone` for good -- and the instance's timezone is a
+    setting people really do change, on a move or on a first correct
+    configuration.
+    """
+    _unpin(hass, mock_entry)
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"], {**_form_defaults(form["data_schema"]), OPT_MASTER_TICK: 7}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][OPT_MASTER_TICK] == 7
+    assert OPT_ESTABLISHMENT_TIMEZONE not in result["data"], (
+        "opening the page pinned the timezone as a side effect"
+    )
+
+
+@REQUIRES_HASS
+async def test_the_box_opens_empty_when_the_timezone_is_not_pinned(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Empty is not an oversight, it is how "follow Home Assistant" is shown.
+
+    Asserted on the schema rather than through a round trip because the two
+    mechanisms differ in exactly the way that matters: a `default` is
+    submitted back by the frontend, a `suggested_value` is too, and only the
+    absence of both leaves a box a user can save without answering. Prefilling
+    with the instance's zone -- even as a mere suggestion -- is what turned a
+    visit into a decision.
+    """
+    _unpin(hass, mock_entry)
+    form = await _open(hass, mock_entry, "general")
+
+    marker = _marker(form["data_schema"])
+
+    assert marker.default is vol.UNDEFINED
+    assert not (marker.description or {}).get("suggested_value")
+
+
+@REQUIRES_HASS
+async def test_a_pinned_timezone_is_shown_and_survives_an_untouched_save(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """A deliberate pin is a real setting and must not be lost by a visit.
+
+    The symmetric risk to the defect above: making the field clearable would
+    be worthless if the way to clear it were "open the page and save". A
+    family following a school in another timezone has to be able to change the
+    heartbeat without losing it.
+    """
+    form = await _open(hass, mock_entry, "general")
+
+    marker = _marker(form["data_schema"])
+    assert (marker.description or {})["suggested_value"] == "Europe/Paris"
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"], _form_defaults(form["data_schema"])
+    )
+
+    assert result["data"][OPT_ESTABLISHMENT_TIMEZONE] == "Europe/Paris"
+
+
+@REQUIRES_HASS
+async def test_emptying_the_box_gives_the_instance_its_timezone_back(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """The way back, which is the part a merge alone can never express.
+
+    `_save` merges so that one section does not reset the others, and a merge
+    can only ever add. With no rule for clearing, an option pinned once -- by
+    the defect above, or by a user who has since moved -- could not be
+    un-pinned from the interface at all.
+    """
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        {**_form_defaults(form["data_schema"]), OPT_ESTABLISHMENT_TIMEZONE: ""},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert OPT_ESTABLISHMENT_TIMEZONE not in result["data"]
+
+
+@REQUIRES_HASS
+async def test_clearing_one_field_leaves_the_other_sections_alone(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Clearing is scoped to the fields the page actually showed.
+
+    "Absent from the answers means cleared" is only true of the section being
+    saved. Applied to the merge as a whole it would be catastrophic and
+    silent: the "general" page shows none of the limiter tunables, so saving
+    it would wipe every one of them -- which is the exact failure `_save` was
+    written to merge away.
+    """
+    before = dict(mock_entry.options)
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        {**_form_defaults(form["data_schema"]), OPT_ESTABLISHMENT_TIMEZONE: ""},
+    )
+
+    saved = result["data"]
+    for key, value in before.items():
+        if key != OPT_ESTABLISHMENT_TIMEZONE:
+            assert saved[key] == value, f"clearing the timezone also cleared {key}"
+
+
+@REQUIRES_HASS
+async def test_a_timezone_that_is_not_a_zone_is_refused_on_the_page(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Because the alternative is an account with no entities and no reason.
+
+    The field is free text -- Home Assistant ships no timezone selector at
+    this version -- and the string goes straight into `ZoneInfo`, inside
+    `PronoteGateway.__init__`, on the set-up path. A `ZoneInfoNotFoundError`
+    there fails the whole entry, so typing "Paris" instead of "Europe/Paris"
+    took every entity of the account down and offered "unavailable" as the
+    only explanation. Refusing it beside the box costs nothing and names the
+    mistake.
+    """
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        {**_form_defaults(form["data_schema"]), OPT_ESTABLISHMENT_TIMEZONE: "Paris"},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {OPT_ESTABLISHMENT_TIMEZONE: "invalid_timezone"}
+    assert mock_entry.options[OPT_ESTABLISHMENT_TIMEZONE] == "Europe/Paris", (
+        "the refused value was stored anyway"
+    )
+
+
+@REQUIRES_HASS
+async def test_a_refused_timezone_is_still_in_the_box_to_be_corrected(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Re-showing the form empty would ask the user to retype it from memory.
+
+    Which matters more here than it sounds: the value is a long `Region/City`
+    string, and what got it refused is usually one character in it.
+    """
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        {
+            **_form_defaults(form["data_schema"]),
+            OPT_ESTABLISHMENT_TIMEZONE: "Europe/Pariss",
+        },
+    )
+
+    marker = _marker(result["data_schema"])
+
+    assert (marker.description or {})["suggested_value"] == "Europe/Pariss"
+
+
+@REQUIRES_HASS
+async def test_a_timezone_pasted_with_stray_spaces_is_trimmed_not_refused(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """A copy-paste picks up whitespace, and `ZoneInfo` does not forgive it.
+
+    Trimmed rather than refused, because " Europe/Paris" is not somebody
+    saying something wrong -- it is somebody saying the right thing with an
+    invisible character attached.
+    """
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        {
+            **_form_defaults(form["data_schema"]),
+            OPT_ESTABLISHMENT_TIMEZONE: "  Europe/Brussels  ",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][OPT_ESTABLISHMENT_TIMEZONE] == "Europe/Brussels"
 
 
 # ---------------------------------------------------------------------------

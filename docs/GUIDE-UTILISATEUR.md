@@ -1065,9 +1065,30 @@ supérieure prudente.
 | **Horizon des devoirs** | 14 j | *Librement.* C'est un filtre d'affichage. **Cela ne change pas le nombre d'appels** : PRONOTE renvoie une plage de semaines dans tous les cas. |
 | **Marge de réveil** | 90 min | *Librement.* Minutes retirées au premier cours du jour pour calculer le capteur « Prochain réveil ». Aucun effet sur le réseau. |
 | **Marquer périmé après** | 6 | *Rarement.* Multiples de l'intervalle d'une catégorie au-delà desquels ses entités sont marquées périmées. Elles gardent leur dernière valeur au lieu de devenir indisponibles. Baisser cette valeur ne fait pas collecter plus souvent : ça fait juste dire « périmé » plus tôt. |
-| **Fuseau de l'établissement** | Le fuseau de Home Assistant | *Seulement si l'établissement est dans un autre fuseau que vous.* PRONOTE renvoie des heures locales sans fuseau ; c'est ici qu'on dit dans quel fuseau les interpréter. |
+| **Fuseau de l'établissement** | Vide — donc le fuseau de Home Assistant | *Seulement si l'établissement est dans un autre fuseau que vous.* PRONOTE renvoie des heures locales sans fuseau ; c'est ici qu'on dit dans quel fuseau les interpréter. Voir ci-dessous : **la case vide est un réglage**, pas un oubli. |
 | **Stratégie de session** | Conserver la session (recommandé) | *Non.* Voir ci-dessous. |
 | **Autoriser l'écriture dans PRONOTE** | Désactivé | *Si vous en avez besoin.* Voir § [7](#7-écrire-dans-pronote). |
+
+**Le fuseau de l'établissement, et pourquoi la case est vide.** Vide veut dire
+« suis le fuseau de Home Assistant », et c'est ce que veulent presque tous les
+foyers. Le réglage est relu à chaque démarrage, donc si vous corrigez un jour
+le fuseau de votre instance, l'intégration suit toute seule.
+
+Remplir la case fait l'inverse : elle **fige** le fuseau, définitivement, et
+Home Assistant peut ensuite changer de fuseau sans que les heures de cours
+bougent. C'est exactement ce qu'il faut si l'établissement est dans un autre
+fuseau que vous — et exactement ce qu'il ne faut pas sinon. Pour revenir en
+arrière, **videz la case** et enregistrez.
+
+Le fuseau s'écrit `Région/Ville`, par exemple `Europe/Paris` — pas `Paris`, pas
+`CET`. Un nom que le système ne connaît pas est refusé sur place, avec un
+message sous la case ; il n'y a donc pas de faute de frappe capable de mettre
+le compte hors service.
+
+> Si vous utilisiez une version antérieure à la 0.0.19, il y a de bonnes
+> chances que cette case soit déjà remplie sans que vous l'ayez voulu : les
+> anciennes versions y recopiaient le fuseau de Home Assistant dès qu'on
+> ouvrait cette page. Si l'établissement est dans votre fuseau, videz-la.
 
 **La stratégie de session.** Deux valeurs : « Conserver la session
 (recommandé) » et « Une session par lot ». La première garde la connexion
