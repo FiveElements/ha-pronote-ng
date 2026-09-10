@@ -32,6 +32,7 @@ from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import callback
 
 from .account import PronoteAccount
+from .attachment import fingerprint, signed_path
 from .const import (
     DEFAULT_HOMEWORK_HORIZON,
     DEFAULT_WAKE_MARGIN,
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
         DiscussionsFacts,
         EvaluationsFacts,
         Homework,
+        HomeworkAttachment,
         HomeworkFacts,
         Lesson,
         MarksFacts,
@@ -568,7 +570,27 @@ def _visible_homework(facts: HomeworkFacts, account: PronoteAccount) -> list[Hom
     return [item for item in facts.homework if item.due <= limit]
 
 
-def _homework_dict(item: Homework) -> dict[str, Any]:
+def _attachment_address(
+    account: PronoteAccount, item: Homework, attachment: HomeworkAttachment
+) -> str:
+    """Where a dashboard should send somebody who wants to open this document.
+
+    A link keeps the address it was given -- it is a third party's, and
+    proxying it through Home Assistant would mean fetching an unrelated site
+    with the school's session. A file gets an address Home Assistant serves,
+    because PRONOTE's own is signed by the session and must never be published
+    (see :mod:`.attachment`).
+    """
+    if attachment.url is not None:
+        return attachment.url
+    return signed_path(
+        account.hass,
+        account.entry.entry_id,
+        fingerprint(item.id, attachment.id),
+    )
+
+
+def _homework_dict(account: PronoteAccount, item: Homework) -> dict[str, Any]:
     """One homework item, flattened for a card."""
     return {
         "id": item.id,
@@ -589,16 +611,27 @@ def _homework_dict(item: Homework) -> dict[str, Any]:
         # Two projections of one field, and the shapes are not
         # interchangeable. `attachments` keeps carrying plain names, unchanged,
         # because a template doing `| join(', ')` on it must go on working --
-        # the shape is older than the addresses. `attachment_links` is the new
-        # fact, and it is deliberately a separate key rather than a richer
-        # `attachments`: an empty list there is a *measurement* -- this
-        # establishment attaches files, not links -- and it says so without
-        # breaking a single reader.
+        # the shape is older than the addresses. `attachment_links` answers a
+        # different question: which documents can actually be *opened*, and at
+        # what address.
+        #
+        # Both kinds are in it, and neither address is PRONOTE's. A link
+        # carries its own; a file carries a signed, expiring path to this
+        # integration's own view, which relays the bytes. So the key means what
+        # its name says -- the attachments you can open -- and a consumer needs
+        # to know nothing about the two kinds.
+        #
+        # An attachment is absent from it only when it is a link whose address
+        # was unusable: no `http`/`https` scheme, or none at all in the payload
+        # (upstream falls back to the *name* there, which is the trap).
         "attachments": [attachment.name for attachment in item.attachments],
         "attachment_links": [
-            {"name": attachment.name, "url": attachment.url}
+            {
+                "name": attachment.name,
+                "url": _attachment_address(account, item, attachment),
+            }
             for attachment in item.attachments
-            if attachment.url
+            if attachment.url is not None or attachment.id
         ],
     }
 
@@ -614,7 +647,7 @@ def _homework_todo_attributes(
     """Outstanding homework, and the next deadline."""
     pending = [item for item in _visible_homework(facts, account) if not item.done]
     return {
-        "items": [_homework_dict(item) for item in pending],
+        "items": [_homework_dict(account, item) for item in pending],
         "next_due": min((item.due for item in pending), default=None),
     }
 
@@ -634,7 +667,9 @@ def _homework_tomorrow_attributes(
     tomorrow = account.gateway.today() + timedelta(days=1)
     return {
         "items": [
-            _homework_dict(item) for item in facts.homework if item.due == tomorrow
+            _homework_dict(account, item)
+            for item in facts.homework
+            if item.due == tomorrow
         ]
     }
 
@@ -649,7 +684,9 @@ def _homework_all_attributes(
 ) -> dict[str, Any]:
     """Every homework item inside the horizon."""
     return {
-        "items": [_homework_dict(item) for item in _visible_homework(facts, account)]
+        "items": [
+            _homework_dict(account, item) for item in _visible_homework(facts, account)
+        ]
     }
 
 

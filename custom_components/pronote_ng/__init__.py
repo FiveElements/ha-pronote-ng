@@ -22,6 +22,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from pronotepy.exceptions import PronoteAPIError
 
 from .account import PronoteAccount
+from .attachment import async_register_view
 from .const import DOMAIN
 from .services import async_setup_services
 from .session import (
@@ -82,6 +83,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa:
     on whether a school's server happened to be reachable at start-up.
     """
     async_setup_services(hass)
+    # Same argument, one line down: a route is per Home Assistant. It answers
+    # for whichever account the address names, and says so with a status when
+    # that account is not loaded -- which beats a 404 from aiohttp that a
+    # reader cannot tell from a typo.
+    async_register_view(hass)
     return True
 
 

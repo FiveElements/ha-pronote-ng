@@ -167,6 +167,14 @@ class HomeworkAttachment:
     #: address, so this field would otherwise publish a label as though it were
     #: a URL, and a scheme like `javascript:` would reach an `href`.
     url: str | None = None
+    #: PRONOTE's own identifier for the document, kept so a file can still be
+    #: *fetched* later even though its address cannot be published. It is what
+    #: the encrypted path segment is built from, and it is deliberately absent
+    #: from every published attribute: what a dashboard receives is a
+    #: fingerprint of it (see :mod:`.attachment`), which is URL-safe -- a real
+    #: identifier carries a ``#``, a fragment delimiter that would truncate a
+    #: path -- and keeps a real identifier out of the recorder.
+    id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

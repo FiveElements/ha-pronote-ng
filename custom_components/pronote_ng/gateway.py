@@ -173,6 +173,22 @@ class RecipientNotFound(Exception):  # noqa: N818 -- surfaced as a ServiceValida
         self.available = available
 
 
+class AttachmentUnavailable(Exception):  # noqa: N818 -- surfaced as an HTTP status
+    """PRONOTE would not serve a homework document.
+
+    Its own class because the caller is an HTTP view and has to answer with a
+    status rather than a traceback -- and because the *reason* matters: the
+    address is signed by the session, so a refusal here usually means the
+    session died between the collection that listed the document and the click
+    that asked for it, which is worth saying differently from "no such file".
+    """
+
+    def __init__(self, name: str, status: int) -> None:
+        super().__init__(f"PRONOTE answered {status} for the document {name!r}")
+        self.name = name
+        self.status = status
+
+
 class GatewayResult[T]:
     """A tier's facts plus what they actually cost on the wire.
 
@@ -222,11 +238,12 @@ def _attachment(raw: Any) -> HomeworkAttachment:
     against Home Assistant's own fabricates a dead link.
     """
     name = str(_get(raw, "L"))
+    identifier = str(_get(raw, "N") or "")
     if _get(raw, "G") != _ATTACHMENT_LINK:
-        return HomeworkAttachment(name=name)
+        return HomeworkAttachment(name=name, id=identifier)
     address = _get(raw, "url")
     if not isinstance(address, str):
-        return HomeworkAttachment(name=name)
+        return HomeworkAttachment(name=name, id=identifier)
     parsed = urlparse(address)
     if parsed.scheme not in _PUBLISHABLE_SCHEMES or not parsed.netloc:
         _LOGGER.debug(
@@ -234,12 +251,17 @@ def _attachment(raw: Any) -> HomeworkAttachment:
             "address, so it is published as a name only",
             name,
         )
-        return HomeworkAttachment(name=name)
-    return HomeworkAttachment(name=name, url=address)
+        return HomeworkAttachment(name=name, id=identifier)
+    return HomeworkAttachment(name=name, url=address, id=identifier)
 
 
-#: ``G`` on a ``ListePieceJointe`` entry: a link, as opposed to ``1``, a file.
+#: ``G`` on a ``ListePieceJointe`` entry: a link, as opposed to a file.
 _ATTACHMENT_LINK: Final = 0
+
+#: The other value of ``G``. Named because it is *written* into the payload
+#: handed to ``pronotepy`` when re-deriving a file's address, and a magic ``1``
+#: there would be unreadable.
+_ATTACHMENT_FILE: Final = 1
 
 #: The only schemes an attachment address is published under. A consumer puts
 #: this value in an `href`, so the list is a whitelist and not a filter.
@@ -1713,6 +1735,38 @@ class PronoteGateway:
             return None, 0
         data: bytes = attachment.data
         return data, 1
+
+    def homework_attachment(
+        self, client: HardenedClient, *, attachment_id: str, name: str
+    ) -> tuple[bytes, str | None, int]:
+        """Download one homework document, under the lock, after ``set_child``.
+
+        The address is **derived by upstream and not re-implemented here**, on
+        purpose. It is
+        ``FichiersExternes/<hex>/<name>?Session=<h>`` where the hex segment is
+        ``{"N": id, "Actif": true}`` encrypted with the session's own AES key
+        and IV, and reproducing that arithmetic would give this module a second
+        copy of a cipher construction that only ``pronotepy`` is versioned
+        against -- a pin bump could then diverge silently, which is the class of
+        failure ``hardened_client`` exists to document rather than repeat. So a
+        minimal payload is handed to ``dataClasses.Attachment`` and its ``url``
+        is used.
+
+        What is *not* delegated is the status check. ``Attachment.data`` returns
+        ``response.content`` whatever the status, so an expired session yields
+        an HTML error page with a 200-looking shape, and a card would render a
+        few kilobytes of PRONOTE's login screen as though it were the exercise.
+        ``Attachment.save`` checks the status; the property does not.
+        """
+        attachment = dataClasses.Attachment(
+            client, {"L": name, "N": attachment_id, "G": _ATTACHMENT_FILE}
+        )
+        response = client.communication.session.get(attachment.url)
+        if response.status_code != 200:
+            raise AttachmentUnavailable(name, response.status_code)
+        content: bytes = response.content
+        declared = response.headers.get("content-type")
+        return content, declared, 1
 
     def timetable_pdf_url(
         self,

@@ -94,11 +94,72 @@ class FakeInfo:
         return self._photo
 
 
+class FakeEncryption:
+    """Stands in for ``pronotepy.pronoteAPI._Encryption``.
+
+    Only ``aes_encrypt`` is modelled, and it is modelled as a *keyed* function
+    rather than as a constant: the point of the real one is that the ciphertext
+    depends on the session's key and IV, so a fake that returned a fixed string
+    would let a test pass while the code published a session-independent
+    address -- which is the whole hazard.
+    """
+
+    def __init__(self, key: bytes = b"session-key") -> None:
+        self.key = key
+
+    def aes_encrypt(self, data: bytes) -> bytes:
+        """A reversible stand-in, not a cipher. Keyed, and that is what counts."""
+        import hashlib
+
+        return hashlib.sha256(self.key + data).digest()
+
+
+class FakeResponse:
+    """One ``requests`` response, as far as the gateway reads one."""
+
+    def __init__(
+        self,
+        content: bytes = b"%PDF-1.4 not a real document",
+        status_code: int = 200,
+        content_type: str | None = "application/pdf",
+    ) -> None:
+        self.content = content
+        self.status_code = status_code
+        self.headers: dict[str, str] = (
+            {} if content_type is None else {"content-type": content_type}
+        )
+
+
+class FakeHttpSession:
+    """The ``requests.Session`` upstream downloads an attachment through.
+
+    ``Attachment.data`` does ``communication.session.get(self.url)``, which is
+    the one place in the library that fetches bytes outside
+    ``ClientBase.post`` -- so it is outside the request accounting unless the
+    caller declares it. Every GET is recorded here so a test can assert both
+    the count and the address.
+    """
+
+    def __init__(self) -> None:
+        self.gets: list[str] = []
+        self.response = FakeResponse()
+
+    def get(self, url: str) -> FakeResponse:
+        self.gets.append(url)
+        return self.response
+
+
 class FakeCommunication:
     """Stands in for ``pronotepy._Communication``."""
 
     def __init__(self, owner: FakeClient) -> None:
         self._owner = owner
+        #: The three things ``dataClasses.Attachment`` reads to build a file's
+        #: address. Present so the tests exercise *upstream's* construction
+        #: rather than a re-implementation of it.
+        self.encryption = FakeEncryption()
+        self.root_site = "https://demo.example.invalid/pronote"
+        self.session = FakeHttpSession()
 
     def post(self, name: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         """Record a direct post and answer from the canned table."""
@@ -270,6 +331,10 @@ class FakeClient:
         if self._children:
             self.set_child(str(self._children[0].id))
         self.communication = FakeCommunication(self)
+        #: ``Attachment`` interpolates ``client.attributes["h"]`` -- the session
+        #: number -- into the address it builds, so it has to be here for
+        #: upstream's own code to run at all.
+        self.attributes: dict[str, Any] = {"h": "SESSION-NUMBER"}
         self.start_day = first_monday
         #: Whether the canteen publishes anything. ``False`` is a real and
         #: common configuration -- a school with no canteen, or a holiday week

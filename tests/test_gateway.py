@@ -939,8 +939,14 @@ def test_a_file_attachment_carries_its_name_and_no_address(
     )
     item = gateway.homework(client).facts.homework[0]
 
-    assert item.attachments == (HomeworkAttachment(name="enonce.pdf"),)
+    assert item.attachments == (
+        HomeworkAttachment(name="enonce.pdf", id="ATTACHMENT-1"),
+    )
     assert item.attachments[0].url is None
+    # Kept, and never published: it is what the encrypted path segment is built
+    # from, so a document can still be *fetched* on demand even though its
+    # address cannot be written down. See `attachment.py`.
+    assert item.attachments[0].id
     assert not any("Session" in a.name for a in item.attachments)
 
 
@@ -964,7 +970,9 @@ def test_a_link_attachment_publishes_the_address_it_was_given(
 
     assert item.attachments == (
         HomeworkAttachment(
-            name="Le sujet en ligne", url="https://exemple.invalid/sujet"
+            name="Le sujet en ligne",
+            url="https://exemple.invalid/sujet",
+            id="ATTACHMENT-1",
         ),
     )
 
@@ -985,7 +993,9 @@ def test_a_link_with_no_address_in_the_payload_is_not_given_its_own_name(
     )
     item = gateway.homework(client).facts.homework[0]
 
-    assert item.attachments == (HomeworkAttachment(name="Le sujet en ligne"),)
+    assert item.attachments == (
+        HomeworkAttachment(name="Le sujet en ligne", id="ATTACHMENT-1"),
+    )
 
 
 @pytest.mark.parametrize(
@@ -1018,7 +1028,7 @@ def test_only_an_http_address_is_published(
     )
     item = gateway.homework(client).facts.homework[0]
 
-    assert item.attachments == (HomeworkAttachment(name="Le sujet"),)
+    assert item.attachments == (HomeworkAttachment(name="Le sujet", id="ATTACHMENT-1"),)
 
 
 def test_a_renamed_homework_key_fails_the_tier(

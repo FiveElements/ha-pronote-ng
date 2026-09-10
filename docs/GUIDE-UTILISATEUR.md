@@ -382,20 +382,36 @@ Chaque élément de `items` contient `id`, `subject`, `description`,
 `description_text`, `due`, `done`, `attachments` et `attachment_links`. Le
 champ `id` est celui à fournir au service « Cocher un devoir ».
 
-**Les pièces jointes, et pourquoi certaines ne s'ouvrent pas.**
-`attachments` donne les **noms** de toutes les pièces. `attachment_links`
-donne, sous forme `{ name, url }`, celles qu'on peut réellement ouvrir — et
-c'est souvent une liste vide, sans que rien soit cassé.
+**Les pièces jointes s'ouvrent, et ce n'est pas PRONOTE qui vous les sert.**
+`attachments` donne les **noms** de toutes les pièces. `attachment_links` donne,
+sous forme `{ name, url }`, celles qu'on peut ouvrir — c'est-à-dire, en
+pratique, toutes.
 
-La raison est dans PRONOTE, pas dans l'intégration. Quand un professeur joint
-un **lien**, c'est une adresse ordinaire : elle est publiée et une carte peut
-proposer de l'ouvrir. Quand il joint un **fichier**, PRONOTE ne lui donne pas
-d'adresse durable : l'adresse est signée par la session en cours, elle ouvre le
-document **sans demander d'identifiant**, et elle cesse de fonctionner dès la
-connexion suivante. La publier reviendrait à écrire un mot de passe dans un
-attribut — donc dans l'historique et dans tout diagnostic que vous partageriez
-pour du support — pour un lien qui serait mort dans l'heure. C'est le même
-raisonnement que pour l'URL iCal, cf. § [5.1](#51-les-quatre-services-qui-renvoient-une-réponse).
+Les deux adresses n'ont pourtant rien à voir. Un professeur qui joint un
+**lien** colle une adresse ordinaire : elle est publiée telle quelle. Un
+professeur qui joint un **fichier** ne produit pas d'adresse durable — celle
+que PRONOTE fabrique est signée par la session en cours, elle ouvre le document
+**sans demander d'identifiant**, et elle cesse de fonctionner à la connexion
+suivante. L'écrire dans un attribut reviendrait à mettre un mot de passe dans
+l'historique et dans tout diagnostic que vous partageriez pour du support, pour
+un lien mort dans l'heure. C'est le même raisonnement que pour l'URL iCal,
+cf. § [5.1](#51-les-quatre-services-qui-renvoient-une-réponse).
+
+Ce que vous recevez pour un fichier est donc une adresse **de votre propre Home
+Assistant**, signée et valable une demi-journée. Quand vous l'ouvrez, c'est
+l'intégration qui va chercher le document, dans la session déjà en place, et qui
+vous le renvoie. Trois conséquences pratiques :
+
+- **Ça coûte une requête, une seule fois par document.** Le document est ensuite
+  gardé en mémoire jusqu'au prochain redémarrage, donc le rouvrir est gratuit.
+  Si aucune session n'est ouverte — typiquement le soir — la première ouverture
+  ajoute une connexion, sur les vingt-quatre autorisées par jour.
+- **Une adresse recopiée ailleurs finit par ne plus rien ouvrir.** C'est voulu :
+  c'est ce qui fait qu'une capture d'écran ou une vieille ligne d'historique ne
+  reste pas une clé vers les devoirs de votre enfant.
+- **Un document qui a quitté l'horizon d'affichage n'est plus servi.**
+  L'intégration ne va chercher que ce qu'elle a effectivement collecté, donc une
+  adresse ne peut pas être bricolée pour demander autre chose.
 
 **Deux champs pour un seul énoncé, et il faut choisir le bon.** Les professeurs
 saisissent dans un éditeur riche, donc PRONOTE renvoie du HTML : `description`

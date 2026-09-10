@@ -188,41 +188,82 @@ l'envoie), `description_text` (le même énoncé en texte simple), `due`, `done`
 **`attachments[]` et `attachment_links[]`** — deux projections d'un seul
 champ, et l'une ne remplace pas l'autre. `attachments[]` porte les **noms**
 des pièces jointes, toutes, sous forme de chaînes : un gabarit qui fait
-`| join(', ')` dessus continue de fonctionner. `attachment_links[]` ne porte
-que celles dont l'adresse peut sortir de l'intégration, sous forme d'objets
-`{ name, url }`.
+`| join(', ')` dessus continue de fonctionner. `attachment_links[]` répond à
+une autre question — lesquelles peut-on **ouvrir**, et à quelle adresse —
+sous forme d'objets `{ name, url }`.
 
 Les deux clés sont **le contrat, et il est arrêté** : les adresses ne
-rejoindront pas `attachments[]`. Ce choix a été tranché par la mesure et non
-par le goût. Une carte a besoin de l'adresse *dans* `attachments[]` pour
-transformer un nom en lien, donc la clé unique lui coûterait moins — mais y
-mettre des objets change la forme d'un attribut qui porte des chaînes depuis
-l'origine, et casse le gabarit `| join(', ')` qui est aussi la façon normale
-d'écrire « Pièces jointes : a.pdf, b.pdf » dans une notification. Une ligne
-dans une carte coûte moins que cette rupture-là.
+rejoindront pas `attachments[]`. Une carte aurait besoin de l'adresse *dans*
+`attachments[]` pour transformer un nom en lien, donc la clé unique lui
+coûterait moins — mais y mettre des objets change la forme d'un attribut qui
+porte des chaînes depuis l'origine, et casse le gabarit `| join(', ')` qui est
+aussi la façon normale d'écrire « Pièces jointes : a.pdf, b.pdf » dans une
+notification. Une ligne dans une carte coûte moins que cette rupture-là.
 
 Le rapprochement entre les deux listes se fait **par le nom**, qui est la même
 chaîne de part et d'autre. Cette clé de rapprochement a une limite qu'il faut
 connaître : si un même devoir porte deux pièces de même nom dont une seule est
-un lien, le nom ne les distingue plus, et un consommateur rendra les deux
+ouvrable, le nom ne les distingue plus, et un consommateur rendra les deux
 comme ouvrables. C'est le prix assumé de la compatibilité — rare, cosmétique,
 et à comparer à une forme d'attribut cassée pour tous les lecteurs.
 
-**Exigence.** Une liste `attachment_links[]` vide n'est pas une lacune : cet
-établissement joint alors des fichiers et non des liens, et la proportion
-varie d'une quinzaine à l'autre. PRONOTE
-range deux choses différentes sous une même clé, et la différence décide de
-tout. Un **lien** est une adresse qu'un professeur a collée : stable, elle
-n'authentifie personne, elle est publiable. Un **fichier** n'a aucune adresse
-qui existe indépendamment de la session — `pronotepy` en construit une de la
-forme `FichiersExternes/<hexadécimal>/<nom>?Session=<n>`, où le segment
-hexadécimal est le couple `{"N": id, "Actif": true}` chiffré avec la clé **et**
-le vecteur d'initialisation de la session, tous deux tirés à chaque connexion.
-Deux liens vers le même document depuis deux sessions n'ont donc aucun octet
-commun. La publier écrirait une adresse porteuse d'un droit d'accès dans
-l'instantané, dans chaque ligne du *recorder* et dans le téléchargement de
-diagnostic — ce dont § 8.2 a retiré l'URL iCal — et elle serait morte dans
-l'heure de toute façon.
+**Les deux sortes y figurent, et aucune des deux adresses n'est celle de
+PRONOTE.** C'est le cœur du sujet, parce que PRONOTE range deux choses
+différentes sous une même clé.
+
+Un **lien** est une adresse qu'un professeur a collée. Elle est stable, elle
+n'authentifie personne, et elle est publiée telle quelle : la relayer
+reviendrait à aller chercher le site d'un tiers avec la session de
+l'établissement, ce qui n'est pas l'affaire de cette intégration.
+
+Un **fichier** n'a aucune adresse qui existe indépendamment de la session.
+`pronotepy` en construit une de la forme
+`FichiersExternes/<hexadécimal>/<nom>?Session=<n>`, où le segment hexadécimal
+n'identifie pas le document : c'est le couple `{"N": id, "Actif": true}`
+chiffré avec la clé **et** le vecteur d'initialisation de la session, tous deux
+tirés à chaque connexion. Deux liens vers le même document depuis deux sessions
+n'ont donc aucun octet commun. La publier écrirait une adresse porteuse d'un
+droit d'accès dans l'instantané, dans chaque ligne du *recorder* et dans le
+téléchargement de diagnostic — ce dont § 8.2 a retiré l'URL iCal — et elle
+serait morte dans l'heure de toute façon.
+
+**Exigence.** Un fichier reçoit donc une adresse que **Home Assistant** sert :
+un chemin signé et expirant vers le point d'entrée
+`/api/pronote_ng/attachment/` de l'intégration, qui va chercher les octets par
+le chemin unique vers le réseau — une session, un verrou, une requête facturée
+— et les **relaie**.
+
+Quatre propriétés de ce chemin portent le raisonnement, et aucune n'est
+cosmétique :
+
+- **Il relaie, il ne redirige pas.** Une redirection 302 mettrait l'adresse
+  PRONOTE dans la barre d'adresse, l'historique du navigateur, l'onglet réseau
+  et le journal de tout mandataire sur le trajet — donc exactement le droit
+  d'accès qu'il s'agit de ne pas publier.
+- **Il est enraciné, pas absolu.** Une URL absolue obligerait l'intégration à
+  deviner par quel hôte le navigateur est arrivé, et rendrait l'adresse interne
+  à quelqu'un connecté de l'extérieur.
+- **Il nomme une empreinte, pas un identifiant.** Un identifiant PRONOTE réel
+  contient un `#`, délimiteur de fragment qui tronquerait le chemin ; et un
+  attribut part dans le *recorder*, donc y écrire un identifiant réel le rend
+  durable. L'empreinte est l'idiome que `diagnostics.py` emploie déjà pour les
+  identifiants d'enfant. Elle désigne un **document** et non un rang, donc un
+  réordonnancement entre deux collectes ne peut pas servir le mauvais fichier.
+- **Il expire.** Une adresse recopiée hors du tableau de bord finit par ne plus
+  rien ouvrir, ce qui empêche une vieille ligne d'historique d'être une clé
+  durable.
+
+**Exigence.** Le type de contenu annoncé au navigateur est une **liste
+blanche** — PDF, images matricielles, texte simple — et tout le reste est servi
+en `application/octet-stream`, donc téléchargé plutôt qu'affiché. La réponse
+sort de l'origine de Home Assistant : un document renvoyé en `text/html`
+exécuterait son propre script avec la session du lecteur, et `image/svg+xml`
+est le même danger sous un nom d'image.
+
+Une liste `attachment_links[]` vide reste possible et n'est pas une lacune : la
+pièce est alors un lien dont l'adresse est inutilisable — pas de schéma
+`http`/`https`, ou pas d'adresse du tout dans la charge utile, cas où amont
+retombe sur le **nom**, ce qui est le piège.
 
 **Exigence.** L'adresse publiée est en `http` ou `https`, jamais autre chose.
 C'est une liste blanche et non un filtre, parce qu'un consommateur met cette
