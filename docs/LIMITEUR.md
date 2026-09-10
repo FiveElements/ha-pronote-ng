@@ -226,10 +226,24 @@ Quatre choses valent d'être sues :
   franchit donc les heures calmes. Sans cette dispense, une instance installée —
   ou redémarrée — à 23 h ne publiait rien avant 6 h et donnait toutes les
   apparences d'une intégration cassée, précisément au moment où quelqu'un la
-  regarde. Elle s'auto-limite : dès que la catégorie détient un instantané, la
-  dispense cesse. C'est un lot par catégorie et par enfant, jamais une exemption
-  permanente — et une catégorie qui *échoue* reste sans donnée mais ne s'emballe
-  pas, puisque les pauses sont évaluées avant la branche des heures calmes.
+  regarde. Elle cesse dès que la catégorie détient un instantané — un lot par
+  catégorie et par enfant.
+
+    **Elle cesse aussi au bout de trois échecs**, et ce second garde-fou a été
+    ajouté parce qu'il manquait. « Elle s'auto-limite » était vrai du succès
+    seulement : une catégorie qui ne peut **jamais** réussir reste sans donnée
+    pour toujours, donc l'exemption devenait permanente. Mesuré sur une
+    instance : l'onglet « équipe pédagogique » de l'établissement renvoyait une
+    section vide, la catégorie `static` était donc la seule éveillée entre 22 h
+    et 6 h, donc la seule à pouvoir accumuler des échecs — et le repli du
+    limiteur, qui est global au compte, n'avait le succès d'aucune autre
+    catégorie pour se remettre à zéro. Un onglet inutilisable produisait un
+    `backoff` de tout le compte, et les entités qui ne lui appartenaient pas
+    vieillissaient derrière lui. Trois échecs, soit trois quarts de son propre
+    intervalle : assez pour qu'une panne passagère ne coûte pas sa dispense à
+    une installation neuve, assez peu pour qu'un onglet qui ne marche pas cesse
+    d'être seul éveillé à quatre heures du matin. Le premier succès rétablit la
+    dispense.
 - **Un rechargement ne peut plus vous piéger la nuit.** L'horaire d'une
   catégorie et sa donnée traversent désormais un rechargement *ensemble, ou pas
   du tout* : une catégorie revenue sans instantané est due immédiatement, quelle

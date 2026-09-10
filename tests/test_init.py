@@ -55,7 +55,11 @@ from custom_components.pronote_ng.ratelimit import (
     REQUESTS_PER_LOGIN,
 )
 from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
-from custom_components.pronote_ng.tiers import collect_tier
+from custom_components.pronote_ng.tiers import (
+    _FIRST_COLLECTION_ATTEMPTS,
+    _priority_for,
+    collect_tier,
+)
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
@@ -706,6 +710,122 @@ async def test_the_account_device_cannot_be_deleted(
     assert parent is not None, "the account device is missing from the fixture"
 
     assert await async_remove_config_entry_device(hass, mock_entry, parent) is False
+
+
+class TestHowLongAFirstCollectionOutranksQuietHours:
+    """The dispensation, and the exit it was missing.
+
+    A tier with no snapshot outranks quiet hours because its first collection
+    is the one a user is watching for. That was described as self-limiting
+    because a tier that collects stops qualifying -- true, and insufficient:
+    **success was its only exit**. A tier that can never succeed stays
+    data-less for ever and therefore held a standing exemption, and on a live
+    instance the establishment's unusable teaching-staff tab became the only
+    tier awake between 22:00 and 06:00. Being alone, it was the only tier able
+    to accumulate failures, with no other tier's success available to reset the
+    account's back-off: one broken tab produced an account-wide ``backoff`` and
+    took every other tier's freshness down with it.
+
+    Driven on an account that has been set up but has collected nothing, which
+    is the state the dispensation is *about*. The shared ``account`` fixture
+    has already collected every tier, so ``has_data`` is true there and this
+    branch is unreachable -- a test written against that fixture would assert
+    the declared priority in every case and pass whatever the bound was.
+    """
+
+    @staticmethod
+    async def _fresh(
+        hass: HomeAssistant, mock_entry: MockConfigEntry, client: FakeClient
+    ) -> PronoteAccount:
+        """An account that knows its shape and holds no snapshot."""
+        account = PronoteAccount(hass, mock_entry)
+        with patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=client,
+        ):
+            await account.async_setup()
+            await hass.async_block_till_done()
+        return account
+
+    async def test_a_tier_with_no_data_yet_outranks_quiet_hours(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        parent_client: FakeClient,
+        no_spacing: None,
+    ) -> None:
+        """The dispensation itself, which must keep working.
+
+        Asserted first and separately, because every bound below is only
+        defensible if the thing being bounded still exists. An instance
+        installed at 23:00 that shows nothing until 06:00 reads as broken, and
+        that is what this branch is for.
+        """
+        del no_spacing
+        account = await self._fresh(hass, mock_entry, parent_client)
+        try:
+            assert (
+                _priority_for(account, Tier.STATIC, "STUDENT-1") is Priority.CRITICAL
+            ), "a tier that has never collected must still outrank quiet hours"
+        finally:
+            await account.async_unload()
+            await hass.async_block_till_done()
+
+    async def test_a_tier_that_keeps_failing_loses_the_dispensation(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        parent_client: FakeClient,
+        no_spacing: None,
+    ) -> None:
+        """The exit that was missing, expressed as evidence rather than success.
+
+        The argument for the exemption is about a first collection that
+        *works*; it cannot survive the demonstration that this one does not.
+        After the third failure the tier drops back to its declared priority,
+        so quiet hours apply to it again and it waits for 06:00 like
+        everything else -- while keeping its deadline and its floored retry.
+        """
+        del no_spacing
+        account = await self._fresh(hass, mock_entry, parent_client)
+        try:
+            for _ in range(_FIRST_COLLECTION_ATTEMPTS):
+                account.scheduler.mark_failed(Tier.STATIC, 0.0)
+
+            assert (
+                _priority_for(account, Tier.STATIC, "STUDENT-1")
+                is (TIER_PRIORITY[Tier.STATIC])
+            ), "a tab that does not work must stop being the only tier awake at 04:00"
+        finally:
+            await account.async_unload()
+            await hass.async_block_till_done()
+
+    async def test_one_failure_does_not_spend_the_dispensation(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        parent_client: FakeClient,
+        no_spacing: None,
+    ) -> None:
+        """The guard on the bound: a transient failure must not cost it.
+
+        A school's server restarting, or one malformed response, is exactly
+        the case the dispensation was granted for -- a fresh install that has
+        nothing to show yet. Bounding it at the *first* failure would hand a
+        new user an empty dashboard until morning for a fault that had already
+        cleared.
+        """
+        del no_spacing
+        account = await self._fresh(hass, mock_entry, parent_client)
+        try:
+            account.scheduler.mark_failed(Tier.STATIC, 0.0)
+
+            assert (
+                _priority_for(account, Tier.STATIC, "STUDENT-1") is Priority.CRITICAL
+            ), "one bad response is not evidence that the collection cannot work"
+        finally:
+            await account.async_unload()
+            await hass.async_block_till_done()
 
 
 class TestWhenTheFirstBatchIsAllowedToRun:

@@ -1652,7 +1652,7 @@ def test_a_teaching_staff_response_without_its_list_names_what_it_did_carry(
     ("response", "expected"),
     [
         pytest.param(
-            {"dataSec": {"data": {}}},
+            {"dataSec": {"data": {"autreChose": {"V": []}}}},
             "dataSec.data carries no 'liste'",
             id="the section is reached and lacks the collection",
         ),
@@ -1684,6 +1684,14 @@ def test_a_missing_section_and_an_empty_one_are_not_reported_alike(
     and from the outside both are "a mapping of ['dataSec']". Only naming the
     level actually reached and the key it lacks separates a section this
     school does not publish from a path that broke one level higher.
+
+    The first case carries a key rather than being empty, and the reason is
+    the answer this instrument produced: an ``dataSec.data`` that is present
+    and *empty* is now read as "this school publishes no teaching team" and
+    succeeds -- see
+    ``test_an_authorised_tab_answering_with_an_empty_section_publishes_zero``.
+    What still has to fail, and what this case pins, is a ``data`` that
+    carries something other than the collection asked for.
     """
     caplog.set_level(logging.WARNING)
     client.responses["PageEquipePedagogique"] = response
@@ -1714,6 +1722,42 @@ def test_the_warning_names_shapes_and_never_a_value(
 
     assert "listeEquipePedagogique" in caplog.text
     assert "Prof. Secret" not in caplog.text
+
+
+def test_an_authorised_tab_answering_with_an_empty_section_publishes_zero(
+    gateway: PronoteGateway, client: FakeClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The live answer the diagnostic warning was built to obtain.
+
+    A real establishment answers tab 37 with ``{"dataSec": {"data": {}}}``:
+    the section is present and empty. That is the school saying it publishes
+    no teaching team, not a renamed field -- and upstream's own guard is the
+    proof, because ``_Communication.post`` refuses an unauthorised ``onglet``
+    with "Action not permitted" before anything goes out
+    (``pronoteAPI.py:126``), so any response at all means tab 37 is granted.
+
+    Failing it cost that instance its ``equipe_pedagogique`` entity
+    permanently, and cost more than the entity: the tier could never hold
+    data, so under the first-collection dispensation it was the only tier
+    exempt from quiet hours, the only one awake between 22:00 and 06:00, and
+    the only one able to accumulate failures with no other tier's success
+    available to reset the account's back-off.
+
+    An empty staff list is safe to publish, which is what separates this from
+    ``_required_list``'s refusal. That refusal protects collections whose
+    emptiness silently breaks an automation -- a renamed ``ListeCours`` reads
+    as "no lessons today" and the wake-up automation stops firing. Nobody
+    triggers on the size of a teaching team, so "zero members" is honest and
+    "unavailable for ever" is not.
+    """
+    caplog.set_level(logging.INFO)
+    client.responses["PageEquipePedagogique"] = {"dataSec": {"data": {}}}
+
+    result = gateway.static(client)
+
+    assert result.facts.teaching_staff == ()
+    assert result.calls == 1, "the request was placed and must be charged"
+    assert "publishes no teaching team" in caplog.text
 
 
 def test_an_empty_teaching_staff_list_is_not_a_failure(

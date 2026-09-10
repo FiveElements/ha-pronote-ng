@@ -1533,9 +1533,42 @@ class PronoteGateway:
         # `liste` alone, which meant the warning could not tell an empty
         # `data` from a missing one -- the `or {}` had already turned the
         # second into the first. A live establishment then reported exactly
-        # that ambiguity and the question could not be answered from the log.
+        # that ambiguity, the instrument was built to answer it, and it did:
+        # `data` is present and **empty**. Hence the branch below.
+        response = client.post("PageEquipePedagogique", 37)
+        section = _get(response, "dataSec", "data")
+        if isinstance(section, dict) and not section:
+            # An authorised tab that answers with an empty `data` is this
+            # establishment saying it publishes no teaching team -- not a
+            # protocol change. Upstream's own guard proves the tab is
+            # authorised: `_Communication.post` refuses an unauthorised
+            # `onglet` with "Action not permitted" before anything is sent
+            # (`pronoteAPI.py:126`), so a response at all means 37 is granted.
+            #
+            # Failing here instead cost a real instance its
+            # `equipe_pedagogique` entity permanently: the tier could never
+            # hold data, so it could never stop being retried, and it was the
+            # one collection that never came back. And an empty staff list is
+            # **safe** to publish, which is the whole reason this differs from
+            # `_required_list`'s refusal. That refusal exists for collections
+            # whose emptiness silently breaks an automation -- a renamed
+            # `ListeCours` reads as "no lessons today" and the wake-up
+            # automation stops firing. Nobody triggers on the size of the
+            # teaching team, so "zero members" is an honest answer and
+            # "unavailable for ever" is not.
+            #
+            # `info`, not `warning`: this is a property of the establishment,
+            # not a fault, and it is logged once a day at most.
+            _LOGGER.info(
+                "this establishment publishes no teaching team: the tab is "
+                "authorised and answered with an empty 'data'. Reporting an "
+                "empty list rather than failing the collection, so the entity "
+                "exists and says zero instead of staying unavailable"
+            )
+            return GatewayResult(StaticFacts(teaching_staff=()), calls=1)
+
         entries = _required_list(
-            client.post("PageEquipePedagogique", 37),
+            response,
             "dataSec",
             "data",
             "liste",

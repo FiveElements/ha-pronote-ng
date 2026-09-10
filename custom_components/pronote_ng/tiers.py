@@ -14,7 +14,7 @@ exists to prevent.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from .const import TIER_PRIORITY, Priority, Tier
 from .models import (
@@ -32,33 +32,64 @@ if TYPE_CHECKING:
     from .models import Period
 
 
+#: How many failed attempts the first-collection dispensation survives.
+#:
+#: Three, and the number is chosen against the cadence rather than picked. A
+#: failing tier is retried at a quarter of its own interval
+#: (`scheduler._RETRIES_PER_INTERVAL`), so three attempts is three quarters of
+#: one interval: long enough that a transient failure -- a school's server
+#: restarting, one bad response -- never costs a fresh install its
+#: dispensation, and short enough that a tab which simply does not work stops
+#: being the only tier awake at four in the morning.
+_FIRST_COLLECTION_ATTEMPTS: Final = 3
+
+
+def _priority_for(account: PronoteAccount, tier: Tier, student_id: str) -> Priority:
+    """The tier's declared priority, raised for a first collection that works.
+
+    A tier that has never produced a snapshot is publishing `unavailable`, and
+    §2.5 is explicit that an unavailable entity breaks automations rather than
+    merely looking empty. So its **first** collection outranks quiet hours,
+    which is the one dispensation annexe B already grants: ``CRITICAL`` is the
+    priority the login itself uses, and the quiet-hours branch of
+    ``RateLimiter.check`` exempts it. Without that, an instance restarted -- or
+    installed -- at 23:00 showed nothing at all until 06:00 and looked broken,
+    and the first collection is exactly the one a user is watching for.
+
+    The dispensation used to be described as self-limiting because a tier that
+    collects stops qualifying. True, and insufficient: **success was its only
+    exit**. A tier that can never succeed stays data-less for ever, so it held
+    a *standing* quiet-hours exemption. On a live instance the establishment's
+    unusable teaching-staff tab was therefore the only tier awake between 22:00
+    and 06:00 -- which made it the only tier able to accumulate failures, with
+    no other tier's success available to reset the account's back-off. One
+    broken tab became an account-wide ``backoff``, and entities it does not own
+    went stale behind it.
+
+    So the exit is now *evidence* as well as success. The argument for the
+    dispensation is about a first collection that works, and it cannot survive
+    the demonstration that this one does not: after
+    :data:`_FIRST_COLLECTION_ATTEMPTS` failures the tier drops back to its
+    declared priority and waits for 06:00 like everything else. Nothing is
+    given up -- it keeps its deadline, ``mark_failed`` still floors its retry at
+    a quarter of its interval, and the first success resets the counter and
+    restores the dispensation for any future gap.
+    """
+    if (
+        not account.has_data(tier, student_id)
+        and account.scheduler.failures(tier) < _FIRST_COLLECTION_ATTEMPTS
+    ):
+        return Priority.CRITICAL
+    return TIER_PRIORITY[tier]
+
+
 async def collect_tier(  # noqa: PLR0911 -- one arm per tier is the point
     account: PronoteAccount,
     tier: Tier,
     student_id: str,
 ) -> tuple[Snapshot[Any], int, list[DeltaEvent]]:
     """Collect one tier for one student and derive its events."""
-    priority = TIER_PRIORITY[tier]
-    if not account.has_data(tier, student_id):
-        # A tier that has never produced a snapshot is publishing
-        # `unavailable`, and §2.5 is explicit that an unavailable entity breaks
-        # automations rather than merely looking empty. So its *first*
-        # collection outranks quiet hours, which is the one dispensation
-        # annexe B already grants: `CRITICAL` is the priority the login itself
-        # uses, and the quiet-hours branch of `RateLimiter.check` exempts it.
-        #
-        # Without this, an instance restarted at 23:00 -- or installed at
-        # 23:00 -- showed nothing at all until 06:00 and looked broken. The
-        # first collection is exactly the collection a user is watching for.
-        #
-        # It is self-limiting, which is what makes it safe to grant: the
-        # moment the tier holds a snapshot this branch stops applying, so it
-        # is one batch per tier and per child, not a standing exemption. A
-        # tier that keeps *failing* stays data-less, but it does not spin --
-        # `mark_failed` floors its retry at a quarter of its own interval, and
-        # the limiter's backoff hold is checked before the quiet-hours branch
-        # and so still applies to it.
-        priority = Priority.CRITICAL
+    priority = _priority_for(account, tier, student_id)
 
     match tier:
         case Tier.TIMETABLE:

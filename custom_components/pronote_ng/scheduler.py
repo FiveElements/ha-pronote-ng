@@ -83,6 +83,11 @@ class TierState:
     boost_served_at: float | None = None
     #: Consecutive deferrals, for the diagnostic attribute only.
     deferrals: int = 0
+    #: Consecutive *failures*, which is a different fact from a deferral: a
+    #: deferred tier was refused before it was tried, a failed one was tried
+    #: and did not work. Unlike :attr:`deferrals` this one is load-bearing --
+    #: it is what bounds the first-collection dispensation in ``tiers.py``.
+    failures: int = 0
     #: Wall-clock instant of the last successful collection. Kept alongside the
     #: monotonic one because staleness has to exclude quiet hours, and only a
     #: wall clock can say whether the night intervened.
@@ -308,6 +313,7 @@ class FetchScheduler:
         state.not_before = 0.0
         state.boosted = False
         state.deferrals = 0
+        state.failures = 0
 
     def defer(self, tier: Tier, retry_after: float) -> None:
         """Push a tier's earliest run forward, without cancelling it.
@@ -345,6 +351,9 @@ class FetchScheduler:
         five-minute tick for as long as it kept failing. See
         :data:`_RETRIES_PER_INTERVAL`.
         """
+        state = self._states.get(tier)
+        if state is not None:
+            state.failures += 1
         plan = self._plans.get(tier)
         if plan is not None:
             retry_after = max(
@@ -408,6 +417,20 @@ class FetchScheduler:
         """Monotonic instant of the last successful collection."""
         state = self._states.get(tier)
         return state.last_collected if state else None
+
+    def failures(self, tier: Tier) -> int:
+        """Consecutive failed collections, reset by the first success.
+
+        Read by ``tiers.collect_tier`` to bound the first-collection
+        dispensation. A tier with no data outranks quiet hours because its
+        first collection is the one a user is watching for -- but that argument
+        is about a collection that *works*, and it cannot survive the evidence
+        that this one does not. An unbounded dispensation made a permanently
+        failing tier the only caller awake all night, which is how a single
+        broken tab turned into an account-wide back-off.
+        """
+        state = self._states.get(tier)
+        return state.failures if state else 0
 
     def age(self, tier: Tier) -> float | None:
         """Seconds since the last successful collection of ``tier``."""
@@ -483,6 +506,7 @@ class FetchScheduler:
                 "enabled": plan.enabled,
                 "age_seconds": self.age(tier),
                 "deferrals": self._states[tier].deferrals,
+                "failures": self._states[tier].failures,
                 "boosted": self._states[tier].boosted,
             }
             for tier, plan in self._plans.items()

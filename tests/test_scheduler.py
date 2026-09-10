@@ -387,6 +387,61 @@ def test_a_failure_still_waits_as_long_as_the_limiter_asked(
     assert scheduler.due() == [Tier.STATIC]
 
 
+def test_failures_are_counted_and_a_success_clears_them(clock: FakeClock) -> None:
+    """The counter that bounds the first-collection dispensation.
+
+    Not a diagnostic field, which ``deferrals`` is: ``tiers._priority_for``
+    reads this to decide whether a tier with no data still outranks quiet
+    hours. It has to count *failures* and not deferrals, because those are
+    different facts -- a deferred tier was refused before it was tried, a
+    failed one was tried and did not work -- and only the second is evidence
+    that the collection itself does not work.
+
+    The reset on success is the half that keeps the dispensation available:
+    a tier that works once is entitled to the exemption again on any future
+    gap, so a transient outage must not spend it permanently.
+    """
+    scheduler = build(clock, one(Tier.STATIC, 1440, Priority.LOW))
+    assert scheduler.failures(Tier.STATIC) == 0
+
+    for expected in (1, 2, 3):
+        scheduler.mark_failed(Tier.STATIC, 0.0)
+        assert scheduler.failures(Tier.STATIC) == expected
+
+    scheduler.mark_collected(Tier.STATIC)
+    assert scheduler.failures(Tier.STATIC) == 0
+
+
+def test_a_deferral_is_not_counted_as_a_failure(clock: FakeClock) -> None:
+    """The guard on the counter, and the reason it is a second field.
+
+    A limiter refusing a tier says nothing about whether that tier's
+    collection works, so counting a deferral here would spend the
+    first-collection dispensation of a perfectly healthy tier that happened to
+    be installed during quiet hours -- which is the exact situation the
+    dispensation exists for.
+    """
+    scheduler = build(clock, one(Tier.STATIC, 1440, Priority.LOW))
+    scheduler.defer(Tier.STATIC, 60.0)
+
+    assert scheduler.failures(Tier.STATIC) == 0
+    assert scheduler.diagnostics()["static"]["deferrals"] == 1
+
+
+def test_the_failure_counter_of_an_unknown_tier_is_zero(clock: FakeClock) -> None:
+    """Asked about a tier it has no plan for, the scheduler answers, not raises.
+
+    ``tiers._priority_for`` calls this on every collection, so an answer of
+    ``0`` for a tier that was disabled between two reloads keeps the caller
+    simple -- and zero is the right answer: nothing has failed.
+    """
+    scheduler = build(clock, one(Tier.MARKS, 180, Priority.NORMAL))
+
+    assert scheduler.failures(Tier.STATIC) == 0
+    scheduler.mark_failed(Tier.STATIC, 0.0)
+    assert scheduler.failures(Tier.STATIC) == 0
+
+
 def test_a_throttled_tier_is_not_slowed_by_the_failure_floor(
     clock: FakeClock,
 ) -> None:
