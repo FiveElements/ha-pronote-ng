@@ -1689,6 +1689,24 @@ _HISTORY_EXTRACTORS: Final[
 class PronoteSensor(PronoteEntity, SensorEntity):
     """A sensor whose state is derived from its tier's snapshot."""
 
+    #: Kept out of the recorder, and this one is a security boundary rather
+    #: than a size optimisation.
+    #:
+    #: ``attachment_links`` carries a signed address for every openable
+    #: document, and a signed address is a **bearer token**: anyone holding it
+    #: can fetch that document for twelve hours with no credentials. Recorded,
+    #: it would be written to the history database on every homework
+    #: collection -- and a database is copied into every backup and pasted into
+    #: the occasional bug report. Excluding it here means the token exists in
+    #: the live state and nowhere durable.
+    #:
+    #: The reasoning that made this necessary is worth keeping: the diagnostics
+    #: download was argued to be safe because "these values are never
+    #: attributes" (see `diagnostics.py`), which was true until this attribute
+    #: existed. A property of an architecture stops holding when the
+    #: architecture changes.
+    _unrecorded_attributes = frozenset({"attachment_links"})
+
     entity_description: PronoteSensorDescription
 
     def __init__(

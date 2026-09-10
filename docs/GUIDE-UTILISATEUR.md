@@ -407,8 +407,15 @@ vous le renvoie. Trois conséquences pratiques :
   Si aucune session n'est ouverte — typiquement le soir — la première ouverture
   ajoute une connexion, sur les vingt-quatre autorisées par jour.
 - **Une adresse recopiée ailleurs finit par ne plus rien ouvrir.** C'est voulu :
-  c'est ce qui fait qu'une capture d'écran ou une vieille ligne d'historique ne
-  reste pas une clé vers les devoirs de votre enfant.
+  c'est ce qui fait qu'une capture d'écran ne reste pas une clé vers les devoirs
+  de votre enfant. Ces adresses ne sont d'ailleurs **pas enregistrées dans
+  l'historique**, donc elles ne partent ni dans vos sauvegardes ni dans un
+  fichier de diagnostic que vous joindriez à un rapport de bogue.
+- **Entre 22h00 et 6h00, un document pas encore ouvert ne s'ouvre pas.** Les
+  heures calmes écartent tout appel réseau à la demande, pas seulement les
+  collectes — c'est la même règle pour les services de l'intégration. Un
+  document déjà ouvert dans la journée reste consultable, puisqu'il est en
+  mémoire. Si ça vous gêne, le levier est le réglage des heures calmes.
 - **Un document qui a quitté l'horizon d'affichage n'est plus servi.**
   L'intégration ne va chercher que ce qu'elle a effectivement collecté, donc une
   adresse ne peut pas être bricolée pour demander autre chose.

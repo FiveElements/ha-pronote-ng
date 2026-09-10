@@ -446,3 +446,186 @@ async def test_the_route_is_registered_once_for_the_whole_instance(
         assert await async_setup(hass, {})
 
     assert http.register_view.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# What must not become durable
+# ---------------------------------------------------------------------------
+
+
+def test_the_signed_address_is_kept_out_of_the_recorder() -> None:
+    """A signed address is a bearer token, and a database outlives it.
+
+    Twelve hours is a defensible bound for an address that leaks through a
+    browser's history. It is not a defensible bound for one written to the
+    history database on every homework collection, because a database is
+    copied into every backup and occasionally pasted into a bug report -- and
+    the rows written in the last twelve hours would still open eight documents
+    apiece, with no credentials.
+
+    The reasoning this replaces is the point. The diagnostics download was
+    argued safe because "these values are never attributes"; that was true
+    until this attribute existed. Asserted here so the argument cannot quietly
+    expire again.
+    """
+    from custom_components.pronote_ng.sensor import PronoteSensor
+
+    assert "attachment_links" in PronoteSensor._unrecorded_attributes
+
+
+def test_a_clock_driven_sensor_inherits_the_exclusion() -> None:
+    """`homework_to_do` is not clock-driven, but the exclusion must not depend
+    on which subclass Home Assistant happened to build.
+
+    Home Assistant unions `_unrecorded_attributes` across a class hierarchy at
+    definition time, so a subclass that redeclared it would silently drop the
+    parent's entries. Checked rather than assumed.
+    """
+    from custom_components.pronote_ng.sensor import PronoteClockSensor
+
+    assert "attachment_links" in PronoteClockSensor._unrecorded_attributes
+
+
+@REQUIRES_HASS
+class TestHowARefusalIsAnswered:
+    """The two refusals a parent can actually meet, and what they say."""
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """One file, which is the case that needs fetching."""
+        from .fixtures.client import FakeClient
+
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageCahierDeTexte"] = protocol.homework_response(
+            [protocol.homework(attachments=("enonce.pdf",))]
+        )
+        return client
+
+    @staticmethod
+    def _document(account: PronoteAccount) -> tuple[str, Any]:
+        snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
+        assert snapshot is not None
+        item = snapshot.data.homework[0]
+        return fingerprint(item.id, item.attachments[0].id), item.attachments[0]
+
+    async def test_a_click_is_run_at_the_priority_of_a_human_request(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Observed, not read off the source.
+
+        `services.py` runs human-initiated calls at `HIGH`, and a click is one:
+        somebody is waiting, so it should outrank a routine collection once the
+        daily cap starts shedding. It is deliberately **not** `CRITICAL`, the
+        only priority that crosses quiet hours, which is reserved for a tier
+        that has never collected at all.
+        """
+        del hass
+        from custom_components.pronote_ng.attachment import _fetch
+        from custom_components.pronote_ng.const import Priority
+
+        _print, document = self._document(account)
+        seen: list[Priority] = []
+        original = account.session.run
+
+        async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
+            seen.append(priority)
+            return await original(name, priority, fn, **kwargs)
+
+        with patch.object(account.session, "run", spy):
+            await _fetch(account, document, CHILDREN[0][0])
+
+        assert seen == [Priority.HIGH]
+
+    async def test_a_deferral_answers_with_the_limiters_own_delay(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A hard-coded minute would invite a client to retry all night.
+
+        Quiet hours defer for hours, not for a minute, and this endpoint is
+        reachable by a browser that honours `Retry-After`. Sending the
+        limiter's own figure is what keeps an automatic retry from hammering a
+        school server between 22:00 and 06:00.
+        """
+        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+        from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
+
+        print_, _document = self._document(account)
+        request = _FakeRequest(hass)
+
+        with patch(
+            "custom_components.pronote_ng.attachment._fetch",
+            side_effect=TierDeferred(DeferReason.QUIET_HOURS, 7200.0),
+        ):
+            response = await PronoteAttachmentView().get(
+                request,  # type: ignore[arg-type]
+                account.entry.entry_id,
+                print_,
+            )
+
+        assert response.status == 503
+        assert response.headers["Retry-After"] == "7200"
+
+    async def test_an_unknown_account_is_refused_without_a_traceback(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The address embeds an entry id, so it can name an entry that is gone.
+
+        A removed or unloaded account has to answer with a status rather than
+        raising out of the handler -- aiohttp would turn that into a 500, which
+        reads like a broken integration rather than "this account is not
+        loaded".
+        """
+        del account
+        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+
+        response = await PronoteAttachmentView().get(
+            _FakeRequest(hass),  # type: ignore[arg-type]
+            "01ABSENTABSENTABSENTABSENT",
+            "0" * 16,
+        )
+
+        assert response.status == 404
+
+    async def test_a_link_is_not_relayed_through_the_school_session(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A link has its own address and the dashboard was given it directly.
+
+        Relaying one would mean fetching an unrelated site with the
+        establishment's authenticated session -- which is not this
+        integration's business, and would make Home Assistant an open proxy for
+        anything a teacher pastes.
+        """
+        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+        from custom_components.pronote_ng.models import HomeworkAttachment
+
+        link = HomeworkAttachment(
+            name="Le sujet", url="https://exemple.invalid/sujet", id="ATTACHMENT-9"
+        )
+        with patch(
+            "custom_components.pronote_ng.attachment._locate",
+            return_value=(CHILDREN[0][0], link),
+        ):
+            response = await PronoteAttachmentView().get(
+                _FakeRequest(hass),  # type: ignore[arg-type]
+                account.entry.entry_id,
+                "0" * 16,
+            )
+
+        assert response.status == 404
+        assert "link" in response.text
+
+
+class _FakeRequest:
+    """An aiohttp request, as far as the view reads one.
+
+    The view takes ``hass`` out of ``request.app`` and nothing else, so the
+    handler can be exercised without standing up an HTTP server -- which is
+    what lets these tests assert on statuses and headers rather than on a
+    rendered page.
+    """
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        from homeassistant.helpers.http import KEY_HASS
+
+        self.app = {KEY_HASS: hass}

@@ -249,9 +249,23 @@ cosmétique :
   durable. L'empreinte est l'idiome que `diagnostics.py` emploie déjà pour les
   identifiants d'enfant. Elle désigne un **document** et non un rang, donc un
   réordonnancement entre deux collectes ne peut pas servir le mauvais fichier.
-- **Il expire.** Une adresse recopiée hors du tableau de bord finit par ne plus
-  rien ouvrir, ce qui empêche une vieille ligne d'historique d'être une clé
-  durable.
+- **Il expire** en douze heures, et il n'est **pas enregistré**. Ces deux
+  bornes vont ensemble : douze heures est défendable pour une adresse qui fuit
+  par l'historique d'un navigateur, et ne l'est pas pour une adresse écrite
+  dans la base d'historique à chaque collecte — une base est recopiée dans
+  chaque sauvegarde et parfois collée dans un rapport de bogue. L'entité
+  déclare donc `attachment_links` dans ses `_unrecorded_attributes` : le jeton
+  existe dans l'état vivant et nulle part de durable.
+
+**Exigence.** Le raisonnement qui a rendu cette exclusion nécessaire vaut d'être
+retenu, parce qu'il s'est retourné. Le téléchargement de diagnostic était
+défendu par « ces valeurs ne sont jamais des attributs » — vrai jusqu'à ce que
+cet attribut existe. Le dump de cette intégration n'a d'ailleurs jamais porté
+d'attribut d'entité, et ne le porte toujours pas ; c'est l'enregistrement, pas
+le diagnostic, qui était le vecteur réel. **Une propriété vraie d'une
+architecture cesse de l'être quand l'architecture change**, et une exclusion
+argumentée par une architecture doit être revérifiée à chaque fois qu'on ajoute
+un attribut.
 
 **Exigence.** Le type de contenu annoncé au navigateur est une **liste
 blanche** — PDF, images matricielles, texte simple — et tout le reste est servi

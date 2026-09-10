@@ -257,12 +257,17 @@ class PronoteAttachmentView(HomeAssistantView):
         if (cached := cache.get(print_)) is None:
             try:
                 cached = await _fetch(account, attachment, student_id)
-            except TierDeferred:
-                # The limiter said no. 503 with `Retry-After` rather than an
-                # error page, because this is a "later", not a "never", and a
-                # browser understands the difference.
+            except TierDeferred as deferred:
+                # The limiter said "later", not "never", so 503 with a
+                # `Retry-After` a browser understands -- and with the limiter's
+                # own figure rather than a guess. The distinction is not
+                # cosmetic: a refusal during quiet hours is hours away, not a
+                # minute, and a hard-coded sixty seconds would invite a client
+                # to retry all night against a school server.
                 return web.Response(
-                    status=503, headers={"Retry-After": "60"}, text="rate limited"
+                    status=503,
+                    headers={"Retry-After": str(max(1, int(deferred.retry_after)))},
+                    text=f"deferred by the rate limiter: {deferred.reason}",
                 )
             except AttachmentUnavailable as error:
                 return web.Response(status=502, text=str(error))
@@ -298,10 +303,18 @@ async def _fetch(
 
     content, declared, _cost = await account.session.run(
         str(Tier.HOMEWORK),
-        # Never CRITICAL: a click is not more important than the collection
-        # that keeps every other entity current, and quiet hours have no reason
-        # to be crossed for a document a parent can open in the morning.
-        Priority.LOW,
+        # The priority every other human-initiated call in this integration
+        # uses (`services.py`), and the same for a reason: somebody is waiting
+        # for this, so it should outrank a routine collection under the daily
+        # cap -- but it is not CRITICAL, which is the *only* priority that
+        # crosses quiet hours and is reserved for a tier that has never
+        # collected at all.
+        #
+        # So between 22:00 and 06:00 this is refused, and that is the
+        # integration's uniform policy rather than a property of documents:
+        # every network-touching service is refused there too. The refusal says
+        # so, and says when to come back.
+        Priority.HIGH,
         work,
         student_id=student_id,
         cost=1,
