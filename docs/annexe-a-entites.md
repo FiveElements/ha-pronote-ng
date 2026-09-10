@@ -192,17 +192,25 @@ des pièces jointes, toutes, sous forme de chaînes : un gabarit qui fait
 que celles dont l'adresse peut sortir de l'intégration, sous forme d'objets
 `{ name, url }`.
 
-> `attachment_links[]` est **séparé plutôt qu'intégré à `attachments[]`** pour
-> une raison de séquence, et la clé peut donc encore bouger. Une carte a besoin
-> de l'adresse *dans* `attachments[]` pour transformer un nom en lien ; y mettre
-> des objets change la forme de l'attribut et casse un gabarit qui le joint.
-> Cette rupture ne vaut d'être payée que si cet établissement publie vraiment
-> des liens, ce qu'aucune donnée actuelle ne dit — les noms observés
-> ressemblent tous à des fichiers. La clé séparée mesure ce fait sans rien
-> casser ; si elle se remplit, les adresses rejoindront `attachments[]`.
+Les deux clés sont **le contrat, et il est arrêté** : les adresses ne
+rejoindront pas `attachments[]`. Ce choix a été tranché par la mesure et non
+par le goût. Une carte a besoin de l'adresse *dans* `attachments[]` pour
+transformer un nom en lien, donc la clé unique lui coûterait moins — mais y
+mettre des objets change la forme d'un attribut qui porte des chaînes depuis
+l'origine, et casse le gabarit `| join(', ')` qui est aussi la façon normale
+d'écrire « Pièces jointes : a.pdf, b.pdf » dans une notification. Une ligne
+dans une carte coûte moins que cette rupture-là.
 
-**Exigence.** Une liste `attachment_links[]` vide n'est pas une lacune, c'est
-une **mesure** : cet établissement joint des fichiers et non des liens. PRONOTE
+Le rapprochement entre les deux listes se fait **par le nom**, qui est la même
+chaîne de part et d'autre. Cette clé de rapprochement a une limite qu'il faut
+connaître : si un même devoir porte deux pièces de même nom dont une seule est
+un lien, le nom ne les distingue plus, et un consommateur rendra les deux
+comme ouvrables. C'est le prix assumé de la compatibilité — rare, cosmétique,
+et à comparer à une forme d'attribut cassée pour tous les lecteurs.
+
+**Exigence.** Une liste `attachment_links[]` vide n'est pas une lacune : cet
+établissement joint alors des fichiers et non des liens, et la proportion
+varie d'une quinzaine à l'autre. PRONOTE
 range deux choses différentes sous une même clé, et la différence décide de
 tout. Un **lien** est une adresse qu'un professeur a collée : stable, elle
 n'authentifie personne, elle est publiable. Un **fichier** n'a aucune adresse
