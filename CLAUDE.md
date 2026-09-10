@@ -221,6 +221,40 @@ Two entity behaviours in `entity.py`:
   `async_track_point_in_time` at their next known transition, or they would be
   up to fifteen minutes wrong.
 
+### A restart refills during quiet hours, and that is deliberate
+
+Do not tell anyone to postpone a restart or an install to avoid quiet hours.
+A restart loses every snapshot — the scheduler survives in `hass.data`, the
+data does not — and `_priority_for` (`tiers.py`) reads exactly that:
+
+```python
+if (
+    not account.has_data(tier, student_id)
+    and account.scheduler.failures(tier) < _FIRST_COLLECTION_ATTEMPTS
+):
+    return Priority.CRITICAL
+```
+
+`RateLimiter.check` exempts only `CRITICAL` from quiet hours
+(`priority is not Priority.CRITICAL and self._in_quiet_hours()`), so **every**
+tier collects immediately after a restart at any hour, and the login is
+`CRITICAL` by declaration anyway (`TIER_PRIORITY[Tier.SESSION]`). §2.5 is the
+reason: an unavailable entity breaks automations rather than merely looking
+empty, and an instance restarted at 23:00 that showed nothing until 06:00 read
+as broken.
+
+Three bounds to state accurately rather than round off. The dispensation is
+**per tier and evidence-bounded**: after `_FIRST_COLLECTION_ATTEMPTS` (3)
+failures a tier drops back to its declared priority and does wait for 06:00 —
+success was once its only exit, and a tab that could never succeed held a
+standing exemption, became the only tier awake at night, and turned one broken
+page into an account-wide `backoff`. The dispensation is also not a budget
+dispensation: the daily request cap and the cap of `max_logins_per_day` still
+apply, so a midnight restart spends a login and one full round out of the day's
+allowance. And it says nothing about *on-demand* calls — `services.py`, the
+buttons and the attachment view all use `Priority.HIGH`, which quiet hours
+refuse; only a collection that has never happened is exempt.
+
 ### The design objective, and what it implies
 
 `docs/SPECIFICATION.md` §1: **any ordinary school automation must be writable
