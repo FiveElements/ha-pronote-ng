@@ -473,6 +473,16 @@ SERVICE_GET_RATE_LIMIT_STATUS: Final = "get_rate_limit_status"
 
 #: Attributes never written to the recorder: PRONOTE lists blow past the 16 KiB
 #: attribute limit, and the useful history is the count, not the payload (§9).
+#:
+#: This set is declared once and consumed by **every** entity base, and that
+#: matters more than it looks. Home Assistant does not union
+#: ``_unrecorded_attributes`` up a class hierarchy: ``Entity.__init_subclass__``
+#: computes ``_entity_component_unrecorded_attributes | cls._unrecorded_attributes``,
+#: and ``cls._unrecorded_attributes`` resolves by ordinary attribute lookup, so
+#: a subclass that declares the name **replaces** its parent's set instead of
+#: extending it. A subclass therefore never declares it here; a new name is
+#: added to this constant. v0.0.22 learned this the expensive way -- see the
+#: comment where ``PronoteSensor`` deliberately has no declaration.
 UNRECORDED_LIST_ATTRIBUTES: Final = frozenset(
     {
         "items",
@@ -493,5 +503,10 @@ UNRECORDED_LIST_ATTRIBUTES: Final = frozenset(
         "guardians",
         "address",
         "messages",
+        # Not a top-level attribute today -- it lives inside `items`, so
+        # excluding `items` already covers it. Named anyway, because the
+        # addresses it carries are bearer tokens: if the shape ever flattens,
+        # the guard is already in place rather than needing to be remembered.
+        "attachment_links",
     }
 )

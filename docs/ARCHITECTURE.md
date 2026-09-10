@@ -1418,6 +1418,19 @@ utile. `PronoteAccountEntity` est un **frère** et non une sous-classe, donc
 cette déclaration y est répétée — l'oubli faisait enregistrer `by_tier` et
 `tiers_due` à chaque écriture d'état.
 
+Le corollaire est plus contre-intuitif et a coûté une version : une
+sous-classe, elle, ne redéclare **jamais**. Home Assistant ne réunit pas ces
+ensembles le long d'une hiérarchie —
+`Entity.__init_subclass__` calcule
+`_entity_component_unrecorded_attributes | cls._unrecorded_attributes` et le
+terme de droite est résolu par recherche d'attribut ordinaire, donc une
+déclaration sur une sous-classe *remplace* celle du parent. `PronoteSensor` a
+déclaré un unique nom en v0.0.22, en croyant l'ajouter : les dix-huit attributs
+de liste de tous les capteurs sont retournés à l'enregistreur, et les adresses
+signées des pièces jointes ont été mesurées dans l'historique. Un nom nouveau
+s'ajoute donc à `UNRECORDED_LIST_ATTRIBUTES`, et un test refuse toute
+déclaration de sous-classe qui ne couvre pas cette constante.
+
 `ClockDrivenMixin` (`entity.py`) traite le cas des entités dont l'état
 dépend de **l'heure** et pas seulement des données : « en cours », « absent en
 ce moment », « prochain cours », « réveil ». Elles arment un rappel ponctuel à

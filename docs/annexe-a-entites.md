@@ -253,19 +253,47 @@ cosmétique :
   bornes vont ensemble : douze heures est défendable pour une adresse qui fuit
   par l'historique d'un navigateur, et ne l'est pas pour une adresse écrite
   dans la base d'historique à chaque collecte — une base est recopiée dans
-  chaque sauvegarde et parfois collée dans un rapport de bogue. L'entité
-  déclare donc `attachment_links` dans ses `_unrecorded_attributes` : le jeton
-  existe dans l'état vivant et nulle part de durable.
+  chaque sauvegarde et parfois collée dans un rapport de bogue. L'exclusion qui
+  l'assure est celle de `items`, déclarée pour toutes les entités dans
+  `UNRECORDED_LIST_ATTRIBUTES` : le jeton existe dans l'état vivant et nulle
+  part de durable.
 
-**Exigence.** Le raisonnement qui a rendu cette exclusion nécessaire vaut d'être
-retenu, parce qu'il s'est retourné. Le téléchargement de diagnostic était
-défendu par « ces valeurs ne sont jamais des attributs » — vrai jusqu'à ce que
-cet attribut existe. Le dump de cette intégration n'a d'ailleurs jamais porté
-d'attribut d'entité, et ne le porte toujours pas ; c'est l'enregistrement, pas
-le diagnostic, qui était le vecteur réel. **Une propriété vraie d'une
-architecture cesse de l'être quand l'architecture change**, et une exclusion
-argumentée par une architecture doit être revérifiée à chaque fois qu'on ajoute
-un attribut.
+**Exigence.** L'exclusion porte sur la clé de **premier rang** qui contient les
+adresses, et une sous-classe n'a jamais le droit de la redéclarer. Ces deux
+points ont chacun coûté une version, et ils vont ensemble.
+
+Le *recorder* ne filtre que le premier rang —
+`recorder.db_schema.shared_attrs_bytes_from_event` est une compréhension sur
+`state.attributes.items()` — donc nommer `attachment_links`, qui vit *dans*
+`items`, n'exclut rien. Et Home Assistant ne réunit pas ces ensembles le long
+d'une hiérarchie : `Entity.__init_subclass__` calcule
+`_entity_component_unrecorded_attributes | cls._unrecorded_attributes`, où le
+terme de droite est résolu par recherche d'attribut ordinaire, si bien qu'une
+déclaration sur une sous-classe **remplace** celle du parent au lieu de
+l'étendre. La version 0.0.22 a déclaré `attachment_links` sur la classe des
+capteurs en croyant ajouter : elle a rendu au *recorder* les dix-huit attributs
+de liste de tous les capteurs, `items` compris, et les adresses signées ont été
+mesurées dans l'historique d'une instance vivante. La barrière est aujourd'hui
+double — un test passe l'état publié dans le filtre réel du *recorder*, un autre
+refuse toute déclaration qui ne couvre pas l'ensemble partagé.
+
+Le raisonnement qui a rendu l'exclusion nécessaire vaut aussi d'être retenu,
+parce qu'il s'est retourné. Le téléchargement de diagnostic était défendu par
+« ces valeurs ne sont jamais des attributs » — vrai jusqu'à ce que cet attribut
+existe. Le dump de cette intégration n'a d'ailleurs jamais porté d'attribut
+d'entité, et ne le porte toujours pas ; c'est l'enregistrement, pas le
+diagnostic, qui était le vecteur réel. **Une propriété vraie d'une architecture
+cesse de l'être quand l'architecture change**, et une exclusion argumentée par
+une architecture doit être revérifiée à chaque fois qu'on ajoute un attribut.
+
+**Ce que l'exclusion ne couvre pas.** `_unrecorded_attributes` ne parle qu'au
+*recorder*. Une **trace d'automatisation** capture l'état déclencheur avec ses
+attributs et vit dans `.storage`, donc dans les sauvegardes ; un tableau de bord
+affiche les attributs dans la boîte de dialogue « plus d'infos », donc une
+capture d'écran de cette boîte publie un jeton vivant ; et tout compte Home
+Assistant, administrateur ou non, lit `/api/states` en entier. La borne réelle
+est donc l'expiration, pas l'exclusion — celle-ci retire le vecteur *durable*,
+elle ne rend pas le jeton privé.
 
 **Exigence.** Le type de contenu annoncé au navigateur est une **liste
 blanche** — PDF, images matricielles, texte simple — et tout le reste est servi

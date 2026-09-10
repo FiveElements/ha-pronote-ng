@@ -21,6 +21,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import Event
 import pytest
 
 from custom_components.pronote_ng.attachment import (
@@ -453,37 +455,144 @@ async def test_the_route_is_registered_once_for_the_whole_instance(
 # ---------------------------------------------------------------------------
 
 
-def test_the_signed_address_is_kept_out_of_the_recorder() -> None:
-    """A signed address is a bearer token, and a database outlives it.
+@REQUIRES_HASS
+class TestNothingRecordedCanOpenADocument:
+    """The invariant, run through the recorder's own filter.
 
-    Twelve hours is a defensible bound for an address that leaks through a
-    browser's history. It is not a defensible bound for one written to the
-    history database on every homework collection, because a database is
-    copied into every backup and occasionally pasted into a bug report -- and
-    the rows written in the last twelve hours would still open eight documents
-    apiece, with no credentials.
+    Two earlier versions of this guard passed while the tokens were being
+    written to a live database, and both failed the same way: they checked a
+    belief about Home Assistant instead of asking Home Assistant.
 
-    The reasoning this replaces is the point. The diagnostics download was
-    argued safe because "these values are never attributes"; that was true
-    until this attribute existed. Asserted here so the argument cannot quietly
-    expire again.
+    The first asserted that ``attachment_links`` appeared in
+    ``_unrecorded_attributes``. True, and worthless -- the recorder filters
+    **top-level** keys only, and the addresses live one level down, inside
+    ``items``. The second named ``items`` in a declaration on `PronoteSensor`,
+    which looked like the correction and was the cause: Home Assistant does not
+    union those sets up a class hierarchy, so declaring the name on a subclass
+    *replaced* the base set rather than extending it, and v0.0.22 shipped with
+    every list attribute of every sensor handed back to the recorder.
+
+    So this test calls ``StateAttributes.shared_attrs_bytes_from_event`` -- the
+    function the recorder really uses -- on a real state-changed event, and
+    searches the bytes it would have stored. Nothing is re-implemented and no
+    key is named, so it survives a rename, a reshaping and a fourth theory
+    about how the exclusion resolves.
     """
-    from custom_components.pronote_ng.sensor import PronoteSensor
 
-    assert "attachment_links" in PronoteSensor._unrecorded_attributes
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """One file, so a signed address exists to be found."""
+        from .fixtures.client import FakeClient
+
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageCahierDeTexte"] = protocol.homework_response(
+            [protocol.homework(attachments=("enonce.pdf",))]
+        )
+        return client
+
+    async def test_what_the_recorder_would_store_holds_no_signature(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A signed address is a bearer token and a database outlives it.
+
+        Twelve hours is defensible for an address that leaks through a
+        browser's history. It is not defensible for one written to the history
+        database on every collection, because a database is copied into every
+        backup and occasionally pasted into a bug report.
+
+        Measured on a live instance rather than reasoned about: the history of
+        `sensor.<child>_homework_to_do` held a row carrying every token.
+        """
+        del account
+        from homeassistant.components.recorder.db_schema import StateAttributes
+
+        state = hass.states.get("sensor.enfant_un_homework_to_do")
+        assert state is not None
+        assert "authSig=" in repr(state.attributes), (
+            "no attribute carried a signature, so this proves nothing"
+        )
+
+        event = Event(
+            EVENT_STATE_CHANGED,
+            {"entity_id": state.entity_id, "old_state": None, "new_state": state},
+        )
+        stored = StateAttributes.shared_attrs_bytes_from_event(event, None)
+
+        assert b"authSig=" not in stored, (
+            f"the recorder would store a bearer token: {stored[:400]!r}"
+        )
+
+    async def test_the_signature_is_still_in_the_live_state(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Excluded from the recorder is not excluded from the dashboard.
+
+        The pair matters: a card reads the live state, so the address has to be
+        there. A guard that removed it from both would look like it worked and
+        would have quietly deleted the feature.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_homework_to_do")
+        assert state is not None
+
+        links = state.attributes["items"][0]["attachment_links"]
+
+        assert links[0]["url"].startswith("/api/pronote_ng/attachment/")
+        assert "authSig=" in links[0]["url"]
 
 
-def test_a_clock_driven_sensor_inherits_the_exclusion() -> None:
-    """`homework_to_do` is not clock-driven, but the exclusion must not depend
-    on which subclass Home Assistant happened to build.
+def test_no_entity_class_shadows_the_shared_exclusion() -> None:
+    """A subclass declaration replaces the base set; it does not extend it.
 
-    Home Assistant unions `_unrecorded_attributes` across a class hierarchy at
-    definition time, so a subclass that redeclared it would silently drop the
-    parent's entries. Checked rather than assumed.
+    `Entity.__init_subclass__` computes
+    ``_entity_component_unrecorded_attributes | cls._unrecorded_attributes``,
+    and the right-hand side resolves by ordinary attribute lookup. So any class
+    in this integration that declares the name silently drops every entry
+    `PronoteEntity` had declared -- which is exactly what v0.0.22 did, handing
+    the recorder `items`, `lessons`, the menu fields, `messages`, `address` and
+    `fetched_at` for every sensor, and writing signed addresses into a live
+    database.
+
+    This is the barrier for the whole class of mistake rather than for the one
+    instance of it: a declaration is allowed, but only if it still covers the
+    shared set. The same defect had already been paid for once, on the
+    diagnostic entities that are a *sibling* of `PronoteEntity` rather than a
+    subclass (see the comment in `entity.py`).
     """
-    from custom_components.pronote_ng.sensor import PronoteClockSensor
+    from importlib import import_module
 
-    assert "attachment_links" in PronoteClockSensor._unrecorded_attributes
+    from homeassistant.helpers.entity import Entity
+
+    from custom_components.pronote_ng import DOMAIN, PLATFORMS
+    from custom_components.pronote_ng.const import UNRECORDED_LIST_ATTRIBUTES
+
+    # Derived from `PLATFORMS`, not listed here, so a platform added later is
+    # covered without anybody remembering to extend this test. `entity.py` is
+    # added because the two bases live there and both are meant to declare.
+    modules = [import_module(f"custom_components.{DOMAIN}.entity")] + [
+        import_module(f"custom_components.{DOMAIN}.{platform}")
+        for platform in PLATFORMS
+    ]
+
+    declaring = [
+        (module.__name__, name, member._unrecorded_attributes)
+        for module in modules
+        for name, member in vars(module).items()
+        if isinstance(member, type)
+        and issubclass(member, Entity)
+        and "_unrecorded_attributes" in member.__dict__
+    ]
+    assert declaring, "nothing declared an exclusion, so this proves nothing"
+
+    offenders = {
+        f"{module}.{name}": sorted(UNRECORDED_LIST_ATTRIBUTES - declared)
+        for module, name, declared in declaring
+        if not declared >= UNRECORDED_LIST_ATTRIBUTES
+    }
+
+    assert not offenders, (
+        f"these classes shadow the shared exclusion and drop entries: {offenders}"
+    )
 
 
 @REQUIRES_HASS

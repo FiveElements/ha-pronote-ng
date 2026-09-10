@@ -1689,23 +1689,36 @@ _HISTORY_EXTRACTORS: Final[
 class PronoteSensor(PronoteEntity, SensorEntity):
     """A sensor whose state is derived from its tier's snapshot."""
 
-    #: Kept out of the recorder, and this one is a security boundary rather
-    #: than a size optimisation.
+    #: There is deliberately **no** ``_unrecorded_attributes`` here, and that
+    #: absence is the fix for a measured leak rather than an oversight.
     #:
-    #: ``attachment_links`` carries a signed address for every openable
-    #: document, and a signed address is a **bearer token**: anyone holding it
-    #: can fetch that document for twelve hours with no credentials. Recorded,
-    #: it would be written to the history database on every homework
-    #: collection -- and a database is copied into every backup and pasted into
-    #: the occasional bug report. Excluding it here means the token exists in
-    #: the live state and nowhere durable.
+    #: A file's ``url`` inside ``items`` is a signed address, and a signed
+    #: address is a **bearer token**: anyone holding it fetches that document
+    #: for twelve hours with no credentials. Written to the history database on
+    #: every collection it becomes durable, and a database is copied into every
+    #: backup and pasted into the occasional bug report. `PronoteEntity`
+    #: already excludes ``items`` -- and now ``attachment_links`` --  through
+    #: `UNRECORDED_LIST_ATTRIBUTES`, so inheriting is all this class has to do.
     #:
-    #: The reasoning that made this necessary is worth keeping: the diagnostics
-    #: download was argued to be safe because "these values are never
-    #: attributes" (see `diagnostics.py`), which was true until this attribute
-    #: existed. A property of an architecture stops holding when the
-    #: architecture changes.
-    _unrecorded_attributes = frozenset({"attachment_links"})
+    #: Declaring the name here **removes** that protection. Home Assistant does
+    #: not union the sets up a hierarchy: ``Entity.__init_subclass__`` computes
+    #: ``_entity_component_unrecorded_attributes | cls._unrecorded_attributes``,
+    #: and the right-hand side resolves by ordinary attribute lookup, so a
+    #: subclass declaration shadows the parent's instead of extending it.
+    #: v0.0.22 added ``frozenset({"attachment_links"})`` here believing it
+    #: additive; the effect was to hand the recorder every list attribute of
+    #: every sensor -- ``items``, ``lessons``, ``subjects``, the menu fields,
+    #: ``messages``, ``address`` -- plus ``fetched_at``. The signed addresses
+    #: were then measured in the history of a live instance, which is how the
+    #: mistake surfaced; the database bloat came free with it.
+    #:
+    #: Two lessons worth keeping. The recorder filter is **top-level only**
+    #: (``recorder.db_schema.shared_attrs_bytes_from_event`` is a comprehension
+    #: over ``state.attributes.items()``), so a nested address is covered only
+    #: by excluding the key that contains it. And the diagnostics download was
+    #: once argued safe because "these values are never attributes" (see
+    #: `diagnostics.py`) -- true until this attribute existed. A property of an
+    #: architecture stops holding when the architecture changes.
 
     entity_description: PronoteSensorDescription
 

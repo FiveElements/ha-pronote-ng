@@ -406,11 +406,17 @@ vous le renvoie. Trois conséquences pratiques :
   gardé en mémoire jusqu'au prochain redémarrage, donc le rouvrir est gratuit.
   Si aucune session n'est ouverte — typiquement le soir — la première ouverture
   ajoute une connexion, sur les vingt-quatre autorisées par jour.
-- **Une adresse recopiée ailleurs finit par ne plus rien ouvrir.** C'est voulu :
-  c'est ce qui fait qu'une capture d'écran ne reste pas une clé vers les devoirs
-  de votre enfant. Ces adresses ne sont d'ailleurs **pas enregistrées dans
-  l'historique**, donc elles ne partent ni dans vos sauvegardes ni dans un
-  fichier de diagnostic que vous joindriez à un rapport de bogue.
+- **Une adresse recopiée ailleurs finit par ne plus rien ouvrir.** C'est voulu,
+  et c'est la protection principale : au bout d'une demi-journée, une capture
+  d'écran ou un lien collé dans une conversation ne mène plus à rien. Ces
+  adresses ne sont par ailleurs **pas enregistrées dans l'historique**, donc
+  elles ne partent pas dans la base de données que contiennent vos sauvegardes,
+  ni dans un fichier de diagnostic que vous joindriez à un rapport de bogue.
+  Deux réserves à connaître, parce qu'elles ne sont pas couvertes par cette
+  exclusion : une **trace d'automatisation** déclenchée sur ce capteur conserve
+  l'attribut, et la fenêtre « plus d'infos » d'un tableau de bord affiche les
+  attributs — donc une capture de cette fenêtre-là publie une adresse encore
+  valide.
 - **Entre 22h00 et 6h00, un document pas encore ouvert ne s'ouvre pas.** Les
   heures calmes écartent tout appel réseau à la demande, pas seulement les
   collectes — c'est la même règle pour les services de l'intégration. Un

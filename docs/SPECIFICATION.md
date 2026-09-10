@@ -1240,10 +1240,41 @@ dans un attribut, et **tout attribut de liste est déclaré dans
 `_unrecorded_attributes`**. L'historique conserve alors une courbe utile — le
 nombre de devoirs, la moyenne — sans stocker le détail à chaque écriture.
 
+**Exigence.** La déclaration est faite **une fois**, sur les classes de base, et
+la liste des noms vit dans une constante partagée. Une sous-classe ne redéclare
+jamais `_unrecorded_attributes` : Home Assistant ne réunit pas ces ensembles le
+long d'une hiérarchie. `Entity.__init_subclass__` calcule
+`_entity_component_unrecorded_attributes | cls._unrecorded_attributes`, où le
+terme de droite est résolu par recherche d'attribut ordinaire — donc une
+déclaration sur une sous-classe **remplace** celle du parent au lieu de
+l'étendre, et retire au silence toutes ses entrées. Un nom nouveau s'ajoute à la
+constante.
+
 ```python
-class PronoteListSensor(PronoteEntity, SensorEntity):
-    _unrecorded_attributes = frozenset({"items", "fetched_at"})
+# const.py -- le seul endroit où la liste des noms est écrite.
+UNRECORDED_LIST_ATTRIBUTES: Final = frozenset({"items", "lessons", ...})
+
+# entity.py -- déclaré sur les bases, et sur chaque *frère* d'une base.
+class PronoteEntity(CoordinatorEntity["PronoteTierCoordinator"]):
+    _unrecorded_attributes = frozenset({*UNRECORDED_LIST_ATTRIBUTES, "fetched_at"})
+
+# Une sous-classe hérite, et ne déclare rien.
+class PronoteListSensor(PronoteEntity, SensorEntity): ...
 ```
+
+**Exigence.** Le filtre de l'enregistreur ne porte que sur les clés de **premier
+rang** — `recorder.db_schema.shared_attrs_bytes_from_event` est une
+compréhension sur `state.attributes.items()`. Une valeur imbriquée n'est donc
+jamais exclue par son propre nom : elle l'est en excluant la clé qui la
+contient. Nommer une clé imbriquée n'échoue pas, ne prévient pas, et n'exclut
+rien.
+
+Ces deux exigences sont des barrières et non des conventions, parce qu'elles ont
+chacune coûté une version publiée : un attribut portant une adresse signée a été
+mesuré dans l'historique d'une instance vivante alors que la déclaration
+paraissait correcte. Deux tests les tiennent — l'un passe l'état publié dans le
+filtre réel de l'enregistreur, l'autre refuse toute déclaration de sous-classe
+qui ne couvre pas la constante partagée.
 
 ---
 
