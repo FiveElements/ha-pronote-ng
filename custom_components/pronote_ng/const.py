@@ -338,7 +338,13 @@ class SessionStrategy(StrEnum):
     """How the session is kept (SPECIFICATION.md §6.5).
 
     ``LAZY`` is the default and the recommended value: keep the session, and
-    re-login only when the server says it expired (``Erreur.G = 10``). It cannot
+    re-login only when the server says it expired. Which codes say that is
+    ``session.SESSION_EXPIRED_CODES`` and not a single number: an
+    establishment answered ``Erreur.G = 8`` ("La page a expiré !") where the
+    specification documents 10, and recognising only 10 left a dead session
+    held for seven hours. A held session is also given up after
+    ``session.PRESUMED_DEAD_AFTER_SECONDS`` without one successful call, which
+    is what catches the *next* code nobody has seen yet. It cannot
     be worse than ``PER_BATCH`` for any value of the server's inactivity
     timeout -- if the timeout turns out to be shorter than the fastest tier,
     every batch finds a dead session and opens one, which *is* ``PER_BATCH``.

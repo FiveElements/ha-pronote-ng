@@ -20,7 +20,7 @@ visent pas le même geste :
 | Sanction | Déclencheur | Gravité |
 | --- | --- | --- |
 | Session cassée | deux appels concurrents désynchronisent le compteur chiffré | immédiate, récupérable par reconnexion |
-| `Erreur.G = 10` | session expirée par inactivité | bénigne, une reconnexion suffit |
+| `Erreur.G = 8` ou `10` | session expirée par inactivité | bénigne, une reconnexion suffit |
 | `Erreur.G = 25` | trop de demandes d'autorisation | il faut attendre ; insister aggrave |
 | **Suspension d'adresse IP** | connexions échouées répétées | durée non documentée ; **la détection d'amont n'est pas fiable, cf. §3.4** |
 
@@ -331,8 +331,12 @@ quotidiennes d'être interrogé sans PIN sous la main.
 
 ### 5.3 La stratégie retenue et son coût
 
-Reconnexion **paresseuse** sur `Erreur.G = 10`, durée de vie de session
-**mesurée** (§6.5 de la spécification). Si le délai d'inactivité de
+Reconnexion **paresseuse** sur les codes d'expiration
+(`SESSION_EXPIRED_CODES` : `Erreur.G = 8` et `10`), durée de vie de session
+**mesurée** (§6.5 de la spécification). Et, indépendamment de tout code, une
+session sans un seul appel réussi depuis `PRESUMED_DEAD_AFTER_SECONDS` est
+abandonnée plutôt que réutilisée : détenir un client prouve qu'une connexion a
+réussi un jour, pas que le serveur la reconnaît encore. Si le délai d'inactivité de
 l'établissement dépasse l'intervalle de `timetable` — le réglage courant est
 30 min pour un `timetable` à 15 min — le trafic de données maintient la session
 seul, et les connexions tombent à **une à trois par jour**.
@@ -622,6 +626,9 @@ nommément, parce qu'ils sont ceux qui échouent en production :
 | Page contenant « EQUIPE » et amorçage valide | **aucune** détection de suspension |
 | `Erreur.G = 25` | entre dans le repli, et **ne provoque aucune reconnexion** |
 | `Erreur.G = 10` | reconnexion comptée, durée de vie enregistrée |
+| `Erreur.G = 8` | même verdict que `10` : « la page a expiré » est le même énoncé |
+| Second refus sur une session ouverte à l'instant | part au repli, **pas** de seconde reconnexion |
+| Session sans succès depuis plus d'une heure | abandonnée à la prochaine unité de travail |
 | Session vivante entre deux lots | **zéro** connexion supplémentaire |
 | Délai d'inactivité simulé < intervalle `timetable` | dégénère en une connexion par lot (§5.4) |
 | `Erreur.G = 22` | **n'entre pas** dans le repli, journalisé comme bug |

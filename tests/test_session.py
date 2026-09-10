@@ -33,16 +33,23 @@ from pronotepy import ChildNotFound
 from pronotepy.exceptions import ExpiredObject, PronoteAPIError
 import pytest
 
-from custom_components.pronote_ng.const import LoginMode, Priority, SessionStrategy
+from custom_components.pronote_ng.const import (
+    LimiterState,
+    LoginMode,
+    Priority,
+    SessionStrategy,
+)
 from custom_components.pronote_ng.hardened_client import protocol_error_code
 from custom_components.pronote_ng.ratelimit import (
     RateLimitConfig,
     RateLimiter,
 )
 from custom_components.pronote_ng.session import (
+    ERROR_PAGE_EXPIRED,
     ERROR_SESSION_EXPIRED,
     ERROR_TOO_MANY_AUTHORIZATIONS,
     MIN_LIFETIME_SAMPLE_SECONDS,
+    PRESUMED_DEAD_AFTER_SECONDS,
     SHORT_TIMEOUT_EVIDENCE,
     IntegrationFault,
     SerialExecutor,
@@ -307,6 +314,107 @@ async def test_an_expired_session_is_reopened_and_the_call_replayed(
     assert isinstance(result, StubResult)
     assert len(attempts) == 2, "the call is replayed, once"
     assert harness.logins() == 2, "on a fresh session"
+
+
+async def test_a_page_that_expired_is_the_same_verdict_as_a_session_that_expired(
+    harness: Harness,
+) -> None:
+    """``Erreur.G = 8`` -- "La page a expiré !" -- must reopen, not back off.
+
+    This is the defect that froze the live instance for seven hours and ten
+    minutes. The establishment answers 8 where the specification documents 10,
+    ``pronotepy`` has no message for 8 and renders it as ``Unknown error from
+    pronote: 8``, and the handler classified by a single code -- so the arm
+    that reopens the session was never reached. The session stayed dead,
+    ``is_open`` kept answering ``True``, every attempt failed and each failure
+    deepened the backoff, with no possible success to reset it. Nothing but a
+    restart got the instance out, which is why this is asserted by code and
+    not left to the message.
+    """
+    attempts: list[int] = []
+
+    def fn(_client: Any) -> Any:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise ProtocolError(ERROR_PAGE_EXPIRED)
+        return StubResult()
+
+    result = await harness.manager.run("timetable", Priority.HIGH, fn)
+
+    assert isinstance(result, StubResult)
+    assert len(attempts) == 2, "the call is replayed"
+    assert harness.logins() == 2, "on a session that was actually reopened"
+    assert harness.limiter.state is not LimiterState.BACKOFF, (
+        "an expiry that was handled must leave no backoff behind"
+    )
+
+
+async def test_a_refusal_that_survives_a_fresh_login_backs_off_instead_of_retrying(
+    harness: Harness,
+) -> None:
+    """The ceiling that makes widening the expiry set safe rather than reckless.
+
+    Every code in ``SESSION_EXPIRED_CODES`` is a claim about what the server
+    meant, and a claim can be wrong for some establishment. Retried without a
+    bound, a wrong claim costs one login per tier per tick -- ten tiers against
+    a cap of twenty-four exhaust the day in three ticks and then keep going,
+    which is exactly the repeated-failed-login gesture annexe B §1 says cannot
+    be worked around. So the second refusal is charged to the backoff, and the
+    integration degrades to stale rather than to sanctioned.
+    """
+    with pytest.raises(PronoteAPIError):
+        await harness.manager.run(
+            "timetable",
+            Priority.HIGH,
+            _work(raises=ProtocolError(ERROR_PAGE_EXPIRED)),
+        )
+
+    assert harness.logins() == 2, "one reconnection, and not a third login"
+    assert harness.limiter.state is LimiterState.BACKOFF, (
+        "the refusal that reconnecting did not fix must reach the backoff"
+    )
+
+
+async def test_a_session_that_has_not_worked_for_an_hour_is_not_reused(
+    harness: Harness,
+) -> None:
+    """The general form of the fix, for the next code we do not recognise.
+
+    ``is_open`` answers "am I holding a client", which is a fact about this
+    process and says nothing about the server: it answered ``True`` for seven
+    hours about a session PRONOTE had already discarded. A protocol code we
+    cannot classify, a server that stops answering without saying why, an
+    establishment that invalidates sessions on its own schedule -- all of them
+    look identical from here, and all of them are caught by refusing to trust
+    a session that has not worked in an hour.
+    """
+    await harness.manager.run("timetable", Priority.HIGH, _work())
+    assert harness.logins() == 1
+
+    harness.clock.advance(PRESUMED_DEAD_AFTER_SECONDS + 1)
+    await harness.manager.run("homework", Priority.NORMAL, _work())
+
+    assert harness.logins() == 2, (
+        "the held session had not worked for an hour and must not be trusted"
+    )
+
+
+async def test_a_session_that_worked_recently_is_still_reused(
+    harness: Harness,
+) -> None:
+    """The guard on the guard: the ceiling must not become a per-call login.
+
+    Without this the previous test passes just as well against a manager that
+    reconnects on every call, which is the policy the lazy strategy exists to
+    avoid and which costs five requests each time. One second below the
+    threshold is the interesting side of the boundary.
+    """
+    await harness.manager.run("timetable", Priority.HIGH, _work())
+
+    harness.clock.advance(PRESUMED_DEAD_AFTER_SECONDS - 1)
+    await harness.manager.run("homework", Priority.NORMAL, _work())
+
+    assert harness.logins() == 1, "a session that worked recently is kept"
 
 
 async def test_an_object_from_a_previous_session_is_reported_as_our_own_bug(

@@ -95,8 +95,51 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 #: ``Erreur.G`` codes we must recognise by number rather than by message.
 ERROR_SESSION_EXPIRED: Final = 10
+ERROR_PAGE_EXPIRED: Final = 8
 ERROR_EXPIRED_OBJECT: Final = 22
 ERROR_TOO_MANY_AUTHORIZATIONS: Final = 25
+
+#: Every code that means "the session you are holding is gone; open another".
+#:
+#: 10 is the documented one and was for a long time the only one here. **8 is
+#: the one a live establishment actually sent**, with ``Erreur.Titre`` reading
+#: "La page a expiré !" -- the same statement in different words. It has to be
+#: recognised by number, because ``pronotepy`` has no entry for 8 in
+#: ``error_messages`` and therefore renders it as ``Unknown error from
+#: pronote: 8 | La page a expiré !``. That string is a *message*, not a
+#: classification; the code is on the exception either way
+#: (``pronoteAPI.py:191`` attaches ``pronote_error_code`` for every code but
+#: 22).
+#:
+#: Treating 8 as an unclassified refusal cost the live instance seven hours of
+#: frozen data, and the shape of that failure is the argument for this set
+#: existing at all. The session was dead server-side while
+#: ``SessionManager.is_open`` still answered ``True``, so no branch ever
+#: reached :meth:`SessionManager._reopen`; every attempt failed, each failure
+#: deepened the exponential backoff, and no call could succeed to reset it.
+#: That is not a pause that resolves -- it is a well, and only a restart got
+#: the instance out of it. An unrecognised expiry code is therefore not a
+#: cosmetic gap: it is a permanent outage with a plausible-looking limiter
+#: state (``backoff``) on top of it.
+SESSION_EXPIRED_CODES: Final = frozenset({ERROR_PAGE_EXPIRED, ERROR_SESSION_EXPIRED})
+
+#: How long the presumption "the session I hold is usable" survives with not
+#: one successful call to support it.
+#:
+#: This is the guard that catches the *next* unrecognised code, and it is the
+#: reason :data:`SESSION_EXPIRED_CODES` is not the whole fix. A held client is
+#: only ever evidence that a login once succeeded; after hours of silence it
+#: is a belief, and the cheapest correct move is to stop holding it.
+#:
+#: One hour, derived rather than guessed: the default login cap is 24 a day,
+#: which is one an hour, so a ceiling at or above 3600 s can never be the
+#: reason that cap is reached. And it costs nothing in normal operation --
+#: this fires lazily, at the next unit of work, so a quiet-hours night of
+#: eight idle hours provokes exactly one extra login at 06:00 rather than one
+#: per hour. A server whose real timeout is *shorter* than this is a different
+#: problem, already handled by the expiry counter and the degradation to
+#: ``PER_BATCH``.
+PRESUMED_DEAD_AFTER_SECONDS: Final = 3600.0
 
 #: How many consecutive expiries it takes to conclude the server's inactivity
 #: timeout is shorter than our fastest tier. Three, because one expiry can be a
@@ -398,6 +441,12 @@ class SessionManager:
             "effective_strategy": str(self.effective_strategy),
             "open": self.is_open,
             "age_seconds": self.session_age,
+            # Reported next to `open` on purpose: the two together are what
+            # tell a live session from a session merely being held. `open` was
+            # `True` and `age_seconds` was 25832 while every tier failed, and
+            # the field that would have said so in one reading -- this one --
+            # was the field that did not exist.
+            "idle_seconds": self._inactivity_gap() if self.is_open else None,
             "measured_lifetime_minutes": self._lifetime.observed_minutes,
             "lifetime_samples": len(self._lifetime.samples),
             "consecutive_expiries": self._consecutive_expiries,
@@ -557,21 +606,12 @@ class SessionManager:
         if isinstance(error, ExpiredObject):
             code = ERROR_EXPIRED_OBJECT
 
-        if code == ERROR_SESSION_EXPIRED:
-            # The one error worth retrying, and the only reason the lazy
-            # strategy is measurable at all.
-            self._note_expiry()
-            await self._reopen()
-            client = await self._ensure_client(eager=True)
-            result = await self._limiter.call(
-                tier,
-                priority,
-                lambda: self._executor.run(self._bind(client, fn, student_id)),
-                cost=cost,
+        if code in SESSION_EXPIRED_CODES:
+            # The one class of error worth retrying, and the only reason the
+            # lazy strategy is measurable at all.
+            return await self._replay_on_a_fresh_session(
+                tier, priority, fn, student_id=student_id, cost=cost
             )
-            self._last_success = self._clock()
-            self._reconcile(tier, result, cost)
-            return result
 
         if code == ERROR_EXPIRED_OBJECT:
             # Not a server overload: a client-side design fault. The DTO
@@ -603,6 +643,56 @@ class SessionManager:
         self._limiter.note_failure()
         raise error
 
+    async def _replay_on_a_fresh_session(
+        self,
+        tier: str,
+        priority: Priority,
+        fn: Callable[[HardenedClient], Any],
+        *,
+        student_id: str | None,
+        cost: int,
+    ) -> Any:
+        """Open a new session and replay the call. **Once**, never in a loop.
+
+        The bound is the load-bearing part, and it is what makes widening
+        :data:`SESSION_EXPIRED_CODES` safe rather than reckless. Every code in
+        that set is a claim about what the server meant, and a claim can be
+        wrong -- on some establishment 8 may be answering something that a
+        fresh login does not fix. Retried without a ceiling, a wrong claim is
+        not a stale sensor: it is one login per tier per tick, so ten tiers
+        against a cap of 24 exhaust the day's logins in three ticks and then
+        keep hammering. That is the repeated-failed-login gesture annexe B §1
+        names as the one sanction which cannot be worked around.
+
+        So a second protocol refusal on a session opened moments ago is
+        treated as what it is -- evidence that reconnecting is not the answer
+        here -- and charged to the exponential backoff like any other refusal.
+        The integration then degrades to slow and stale, which is recoverable,
+        instead of fast and sanctioned, which is not.
+        """
+        self._note_expiry()
+        await self._reopen()
+        client = await self._ensure_client(eager=True)
+        try:
+            result = await self._limiter.call(
+                tier,
+                priority,
+                lambda: self._executor.run(self._bind(client, fn, student_id)),
+                cost=cost,
+            )
+        except PronoteAPIError:
+            _LOGGER.warning(
+                "tier %s was refused again on a session opened moments ago, so "
+                "reconnecting is not the remedy here; backing off instead of "
+                "logging in again",
+                tier,
+            )
+            self._limiter.note_failure()
+            raise
+        self._last_success = self._clock()
+        self._reconcile(tier, result, cost)
+        return result
+
     # -- session lifecycle -------------------------------------------------
 
     async def _ensure_client(self, *, eager: bool) -> HardenedClient:
@@ -625,10 +715,43 @@ class SessionManager:
         Under ``PER_BATCH`` this is true exactly once per batch. Comparing only
         the strategy made it true on every call, which is a different and far
         more expensive policy -- see ``_session_batch_id``.
+
+        The presumption check comes first and applies under **every** strategy,
+        because it is not a strategy: it is the expiry of a belief.
         """
+        if self._session_is_presumed_dead():
+            return True
         if self.effective_strategy is not SessionStrategy.PER_BATCH:
             return False
         return self._session_batch_id != self._batch_id
+
+    def _session_is_presumed_dead(self) -> bool:
+        """Whether the held session has gone too long without a success.
+
+        :attr:`is_open` answers "am I holding a client", which is a fact about
+        this process and says nothing about the server. On the night this was
+        written it answered ``True`` for seven hours and ten minutes about a
+        session PRONOTE had already discarded, and every tier failed against
+        it -- so the fact was true and the belief it stood for was false.
+
+        Keeping the two apart is the general form of the fix that
+        :data:`SESSION_EXPIRED_CODES` only solves for one code. A protocol code
+        we do not recognise, a server that stops answering without saying why,
+        an establishment that invalidates sessions on its own schedule: all of
+        them look the same from here, and all of them are caught by refusing to
+        trust a session that has not worked in an hour.
+        """
+        if self._last_success is None:
+            return False
+        idle = self._clock() - self._last_success
+        if idle < PRESUMED_DEAD_AFTER_SECONDS:
+            return False
+        _LOGGER.debug(
+            "no PRONOTE call has succeeded for %.0fs; treating the held "
+            "session as gone and opening a new one",
+            idle,
+        )
+        return True
 
     async def _login(self) -> None:
         """Log in, through the limiter, classifying failure correctly."""

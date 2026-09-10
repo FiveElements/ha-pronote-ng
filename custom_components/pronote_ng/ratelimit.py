@@ -8,7 +8,7 @@ Sanction                     Trigger                               Severity
 ============================ ===================================== ============
 Broken session               two concurrent calls desynchronise the immediate,
                              encrypted request counter              recoverable
-``Erreur.G = 10``            session expired through inactivity     benign
+``Erreur.G = 8`` or ``10``    session expired through inactivity     benign
 ``Erreur.G = 25``            too many *authorization* requests      wait; do not
                                                                    insist
 Address suspension           repeated failed logins                 costly, and

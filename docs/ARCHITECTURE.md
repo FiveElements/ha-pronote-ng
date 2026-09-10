@@ -279,7 +279,7 @@ Le tableau que le module reproduit en tête de fichier
 | Sanction | Déclencheur | Gravité |
 | --- | --- | --- |
 | Session cassée | deux appels concurrents désynchronisent le compteur de requêtes chiffré | immédiate, récupérable |
-| `Erreur.G = 10` | session expirée par inactivité | bénigne |
+| `Erreur.G = 8` ou `10` | session expirée par inactivité | bénigne |
 | `Erreur.G = 25` | trop de requêtes d'*autorisation* | attendre, ne pas insister |
 | Suspension d'adresse | connexions échouées répétées | coûteuse, et non documentée |
 
@@ -876,7 +876,8 @@ Deux modes sont offerts en option d'entrée
 (`SessionStrategy`, `const.py`) :
 
 * **`LAZY`** — le défaut et la valeur recommandée : garder la session, et ne se
-  reconnecter que lorsque le serveur dit qu'elle a expiré (`Erreur.G = 10`).
+  reconnecter que lorsque le serveur dit qu'elle a expiré. Quels codes le
+  disent est `SESSION_EXPIRED_CODES` et non un nombre unique : voir § 5.4.
 * **`PER_BATCH`** — une connexion par batch. C'est ce que la spécification v1
   prescrivait, conservé comme échappatoire explicite pour un établissement dont
   la politique serait inhabituelle et qu'on préfère épingler plutôt que
@@ -990,14 +991,52 @@ réparation, et le compte vivant si l'entrée se trouve chargée.
 
 ### 5.4 La gestion des erreurs protocolaires
 
-`_handle_protocol_error` (`session.py`) traite trois codes `Erreur.G`
-et rien d'autre.
+`_handle_protocol_error` (`session.py`) traite trois familles de codes
+`Erreur.G` et rien d'autre.
 
-**`G = 10`, session expirée.** La seule erreur qui vaille la peine d'être
-réessayée, et la seule raison pour laquelle la stratégie paresseuse est
-mesurable. Le module enregistre l'échantillon de durée de vie, ferme le client,
-en construit un neuf et rejoue l'appel — à travers le limiteur, donc en payant
-le coût.
+**`G = 8` ou `G = 10`, session expirée** (`SESSION_EXPIRED_CODES`). La seule
+erreur qui vaille la peine d'être réessayée, et la seule raison pour laquelle
+la stratégie paresseuse est mesurable. Le module enregistre l'échantillon de
+durée de vie, ferme le client, en construit un neuf et rejoue l'appel — à
+travers le limiteur, donc en payant le coût.
+
+Les deux codes, et non le seul que documente la spécification : un
+établissement réel a répondu `8`, avec pour `Erreur.Titre` « La page a
+expiré ! », c'est-à-dire le même énoncé en d'autres mots. `pronotepy` n'a pas
+de libellé pour `8` et le rend en « Unknown error from pronote: 8 » — une
+chaîne, pas une classification ; le code, lui, est bien porté par l'exception.
+N'avoir reconnu que `10` a coûté sept heures de données figées, et la forme de
+cette panne est ce qui justifie le reste de ce paragraphe : la session était
+morte côté serveur alors que `is_open` répondait encore vrai, aucune branche
+n'atteignait donc `_reopen`, chaque tentative échouait, chaque échec creusait
+le repli exponentiel, et aucun appel ne pouvait réussir pour le remettre à
+zéro. Ce n'est pas une pause qui se résorbe : c'est un puits, dont seul un
+redémarrage sort l'instance.
+
+Le rejeu est **borné à un** (`_replay_on_a_fresh_session`), et cette borne est
+ce qui rend l'élargissement de l'ensemble prudent plutôt que téméraire. Chaque
+code de l'ensemble est une affirmation sur ce que le serveur voulait dire, et
+une affirmation peut être fausse ailleurs. Réessayé sans plafond, un code mal
+classé ne coûte pas un capteur périmé : il coûte une connexion par palier et
+par tick — dix paliers contre un plafond de vingt-quatre épuisent la journée
+en trois ticks puis continuent — c'est-à-dire exactement le geste des
+connexions échouées répétées, la seule sanction que l'annexe B § 1 déclare
+incontournable. Un second refus sur une session ouverte à l'instant part donc
+au repli.
+
+**Une session sans succès depuis une heure est abandonnée**
+(`PRESUMED_DEAD_AFTER_SECONDS`). C'est la forme générale du correctif
+précédent, pour le prochain code que personne n'a encore vu. `is_open` répond
+« est-ce que je détiens un client », un fait sur ce processus qui n'énonce rien
+sur le serveur. Un code inconnu, un serveur qui cesse de répondre sans le dire,
+un établissement qui invalide les sessions selon son propre calendrier : tout
+cela est indistinguable d'ici, et tout cela est rattrapé en refusant de faire
+confiance à une session qui n'a pas fonctionné depuis une heure. Une heure est
+dérivée et non devinée — le plafond de connexions par défaut est de 24 par
+jour, soit une par heure, donc un seuil au-dessus de 3600 s ne peut jamais
+être la raison pour laquelle ce plafond est atteint. Le contrôle est
+paresseux, au prochain travail à faire : une nuit d'heures calmes provoque une
+connexion supplémentaire à 06:00, pas une par heure.
 
 **`G = 22`, objet d'une session précédente.** Reconnue **par type et non par
 code**. `_Communication.post` lève `ExpiredObject` sur sa propre branche,
