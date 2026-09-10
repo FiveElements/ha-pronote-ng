@@ -81,18 +81,56 @@ REFRESHABLE_TIERS: Final = tuple(
     tier.value for tier in Tier if tier is not Tier.SESSION
 )
 
-_DEVICE_SCHEMA: Final = vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string})
+
+def _one_device(value: Any) -> str:
+    """Accept the two shapes Home Assistant delivers one device in.
+
+    ``ServiceRegistry.async_call`` ends with ``service_data.update(target)``
+    (``core.py``), and ``target`` has already been validated by
+    ``TargetSelector.CONFIG_SCHEMA``, which runs ``device_id`` through
+    ``cv.ensure_list``. So one and the same gesture arrives here as a **string**
+    when the caller wrote it under ``data:`` and as a **list** when the caller
+    wrote it under ``target:`` -- and a dashboard's action picker writes
+    ``target:``.
+
+    Declaring ``cv.string`` therefore rejected every button on a card with
+    ``value should be a string at 'device_id'``, which reads as the card being
+    at fault rather than this schema, and cost a peer session a round of
+    debugging on the wrong side of the boundary. Nothing in the failure names
+    the real cause, which is why the mechanism is written out here rather than
+    summarised.
+
+    A list of *several* devices is a different matter and stays an error, with
+    a message that says so: each of these services resolves exactly one
+    account, so silently taking the first would run against a child the caller
+    did not name.
+    """
+    values = cv.ensure_list(value)
+    if len(values) != 1:
+        message = (
+            f"expected exactly one device, got {len(values)}; each pronote_ng "
+            "service acts on one account"
+        )
+        raise vol.Invalid(message)
+    return cv.string(values[0])
+
+
+#: The one device every device-addressed service takes, in either shape.
+_DEVICE_ID: Final = _one_device
+
+
+_DEVICE_SCHEMA: Final = vol.Schema({vol.Required(ATTR_DEVICE_ID): _DEVICE_ID})
 
 _REFRESH_SCHEMA: Final = vol.Schema(
     {
-        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_DEVICE_ID): _DEVICE_ID,
         vol.Optional(ATTR_TIERS): vol.All(cv.ensure_list, [vol.In(REFRESHABLE_TIERS)]),
     }
 )
 
 _MARK_HOMEWORK_SCHEMA: Final = vol.Schema(
     {
-        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_DEVICE_ID): _DEVICE_ID,
         vol.Required(ATTR_HOMEWORK_ID): cv.string,
         vol.Optional(ATTR_DONE, default=True): cv.boolean,
     }
@@ -100,7 +138,7 @@ _MARK_HOMEWORK_SCHEMA: Final = vol.Schema(
 
 _MARK_INFORMATION_SCHEMA: Final = vol.Schema(
     {
-        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_DEVICE_ID): _DEVICE_ID,
         vol.Required(ATTR_INFORMATION_ID): cv.string,
     }
 )
@@ -111,7 +149,7 @@ _MARK_INFORMATION_SCHEMA: Final = vol.Schema(
 _SEND_MESSAGE_SCHEMA: Final = vol.All(
     vol.Schema(
         {
-            vol.Required(ATTR_DEVICE_ID): cv.string,
+            vol.Required(ATTR_DEVICE_ID): _DEVICE_ID,
             vol.Required(ATTR_MESSAGE): cv.string,
             vol.Optional(ATTR_DISCUSSION_ID): cv.string,
             vol.Optional(ATTR_SUBJECT): cv.string,
@@ -124,7 +162,7 @@ _SEND_MESSAGE_SCHEMA: Final = vol.All(
 
 _TIMETABLE_PDF_SCHEMA: Final = vol.Schema(
     {
-        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_DEVICE_ID): _DEVICE_ID,
         vol.Optional(ATTR_DAY): cv.date,
         vol.Optional(ATTR_ORIENTATION, default=ORIENTATION_PORTRAIT): vol.In(
             (ORIENTATION_PORTRAIT, ORIENTATION_LANDSCAPE)

@@ -186,6 +186,69 @@ async def test_refresh_will_not_force_a_login(
 # ---------------------------------------------------------------------------
 
 
+async def test_a_device_named_under_target_is_accepted_like_one_under_data(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    account: PronoteAccount,
+    parent_client: Any,
+) -> None:
+    """The same gesture, in the shape a dashboard button actually sends it.
+
+    ``ServiceRegistry.async_call`` ends with ``service_data.update(target)``,
+    and ``target`` has already been through ``TargetSelector.CONFIG_SCHEMA``,
+    which runs ``device_id`` through ``cv.ensure_list``. So a device written
+    under ``data:`` arrives as a string and the *same* device written under
+    ``target:`` arrives as a one-element list -- and every action picker in the
+    dashboard editor writes ``target:``.
+
+    Declaring ``cv.string`` therefore refused every such call with ``value
+    should be a string at 'device_id'``, a message that names the caller and
+    not the schema: it cost a peer session a debugging round on the wrong side
+    of the boundary, and it would have refused any automation a user built with
+    the visual editor. Asserted on the request placed rather than on the
+    absence of an exception, so this cannot pass against a schema that accepts
+    the shape and then resolves nothing.
+    """
+    device_id = _child_device(hass, mock_entry, STUDENT_ONE)
+    before = parent_client.posted_names.count("DernieresNotes")
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_REFRESH,
+        {"tiers": ["marks"]},
+        target={"device_id": [device_id]},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert parent_client.posted_names.count("DernieresNotes") - before == len(
+        account.students
+    )
+
+
+async def test_naming_several_devices_at_once_is_refused_rather_than_guessed(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """Accepting a list must not become accepting *any* list.
+
+    Each of these services resolves exactly one account, so taking the first
+    entry of a two-device target would act on a child the caller did not name
+    -- the same wrong-attribution class as the identity service posting under
+    the account holder. The narrow fix for the ``target:`` shape has to stay
+    narrow, and this is the assertion that keeps it so.
+    """
+    device_id = _child_device(hass, mock_entry, STUDENT_ONE)
+
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_REFRESH,
+            {},
+            target={"device_id": [device_id, device_id]},
+            blocking=True,
+        )
+
+
 async def test_an_unknown_device_is_refused_by_name(
     hass: HomeAssistant, account: PronoteAccount
 ) -> None:
