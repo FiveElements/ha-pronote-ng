@@ -387,6 +387,72 @@ def test_a_failure_still_waits_as_long_as_the_limiter_asked(
     assert scheduler.due() == [Tier.STATIC]
 
 
+def test_an_armed_boost_and_a_served_one_are_two_different_answers(
+    clock: FakeClock,
+) -> None:
+    """The three outcomes of a refresh press, told apart.
+
+    A button that can only say "the request was sent" is a button somebody
+    presses twice, and a second press is not free on a tier that is failing.
+    The outcomes are: refused by the ceiling, armed and waiting, or served --
+    and before these two accessors existed only the first was inferable, by
+    absence, from information a card could not reach anyway.
+
+    Asserted in sequence rather than as three separate cases, because it is the
+    *transition* that has to be right: an armed boost must stop being armed the
+    moment it is served, or a card would show "waiting" for ever next to data
+    that has already arrived.
+    """
+    scheduler = build(clock, one(Tier.MARKS, 180, Priority.NORMAL))
+    assert scheduler.boosted_tiers() == ()
+    assert scheduler.boosts_served() == {}
+
+    scheduler.request([Tier.MARKS])
+    assert scheduler.boosted_tiers() == ("marks",), "armed, and not yet served"
+    assert scheduler.boosts_served() == {}, "nothing has been served"
+
+    scheduler.mark_collected(Tier.MARKS)
+    assert scheduler.boosted_tiers() == (), "a served boost is no longer armed"
+    assert set(scheduler.boosts_served()) == {"marks"}
+
+
+def test_a_collection_nobody_asked_for_records_no_served_boost(
+    clock: FakeClock,
+) -> None:
+    """The guard on the guard: an ordinary collection is not a served press.
+
+    ``mark_collected`` runs on every tick for every due tier, so recording a
+    served boost unconditionally would make ``boost_served_at`` a second, worse
+    copy of ``last_collected_at`` -- and, worse, would arm the ceiling that
+    refuses the *next* press. A card would then report "your request was
+    served" to somebody who never pressed anything.
+    """
+    scheduler = build(clock, one(Tier.MARKS, 180, Priority.NORMAL))
+    scheduler.mark_collected(Tier.MARKS)
+
+    assert scheduler.boosts_served() == {}
+    assert scheduler.diagnostics()["marks"]["boost_served_at"] is None
+
+
+def test_a_served_boost_is_reported_as_a_time_of_day(clock: FakeClock) -> None:
+    """Wall clock, because the monotonic instant it doubles cannot be rendered.
+
+    ``boost_served_at`` already existed as a monotonic float and was the right
+    thing for the ceiling to compare, and the wrong thing to show: outside this
+    process it means nothing. This is the same pairing as ``last_collected_at``
+    beside ``last_collected``, and the reason is the same -- one is for
+    arithmetic, the other is for a human reading a tile.
+    """
+    scheduler = build(clock, one(Tier.MARKS, 180, Priority.NORMAL))
+    scheduler.request([Tier.MARKS])
+    scheduler.mark_collected(Tier.MARKS)
+
+    assert scheduler.boosts_served()["marks"] == clock.now()
+    assert scheduler.diagnostics()["marks"]["boost_served_at"] == (
+        clock.now().isoformat()
+    )
+
+
 def test_failures_are_counted_and_a_success_clears_them(clock: FakeClock) -> None:
     """The counter that bounds the first-collection dispensation.
 

@@ -1888,16 +1888,41 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                 # whose last attempt raised, so "the deadline passed and
                 # nothing ran" and "it runs and fails every time" are two
                 # different sentences on the same tile.
+                #
+                # `boosted` and `boost_served_at` are here for a second
+                # question this tile is the right place to answer: "did my
+                # refresh press land?". A button that can only say "the
+                # request was sent" is a button somebody presses twice, and
+                # pressing twice is not free on a tier that is failing.
+                # Pressing has three outcomes and they were indistinguishable
+                # from outside the integration: the ceiling refused it because
+                # one was already served inside this interval, it is armed and
+                # waiting for the next heartbeat (`boosted`), or it has been
+                # served (`boost_served_at`, with the time of day). Absence
+                # from both is the first.
+                #
+                # Neither is a restatement of `failing` or of the limiter's
+                # `deferrals`: those answer "did the limiter refuse", which is
+                # a different question, and a boost on a tier the limiter is
+                # holding moves `deferrals` without placing a single request.
+                # Conflating the two cost a peer session a wrong argument and
+                # cost this one a wrong sentence, on the same morning.
                 remaining = self.account.scheduler.next_due_in()
                 late = int(-remaining) if remaining is not None and remaining < 0 else 0
                 records = self.account.state.records
+                scheduler = self.account.scheduler
                 return {
-                    "tiers_due": list(self.account.scheduler.tiers_due_names()),
+                    "tiers_due": list(scheduler.tiers_due_names()),
                     "overdue_by": late,
                     "failing": {
                         str(tier): record.consecutive_failures
                         for tier, record in records.items()
                         if record.consecutive_failures
+                    },
+                    "boosted": list(scheduler.boosted_tiers()),
+                    "boost_served_at": {
+                        tier: served.isoformat()
+                        for tier, served in scheduler.boosts_served().items()
                     },
                 }
             case "session_lifetime":

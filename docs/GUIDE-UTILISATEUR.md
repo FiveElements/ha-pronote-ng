@@ -31,6 +31,7 @@ section de ce guide, lisez celle-là.
 7. [Écrire dans PRONOTE](#7-écrire-dans-pronote)
 8. [Réglages et cadence](#8-réglages-et-cadence)
 9. [Automatisations](#9-automatisations)
+    - **[Les huit blueprints, en détail](BLUEPRINTS.md)** — chaque réglage, et le piège que chacun évite
 10. [Dépannage](#10-dépannage)
 11. [Vie privée](#11-vie-privée)
 12. [Désinstaller](#12-désinstaller)
@@ -895,7 +896,7 @@ mettent plus à jour ».
 | **Appels du jour** | Nombre d'appels au serveur depuis minuit. | `by_tier`, `logins`, `failed_logins` |
 | **Budget restant** | Appels restants avant le plafond du jour. | `daily_cap`, `hourly_rate`, `tokens` |
 | **Dernière collecte** | Date et heure de la dernière collecte réussie. | `tier`, `duration_ms`, `calls` |
-| **Prochaine collecte** | Date et heure de la prochaine collecte prévue. | `tiers_due`, `overdue_by`, `failing` |
+| **Prochaine collecte** | Date et heure de la prochaine collecte prévue. | `tiers_due`, `overdue_by`, `failing`, `boosted`, `boost_served_at` |
 | **Âge de la session** | Âge de la session ouverte, en secondes. | — |
 | **Durée de vie de la session** | Durée de vie **mesurée** de la session, en minutes. | `samples`, `last_expiry`, `strategy`, `effective_strategy` |
 | **Connexions du jour** | Nombre de connexions réussies aujourd'hui. | `failed`, `cap` |

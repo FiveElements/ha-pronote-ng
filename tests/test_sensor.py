@@ -26,6 +26,8 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.pronote_ng.const import Tier
+
 from .conftest import CHILDREN, PARIS, REQUIRES_HASS
 from .fixtures import protocol
 from .fixtures.client import FakeClient
@@ -200,6 +202,39 @@ class TestTheDiagnosticReadingsRefreshOnTheirOwn:
         assert state is not None
         assert "overdue_by" in state.attributes
         assert "failing" in state.attributes
+
+    async def test_a_refresh_press_can_be_told_from_a_refresh_that_was_refused(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """ "Did my press land?" answered on the tile, not only in a dump.
+
+        A button that can only say "the request was sent" is a button somebody
+        presses twice, and a second press is not free on a tier that is
+        failing. The scheduler always knew the answer -- ``boosted`` and the
+        served-boost instant -- but it reached exactly two places, the
+        downloadable diagnostics and a response-only service, neither of which
+        a dashboard can read. So the information existed and the question could
+        not be answered, which is the same shape of gap as ``deferrals``
+        answering "did the limiter refuse" when the question was "did my
+        request land".
+
+        Asserted through the entity, deliberately: a test reading
+        ``account.scheduler`` would pass against the exact state this replaces,
+        where the fields were present and unreachable.
+        """
+        account.scheduler.request([Tier.MARKS])
+        entity = hass.data["entity_components"]["sensor"].get_entity(
+            "sensor.college_d_essai_next_collection"
+        )
+        assert entity is not None
+        await entity.async_update_ha_state()
+
+        state = hass.states.get("sensor.college_d_essai_next_collection")
+        assert state is not None
+        assert "marks" in state.attributes["boosted"], (
+            "an armed boost has to be visible to whoever pressed the button"
+        )
+        assert "boost_served_at" in state.attributes
 
 
 def _day(hour: int, minute: int = 0) -> datetime:

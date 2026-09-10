@@ -461,7 +461,7 @@ Rend le réglage du §6 observable. Toutes ces entités portent
 | `sensor.<compte>_appels_du_jour` | nombre d'appels depuis minuit | `by_tier`, `logins`, `failed_logins` |
 | `sensor.<compte>_budget_restant` | appels restants sur le plafond du jour | `daily_cap`, `hourly_remaining`, `tokens` |
 | `sensor.<compte>_derniere_collecte` | horodatage (`timestamp`) | `tier`, `duration_ms`, `calls` |
-| `sensor.<compte>_prochaine_collecte` | horodatage (`timestamp`) | `tiers_due`, `overdue_by`, `failing` |
+| `sensor.<compte>_prochaine_collecte` | horodatage (`timestamp`) | `tiers_due`, `overdue_by`, `failing`, `boosted`, `boost_served_at` |
 | `sensor.<compte>_age_de_la_session` | âge de la session en secondes | `session_id_hash`, `opened_at` |
 | `sensor.<compte>_duree_de_vie_de_la_session` | durée de vie **mesurée** de la session, en minutes | `samples`, `last_expiry`, `strategy` |
 | `sensor.<compte>_connexions_du_jour` | nombre de connexions réussies | `failed`, `cap` |
@@ -486,6 +486,24 @@ silencieuse (§6.6), pouvait rester allumé après le retour à la normale. La
 contrepartie est explicite dans `LocallyPolledMixin` : le scrutin ne doit
 **jamais** appeler `async_request_refresh`, sans quoi une lecture gratuite
 deviendrait une requête toutes les trente secondes.
+
+**Exigence.** `prochaine_collecte` répond aussi à « mon appui sur *Rafraîchir*
+a-t-il porté ? », et il faut deux attributs pour ça parce qu'il y a trois
+réponses. `boosted` liste les catégories dont la demande est **armée et pas
+encore servie** ; `boost_served_at` donne, par catégorie, l'heure à laquelle la
+dernière demande a effectivement été suivie d'une collecte ; et l'absence des
+deux signifie que le plafond a refusé la demande, une ayant déjà été servie dans
+l'intervalle — c'est-à-dire « c'est déjà demandé, ça viendra ».
+
+Ni l'un ni l'autre ne redit `failing`, ni les reports du limiteur : ceux-là
+répondent à « le limiteur a-t-il refusé », qui est une autre question. Un boost
+sur une catégorie que le limiteur maintient fait monter les reports sans placer
+une seule requête. La distinction est ici parce que la confondre a un coût
+concret : un bouton qui ne peut dire que « la demande est partie » est un bouton
+qu'on presse deux fois, et un second appui n'est pas gratuit sur une catégorie
+en échec. L'ordonnanceur connaissait déjà les deux faits ; ils n'atteignaient
+que le vidage de diagnostics et un service à réponse seule, donc aucun tableau
+de bord.
 
 **Exigence.** `prochaine_collecte` porte une **échéance**, et non un décompte
 converti à l'instant de la lecture. Un horodatage passé y est une lecture

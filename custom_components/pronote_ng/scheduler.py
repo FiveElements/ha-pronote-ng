@@ -81,6 +81,14 @@ class TierState:
     #: This is what makes ten presses inside one interval cost one batch; see
     #: :meth:`FetchScheduler.request`.
     boost_served_at: float | None = None
+    #: Wall-clock twin of :attr:`boost_served_at`, kept for the same reason
+    #: :attr:`last_collected_at` doubles :attr:`last_collected`: a monotonic
+    #: instant means nothing outside this process, so it can be compared but
+    #: never displayed. A card asking "did my press land?" needs a time of day,
+    #: and the three answers it has to tell apart are "nothing armed" (the
+    #: ceiling refused: already asked for), "armed and not yet served"
+    #: (:attr:`boosted`) and "served at *this* time".
+    boost_served_wall: datetime | None = None
     #: Consecutive deferrals, for the diagnostic attribute only.
     deferrals: int = 0
     #: Consecutive *failures*, which is a different fact from a deferral: a
@@ -308,6 +316,7 @@ class FetchScheduler:
             # deferred was never honoured, so the user is entitled to ask
             # again.
             state.boost_served_at = self._clock()
+            state.boost_served_wall = self._now() if self._now is not None else None
         state.last_collected = self._clock()
         state.last_collected_at = self._now() if self._now is not None else None
         state.not_before = 0.0
@@ -418,6 +427,39 @@ class FetchScheduler:
         state = self._states.get(tier)
         return state.last_collected if state else None
 
+    def boosted_tiers(self) -> tuple[str, ...]:
+        """Tier names carrying an armed, not-yet-served boost.
+
+        Exists so a button can say something other than "the request was
+        sent", which is true and useless. Pressing refresh has three outcomes
+        and they are not distinguishable from the outside: the ceiling refused
+        it because one was already served inside this interval, it is armed and
+        waiting for the next heartbeat, or it has been served. This answers the
+        middle one; :meth:`boosts_served` answers the third, and the absence of
+        a tier from both answers the first.
+
+        A tuple of names rather than a mapping, to sit beside ``tiers_due`` on
+        the same entity and be asked the same way.
+        """
+        return tuple(str(tier) for tier, state in self._states.items() if state.boosted)
+
+    def boosts_served(self) -> dict[str, datetime]:
+        """When each tier's last boost was actually followed by a collection.
+
+        Wall clock, because the monotonic instant this doubles cannot be
+        rendered: it is meaningful only inside this process. Same reason
+        ``last_collected_at`` exists beside ``last_collected``.
+
+        Only tiers that have one appear, so the mapping reads like ``failing``
+        beside it -- an empty mapping means nobody's press has been served yet,
+        not that the scheduler stopped answering.
+        """
+        return {
+            str(tier): state.boost_served_wall
+            for tier, state in self._states.items()
+            if state.boost_served_wall is not None
+        }
+
     def failures(self, tier: Tier) -> int:
         """Consecutive failed collections, reset by the first success.
 
@@ -508,6 +550,11 @@ class FetchScheduler:
                 "deferrals": self._states[tier].deferrals,
                 "failures": self._states[tier].failures,
                 "boosted": self._states[tier].boosted,
+                "boost_served_at": (
+                    served.isoformat()
+                    if (served := self._states[tier].boost_served_wall)
+                    else None
+                ),
             }
             for tier, plan in self._plans.items()
         }
