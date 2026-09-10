@@ -136,6 +136,40 @@ class Lesson:
 
 
 @dataclass(frozen=True, slots=True)
+class HomeworkAttachment:
+    """One document attached to a homework entry.
+
+    PRONOTE attaches two different things under one payload key, and the
+    difference decides whether an address can leave this process at all.
+
+    A **link** (``G = 0``) carries an ordinary address a teacher pasted in. It
+    is stable, it authenticates nobody, and it is safe to publish.
+
+    A **file** (``G = 1``) has no address that exists independently of the
+    session. ``pronotepy.Attachment`` builds one as
+    ``FichiersExternes/<hex>/<name>?Session=<h>``, where the hex segment is
+    ``{"N": id, "Actif": true}`` encrypted with the session's own AES key and
+    IV -- ``aes_iv_temp`` is `secrets.token_bytes(16)`, drawn per session, and
+    the key comes out of the authentication handshake. So two links to the same
+    document from two sessions share no byte of that segment. Publishing one
+    would put a credential-bearing address into the snapshot, into every
+    recorder row and into the diagnostics download -- the hazard §8.2 removed
+    the iCal URL from the state machine for -- and it would be dead within the
+    hour anyway, since a session with no successful call for that long is
+    abandoned. Hence ``url`` is ``None`` for a file, and the only honest way to
+    open one is a service that mints an address at the instant of the click.
+    """
+
+    name: str
+    #: The address, when there is one that survives leaving this process.
+    #: ``None`` for a file, and for a link whose address is not `http` or
+    #: `https` -- upstream falls back to the *name* when the payload carries no
+    #: address, so this field would otherwise publish a label as though it were
+    #: a URL, and a scheme like `javascript:` would reach an `href`.
+    url: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Homework:
     """One homework assignment."""
 
@@ -154,13 +188,10 @@ class Homework:
     due: date
     done: bool
     background_color: str | None
-    #: Attachment **names**. Never URLs: ``pronotepy.Attachment.url``
-    #: interpolates ``client.attributes["h"]``, the live session token, so
-    #: keeping the URL would write a credential into the snapshot store, into
-    #: every recorder row for the to-do list and into the diagnostics download
-    #: -- the exact hazard §8.2 removed the iCal URL from the state machine
-    #: for. It would also be dead at the next login, so it buys nothing.
-    attachments: tuple[str, ...] = ()
+    #: The attached documents, each with its name and -- only for a link --
+    #: its address. See :class:`HomeworkAttachment` for why a file never
+    #: carries one.
+    attachments: tuple[HomeworkAttachment, ...] = ()
 
 
 # ---------------------------------------------------------------------------

@@ -223,13 +223,19 @@ def homework(
     subject: str | None = "Histoire",
     description: str | None = "Lire le chapitre 4",
     done: bool | None = False,
-    attachments: tuple[str, ...] = (),
+    attachments: tuple[str | tuple[str, str | None], ...] = (),
 ) -> dict[str, Any]:
     """One ``ListeTravauxAFaire`` entry.
 
     ``done=None`` removes ``TAFFait`` and ``subject=None`` removes ``Matiere``:
     both are resolved strictly upstream, so either one used to fail the whole
     tier rather than one item.
+
+    An attachment given as a bare string is a **file** (``G = 1``), which is
+    what this establishment sends. Given as a pair it is a **link**
+    (``G = 0``) carrying that address, and ``(name, None)`` is the link whose
+    address is missing from the payload -- the case upstream answers by
+    falling back to the name, which is exactly what must not be published.
     """
     entry: dict[str, Any] = {
         "N": identifier,
@@ -243,12 +249,18 @@ def homework(
     if done is not None:
         entry["TAFFait"] = done
     if attachments:
-        entry["ListePieceJointe"] = {
-            "V": [
-                {"L": name, "N": f"ATTACHMENT-{index}", "G": 1}
-                for index, name in enumerate(attachments, start=1)
-            ]
-        }
+        pieces: list[dict[str, Any]] = []
+        for index, attachment in enumerate(attachments, start=1):
+            piece: dict[str, Any] = {"N": f"ATTACHMENT-{index}"}
+            if isinstance(attachment, str):
+                piece |= {"L": attachment, "G": 1}
+            else:
+                name, address = attachment
+                piece |= {"L": name, "G": 0}
+                if address is not None:
+                    piece["url"] = address
+            pieces.append(piece)
+        entry["ListePieceJointe"] = {"V": pieces}
     return entry
 
 

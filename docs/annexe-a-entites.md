@@ -183,7 +183,46 @@ peut s'ajouter, aucun ne sera renommé sans annonce.
 
 **`items[]` de devoirs** — `id`, `subject`, `description` (HTML tel que PRONOTE
 l'envoie), `description_text` (le même énoncé en texte simple), `due`, `done`,
-**`background_color`**, `attachments[]`.
+**`background_color`**, `attachments[]`, **`attachment_links[]`**.
+
+**`attachments[]` et `attachment_links[]`** — deux projections d'un seul
+champ, et l'une ne remplace pas l'autre. `attachments[]` porte les **noms**
+des pièces jointes, toutes, sous forme de chaînes : un gabarit qui fait
+`| join(', ')` dessus continue de fonctionner. `attachment_links[]` ne porte
+que celles dont l'adresse peut sortir de l'intégration, sous forme d'objets
+`{ name, url }`.
+
+> `attachment_links[]` est **séparé plutôt qu'intégré à `attachments[]`** pour
+> une raison de séquence, et la clé peut donc encore bouger. Une carte a besoin
+> de l'adresse *dans* `attachments[]` pour transformer un nom en lien ; y mettre
+> des objets change la forme de l'attribut et casse un gabarit qui le joint.
+> Cette rupture ne vaut d'être payée que si cet établissement publie vraiment
+> des liens, ce qu'aucune donnée actuelle ne dit — les noms observés
+> ressemblent tous à des fichiers. La clé séparée mesure ce fait sans rien
+> casser ; si elle se remplit, les adresses rejoindront `attachments[]`.
+
+**Exigence.** Une liste `attachment_links[]` vide n'est pas une lacune, c'est
+une **mesure** : cet établissement joint des fichiers et non des liens. PRONOTE
+range deux choses différentes sous une même clé, et la différence décide de
+tout. Un **lien** est une adresse qu'un professeur a collée : stable, elle
+n'authentifie personne, elle est publiable. Un **fichier** n'a aucune adresse
+qui existe indépendamment de la session — `pronotepy` en construit une de la
+forme `FichiersExternes/<hexadécimal>/<nom>?Session=<n>`, où le segment
+hexadécimal est le couple `{"N": id, "Actif": true}` chiffré avec la clé **et**
+le vecteur d'initialisation de la session, tous deux tirés à chaque connexion.
+Deux liens vers le même document depuis deux sessions n'ont donc aucun octet
+commun. La publier écrirait une adresse porteuse d'un droit d'accès dans
+l'instantané, dans chaque ligne du *recorder* et dans le téléchargement de
+diagnostic — ce dont § 8.2 a retiré l'URL iCal — et elle serait morte dans
+l'heure de toute façon.
+
+**Exigence.** L'adresse publiée est en `http` ou `https`, jamais autre chose.
+C'est une liste blanche et non un filtre, parce qu'un consommateur met cette
+valeur dans un `href` : `javascript:` y serait l'injection contre laquelle le
+champ `description` est déjà protégé (§ 3.3). Une adresse relative est refusée
+par le même contrôle, et c'est aussi la bonne réponse — le consommateur ne
+sait pas de quel hôte elle viendrait, et la résoudre contre celui de Home
+Assistant fabriquerait un lien mort.
 
 **`background_color`** — la couleur que l'établissement associe à la matière,
 **telle que le serveur l'envoie**, ou `null`. Elle apparaît sur les créneaux,

@@ -125,9 +125,38 @@ class TestHomeworkAttributes:
         """One item, described the way PRONOTE describes it: in HTML."""
         client = FakeClient(children=CHILDREN)
         client.responses["PageCahierDeTexte"] = protocol.homework_response(
-            [protocol.homework(description="<p>Exercice 3 p.&nbsp;52</p>")]
+            [
+                protocol.homework(
+                    description="<p>Exercice 3 p.&nbsp;52</p>",
+                    attachments=(
+                        "enonce.pdf",
+                        ("Le sujet en ligne", "https://exemple.invalid/sujet"),
+                    ),
+                )
+            ]
         )
         return client
+
+    async def test_a_file_is_named_and_a_link_is_also_addressed(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Two projections of one field, and neither replaces the other.
+
+        `attachments` goes on carrying plain names, unchanged, because a
+        template doing `| join(', ')` on it predates the addresses and must
+        keep working. `attachment_links` is the new fact, in its own key, and
+        that separation is what makes an empty list *informative*: it says
+        this establishment attaches files rather than links, without breaking
+        a single reader to say it.
+        """
+        del account
+        attributes = _attributes(hass, "sensor.enfant_un_homework_to_do")
+        item = attributes["items"][0]  # type: ignore[index]
+
+        assert item["attachments"] == ["enonce.pdf", "Le sujet en ligne"]
+        assert item["attachment_links"] == [
+            {"name": "Le sujet en ligne", "url": "https://exemple.invalid/sujet"}
+        ]
 
     async def test_a_card_gets_the_prose_and_the_markup(
         self, hass: HomeAssistant, account: PronoteAccount

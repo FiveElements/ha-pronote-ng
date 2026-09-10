@@ -586,7 +586,20 @@ def _homework_dict(item: Homework) -> dict[str, Any]:
         # upstream saying the server always sends it on a homework entry -- so
         # this is the tier where a colour is most likely to be there.
         "background_color": item.background_color,
-        "attachments": list(item.attachments),
+        # Two projections of one field, and the shapes are not
+        # interchangeable. `attachments` keeps carrying plain names, unchanged,
+        # because a template doing `| join(', ')` on it must go on working --
+        # the shape is older than the addresses. `attachment_links` is the new
+        # fact, and it is deliberately a separate key rather than a richer
+        # `attachments`: an empty list there is a *measurement* -- this
+        # establishment attaches files, not links -- and it says so without
+        # breaking a single reader.
+        "attachments": [attachment.name for attachment in item.attachments],
+        "attachment_links": [
+            {"name": attachment.name, "url": attachment.url}
+            for attachment in item.attachments
+            if attachment.url
+        ],
     }
 
 

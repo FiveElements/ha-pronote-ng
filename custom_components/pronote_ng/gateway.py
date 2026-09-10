@@ -34,6 +34,7 @@ from html import unescape
 import logging
 import re
 from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from pronotepy import dataClasses
@@ -68,6 +69,7 @@ from .models import (
     Grade,
     Guardian,
     Homework,
+    HomeworkAttachment,
     HomeworkFacts,
     Identity,
     Information,
@@ -198,6 +200,50 @@ _LINE_BREAK_TAG: Final = re.compile(
     r"(?i)<\s*(?:br\s*/?|/\s*(?:p|div|li|tr|h[1-6]|blockquote))\s*>"
 )
 _ANY_TAG: Final = re.compile(r"<[^>]*>")
+
+
+def _attachment(raw: Any) -> HomeworkAttachment:
+    """One attached document, with an address only when one is publishable.
+
+    ``G`` says which of two different things this is: ``0`` a link, ``1`` a
+    file. Only the first has an address that means anything outside the session
+    that fetched it -- :class:`~.models.HomeworkAttachment` gives the reason at
+    length.
+
+    Two refusals, both of which have to happen here rather than in a card.
+    Upstream falls back to the *name* when a link carries no ``url``
+    (``dataClasses.Attachment``: ``self.url = self.name if url is None else
+    url``), so an unchecked read publishes a human label in a field a consumer
+    will put in an `href`. And a scheme is not a detail: an address is only
+    published if it is `http` or `https`, so a `javascript:` payload typed into
+    a homework entry cannot reach a dashboard's `href` through us. A relative
+    address is refused by the same test, which is the right answer too -- the
+    consumer does not know which host it would belong to, and resolving it
+    against Home Assistant's own fabricates a dead link.
+    """
+    name = str(_get(raw, "L"))
+    if _get(raw, "G") != _ATTACHMENT_LINK:
+        return HomeworkAttachment(name=name)
+    address = _get(raw, "url")
+    if not isinstance(address, str):
+        return HomeworkAttachment(name=name)
+    parsed = urlparse(address)
+    if parsed.scheme not in _PUBLISHABLE_SCHEMES or not parsed.netloc:
+        _LOGGER.debug(
+            "an attachment on %r is declared a link but carries no usable "
+            "address, so it is published as a name only",
+            name,
+        )
+        return HomeworkAttachment(name=name)
+    return HomeworkAttachment(name=name, url=address)
+
+
+#: ``G`` on a ``ListePieceJointe`` entry: a link, as opposed to ``1``, a file.
+_ATTACHMENT_LINK: Final = 0
+
+#: The only schemes an attachment address is published under. A consumer puts
+#: this value in an `href`, so the list is a whitelist and not a filter.
+_PUBLISHABLE_SCHEMES: Final = frozenset({"http", "https"})
 
 
 def _plain_text(html: str) -> str:
@@ -928,20 +974,15 @@ class PronoteGateway:
             due=due,
             done=bool(entry.get("TAFFait", False)),
             background_color=_get(entry, "CouleurFond") or None,
-            # Names only, never URLs. `Attachment.url` interpolates
-            # `client.attributes["h"]` -- the live session token -- so keeping
-            # it would write a credential-bearing URL into the snapshot, into
-            # every recorder row and into the diagnostics download: the exact
-            # hazard §8.2 removed the iCal URL from the state machine for. It
-            # would also be dead by the time anyone clicked it, since the token
-            # changes at the next login.
+            # Read off the raw payload rather than through
+            # `pronotepy.Attachment`, and that is deliberate: constructing one
+            # of those *builds* the session-signed URL, which is the single
+            # thing that must not end up in a snapshot. Here nothing is
+            # encrypted and no session value is touched.
             attachments=tuple(
-                name
-                for name in (
-                    _get(attachment, "L")
-                    for attachment in _list(entry, "ListePieceJointe")
-                )
-                if name
+                _attachment(raw_attachment)
+                for raw_attachment in _list(entry, "ListePieceJointe")
+                if _get(raw_attachment, "L")
             ),
         )
 

@@ -53,7 +53,7 @@ from custom_components.pronote_ng.gateway import (
     _supersedes,
     deduplicate_lessons,
 )
-from custom_components.pronote_ng.models import Lesson
+from custom_components.pronote_ng.models import HomeworkAttachment, Lesson
 
 from .clock import FakeClock  # noqa: TC001 -- a pytest fixture annotation
 from .fixtures import protocol
@@ -917,24 +917,108 @@ def test_a_homework_item_without_an_id_or_a_due_date_is_dropped(
     assert gateway.homework(client).facts.homework == ()
 
 
-def test_homework_attachments_are_names_and_never_urls(
+def test_a_file_attachment_carries_its_name_and_no_address(
     gateway: PronoteGateway, client: FakeClient
 ) -> None:
-    """``Attachment.url`` interpolates the live session token.
+    """A file has no address that survives the session that fetched it.
 
-    Storing it would write a credential-bearing URL into the snapshot, into
-    every recorder row for the to-do list and into the diagnostics download --
-    the exact hazard §8.2 removed the iCal URL from the state machine for. It
-    would also be dead by the next login.
+    `pronotepy.Attachment` builds one, and it is
+    `FichiersExternes/<hex>/<name>?Session=<h>` where the hex segment is
+    `{"N": id, "Actif": true}` encrypted under the session's own AES key and
+    IV. Both are drawn per session, so the *path* is a session artifact and not
+    only the query parameter. Storing it would write a credential-bearing
+    address into the snapshot, into every recorder row for the to-do list and
+    into the diagnostics download -- the exact hazard §8.2 removed the iCal URL
+    from the state machine for -- and it would be dead within the hour anyway.
+
+    The empty second attachment is here because a nameless entry has nothing to
+    show and must be dropped rather than published as a blank line.
     """
     client.responses["PageCahierDeTexte"] = protocol.homework_response(
         [protocol.homework(attachments=("enonce.pdf", ""))]
     )
     item = gateway.homework(client).facts.homework[0]
 
-    assert item.attachments == ("enonce.pdf",)
-    assert not any("Session" in name for name in item.attachments)
-    assert not any("http" in name for name in item.attachments)
+    assert item.attachments == (HomeworkAttachment(name="enonce.pdf"),)
+    assert item.attachments[0].url is None
+    assert not any("Session" in a.name for a in item.attachments)
+
+
+def test_a_link_attachment_publishes_the_address_it_was_given(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """The one kind of attachment whose address is safe to publish.
+
+    `G = 0` is a link a teacher pasted in. Nothing about it is derived from the
+    session, it authenticates nobody, and it is the same address whoever asks
+    -- so it can leave this process, and a card can offer to open it.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [
+            protocol.homework(
+                attachments=(("Le sujet en ligne", "https://exemple.invalid/sujet"),)
+            )
+        ]
+    )
+    item = gateway.homework(client).facts.homework[0]
+
+    assert item.attachments == (
+        HomeworkAttachment(
+            name="Le sujet en ligne", url="https://exemple.invalid/sujet"
+        ),
+    )
+
+
+def test_a_link_with_no_address_in_the_payload_is_not_given_its_own_name(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """Upstream's fallback is the trap this test exists for.
+
+    `dataClasses.Attachment` does ``self.url = self.name if url is None else
+    url``, so a link whose payload carries no address gets its *label* as an
+    address. Reading that without checking would publish "Le sujet en ligne"
+    in a field a card puts in an `href` -- a link that cannot work, offered as
+    though it could, which is worse than no link at all.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [protocol.homework(attachments=(("Le sujet en ligne", None),))]
+    )
+    item = gateway.homework(client).facts.homework[0]
+
+    assert item.attachments == (HomeworkAttachment(name="Le sujet en ligne"),)
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        pytest.param("javascript:alert(1)", id="a script scheme"),
+        pytest.param("data:text/html,<script>", id="an inline document"),
+        pytest.param("FichiersExternes/abc/link?Session=42", id="a relative address"),
+        pytest.param("/sujet.pdf", id="an absolute path with no host"),
+        pytest.param("", id="an empty address"),
+    ],
+)
+def test_only_an_http_address_is_published(
+    gateway: PronoteGateway, client: FakeClient, address: str
+) -> None:
+    """A whitelist, because the value ends up in somebody's `href`.
+
+    The homework description is already treated as hostile -- it is a teacher's
+    rich-text field, converted once here so no card injects it (§3.3) -- and an
+    attachment's address arrives by the same route. `javascript:` in an `href`
+    is the dashboard injection that field was closed against.
+
+    The relative forms are refused for a different reason, and refusing them
+    here is also the honest answer: a consumer does not know which host they
+    belong to, and resolving them against Home Assistant's own address
+    fabricates a link that is dead on arrival.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [protocol.homework(attachments=(("Le sujet", address),))]
+    )
+    item = gateway.homework(client).facts.homework[0]
+
+    assert item.attachments == (HomeworkAttachment(name="Le sujet"),)
 
 
 def test_a_renamed_homework_key_fails_the_tier(

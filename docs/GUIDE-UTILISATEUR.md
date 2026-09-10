@@ -379,8 +379,23 @@ source de vérité sur le calendrier scolaire.
 | **Devoirs** *(liste de tâches)* | Un élément par devoir : matière en titre, énoncé en description, échéance. Cochable **seulement si vous avez activé l'écriture** (§ [7](#7-écrire-dans-pronote)). | — |
 
 Chaque élément de `items` contient `id`, `subject`, `description`,
-`description_text`, `due`, `done` et `attachments`. Le champ `id` est celui à
-fournir au service « Cocher un devoir ».
+`description_text`, `due`, `done`, `attachments` et `attachment_links`. Le
+champ `id` est celui à fournir au service « Cocher un devoir ».
+
+**Les pièces jointes, et pourquoi certaines ne s'ouvrent pas.**
+`attachments` donne les **noms** de toutes les pièces. `attachment_links`
+donne, sous forme `{ name, url }`, celles qu'on peut réellement ouvrir — et
+c'est souvent une liste vide, sans que rien soit cassé.
+
+La raison est dans PRONOTE, pas dans l'intégration. Quand un professeur joint
+un **lien**, c'est une adresse ordinaire : elle est publiée et une carte peut
+proposer de l'ouvrir. Quand il joint un **fichier**, PRONOTE ne lui donne pas
+d'adresse durable : l'adresse est signée par la session en cours, elle ouvre le
+document **sans demander d'identifiant**, et elle cesse de fonctionner dès la
+connexion suivante. La publier reviendrait à écrire un mot de passe dans un
+attribut — donc dans l'historique et dans tout diagnostic que vous partageriez
+pour du support — pour un lien qui serait mort dans l'heure. C'est le même
+raisonnement que pour l'URL iCal, cf. § [5.1](#51-les-quatre-services-qui-renvoient-une-réponse).
 
 **Deux champs pour un seul énoncé, et il faut choisir le bon.** Les professeurs
 saisissent dans un éditeur riche, donc PRONOTE renvoie du HTML : `description`
