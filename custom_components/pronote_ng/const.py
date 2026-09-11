@@ -154,6 +154,7 @@ CONF_QR_PAYLOAD: Final = "qr_payload"
 CONF_QR_PIN: Final = "qr_pin"
 CONF_CHILDREN: Final = "children"
 CONF_ACCOUNT_KIND: Final = "account_kind"
+CONF_SOURCE: Final = "source"
 
 #: The child key table: one record per child ever seen on this account, each
 #: ``{"key", "resource_id", "name"}``. **This table is the durable artefact,

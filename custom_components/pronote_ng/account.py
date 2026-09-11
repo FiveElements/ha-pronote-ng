@@ -35,7 +35,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .child_keys import is_minted, pair
-from .connectors.pronote import PronoteConnector
+from .connectors.factory import build_connector
 from .const import (
     CONF_ACCOUNT_PIN,
     CONF_CHILD_KEYS,
@@ -59,6 +59,7 @@ from .const import (
     ISSUE_MFA_REQUIRED,
     OPT_CONNECT_TIMEOUT,
     OPT_ESTABLISHMENT_TIMEZONE,
+    OPT_HISTORY_PERIODS,
     OPT_MASTER_TICK,
     OPT_READ_TIMEOUT,
     OPT_SESSION_STRATEGY,
@@ -195,17 +196,17 @@ class PronoteAccount:
         # sent, which presents as a total outage with a healthy server, and
         # the options page -- the only place that bounds these fields -- is
         # not on the path a restored or hand-edited entry takes.
-        self._read_timeout = bounded_option(
-            options, OPT_READ_TIMEOUT, DEFAULT_READ_TIMEOUT
-        )
-        self._connect_timeout = float(
+        read_timeout = bounded_option(options, OPT_READ_TIMEOUT, DEFAULT_READ_TIMEOUT)
+        connect_timeout = float(
             bounded_option(options, OPT_CONNECT_TIMEOUT, DEFAULT_CONNECT_TIMEOUT)
         )
         self.stale_after = int(
             bounded_option(options, OPT_STALE_AFTER, DEFAULT_STALE_AFTER)
         )
 
-        self.connector = PronoteConnector(
+        self.connector = build_connector(
+            hass,
+            entry,
             entry_id=entry.entry_id,
             timezone=_establishment_timezone(hass, options),
             credentials=_credentials_from_entry(entry),
@@ -214,9 +215,9 @@ class PronoteAccount:
             strategy=SessionStrategy(
                 options.get(OPT_SESSION_STRATEGY, DEFAULT_SESSION_STRATEGY)
             ),
-            connect_timeout=self._connect_timeout,
-            read_timeout=self._read_timeout,
-            history_periods=int(options.get("history_periods", 0) or 0),
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            history_periods=int(options.get(OPT_HISTORY_PERIODS, 0) or 0),
             on_credentials_rotated=self._async_persist_credentials,
         )
         enabled = tier_enabled(options)
