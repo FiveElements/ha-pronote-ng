@@ -76,17 +76,22 @@ def _module_coverage(root: ET.Element) -> dict[str, float]:
     return result
 
 
-def coverage_for(per_module: dict[str, float], required: str) -> float | None:
+def coverage_match(
+    per_module: dict[str, float], required: str
+) -> tuple[float | None, str]:
     """Look up ``required`` as an exact key or unique posix suffix.
 
     Two paths that share a basename do not match a short suffix such as
     ``pronote_ng/ratelimit.py``: ``pronote_ng/connectors/ecoledirecte/ratelimit.py``
-    does not end with that string. Ambiguous matches count as missing so the
-    gate fails closed.
+    does not end with that string.
+
+    Returns ``(value, "found")``, ``(None, "absent")``, or
+    ``(None, "ambiguous")``. Ambiguous is fail-closed, but it is not the
+    same as a missing file: CI must say which.
     """
     required = _posix(required)
     if required in per_module:
-        return per_module[required]
+        return per_module[required], "found"
     suffix = required if required.startswith("/") else f"/{required}"
     matches = [
         value
@@ -94,8 +99,36 @@ def coverage_for(per_module: dict[str, float], required: str) -> float | None:
         if _posix(name) == required or _posix(name).endswith(suffix)
     ]
     if len(matches) == 1:
-        return matches[0]
+        return matches[0], "found"
+    if len(matches) > 1:
+        return None, "ambiguous"
+    return None, "absent"
+
+
+def coverage_for(per_module: dict[str, float], required: str) -> float | None:
+    """Look up ``required``; ``None`` means absent or ambiguous (fail closed)."""
+    value, _reason = coverage_match(per_module, required)
+    return value
+
+
+def _critical_failure(
+    module: str, actual: float | None, reason: str, minimum: float
+) -> str | None:
+    if reason == "absent":
+        return f"{module} is absent from the coverage report"
+    if reason == "ambiguous":
+        return f"{module} matches more than one file in the coverage report"
+    if actual is not None and actual + 1e-9 < minimum:
+        return f"{module} coverage {actual:.2f}% is below the required {minimum:.0f}%"
     return None
+
+
+def _shown(value: float | None, reason: str) -> str:
+    if reason == "found" and value is not None:
+        return f"{value:.2f}%"
+    if reason == "ambiguous":
+        return "ambiguous"
+    return "missing"
 
 
 def main(argv: list[str]) -> int:
@@ -122,19 +155,15 @@ def main(argv: list[str]) -> int:
 
     per_module = _module_coverage(root)
     for module, minimum in sorted(CRITICAL_MODULES.items()):
-        actual = coverage_for(per_module, module)
-        if actual is None:
-            failures.append(f"{module} is absent from the coverage report")
-        elif actual + 1e-9 < minimum:
-            failures.append(
-                f"{module} coverage {actual:.2f}% is below the required {minimum:.0f}%"
-            )
+        actual, reason = coverage_match(per_module, module)
+        failure = _critical_failure(module, actual, reason, minimum)
+        if failure is not None:
+            failures.append(failure)
 
     print(f"global: line {line_rate:.2f}% / branch {branch_rate:.2f}%")
     for module in sorted(CRITICAL_MODULES):
-        value = coverage_for(per_module, module)
-        shown = f"{value:.2f}%" if value is not None else "missing"
-        print(f"  {module}: {shown}")
+        value, reason = coverage_match(per_module, module)
+        print(f"  {module}: {_shown(value, reason)}")
 
     if failures:
         print("\nCoverage gate failed:", file=sys.stderr)

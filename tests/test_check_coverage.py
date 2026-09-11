@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.etree.ElementTree import Element, ElementTree, SubElement, tostring
 
 ROOT = Path(__file__).resolve().parents[1]
 _SPEC = importlib.util.spec_from_file_location(
@@ -95,3 +95,57 @@ def test_tostring_keeps_the_fixture_well_formed() -> None:
     """Guard the helper: a broken fixture would make the lookups pass vacuously."""
     xml = tostring(_report(("pronote_ng/scheduler.py", "1")), encoding="unicode")
     assert "scheduler.py" in xml
+
+
+def _write_report(path: Path, root: Element) -> None:
+    ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+
+
+def test_main_exits_nonzero_when_the_coverage_report_is_missing() -> None:
+    """A threshold that does not fail is not a threshold."""
+    code = check_coverage.main(["check_coverage.py", "no-such-coverage.xml"])
+    assert code == 2
+
+
+def test_main_names_an_ambiguous_suffix_instead_of_calling_it_absent(
+    tmp_path: Path, capsys
+) -> None:
+    """Fail-closed that says 'absent' sends a CI reader looking for a missing file."""
+    report = tmp_path / "coverage.xml"
+    _write_report(
+        report,
+        _report(
+            ("a/pronote_ng/delta.py", "1"),
+            ("b/pronote_ng/delta.py", "0"),
+            ("custom_components/pronote_ng/ratelimit.py", "1"),
+            ("custom_components/pronote_ng/scheduler.py", "1"),
+            ("custom_components/pronote_ng/gateway.py", "1"),
+        ),
+    )
+    code = check_coverage.main(["check_coverage.py", str(report)])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "pronote_ng/delta.py matches more than one file in the coverage report" in (
+        captured.err
+    )
+    assert "pronote_ng/delta.py is absent from the coverage report" not in captured.err
+
+
+def test_main_says_absent_when_a_critical_module_is_missing(
+    tmp_path: Path, capsys
+) -> None:
+    """The two failure modes must stay distinguishable."""
+    report = tmp_path / "coverage.xml"
+    _write_report(
+        report,
+        _report(
+            ("custom_components/pronote_ng/ratelimit.py", "1"),
+            ("custom_components/pronote_ng/scheduler.py", "1"),
+            ("custom_components/pronote_ng/gateway.py", "1"),
+        ),
+    )
+    code = check_coverage.main(["check_coverage.py", str(report)])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "pronote_ng/delta.py is absent from the coverage report" in captured.err
+    assert "more than one file" not in captured.err
