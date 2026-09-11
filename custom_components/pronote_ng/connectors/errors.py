@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from custom_components.pronote_ng.connectors.protocol import ChallengeKind
+    from .protocol import ChallengeKind
 
 
 class ConnectorError(Exception):

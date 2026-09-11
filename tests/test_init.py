@@ -38,6 +38,7 @@ from custom_components.pronote_ng.account import (
     PronoteAccount,
     _establishment_timezone,
 )
+from custom_components.pronote_ng.connectors.protocol import Source
 from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
     DOMAIN,
@@ -109,6 +110,11 @@ async def test_setup_loads_the_entry_and_every_platform(
     assert mock_entry.runtime_data is account
     assert [student.id for student in account.students] == [STUDENT_ONE, STUDENT_TWO]
     assert hass.data[DOMAIN][mock_entry.entry_id] is account
+
+
+async def test_setup_uses_the_pronote_connector(account: PronoteAccount) -> None:
+    """The account source must stay explicit when another school backend is added."""
+    assert account.connector.capabilities.source is Source.PRONOTE
 
 
 async def test_account_now_is_timezone_aware(account: PronoteAccount) -> None:

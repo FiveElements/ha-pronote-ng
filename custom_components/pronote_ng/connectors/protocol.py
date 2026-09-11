@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol
 
-from custom_components.pronote_ng.const import Tier
+from ..const import Tier  # noqa: TID252
 
 if TYPE_CHECKING:
     from datetime import date, datetime
 
-    from custom_components.pronote_ng.const import Priority
-    from custom_components.pronote_ng.models import GatewayResult, SessionFacts
+    from ..const import Priority  # noqa: TID252
+    from ..models import GatewayResult, SessionFacts  # noqa: TID252
 
 
 class Source(StrEnum):
