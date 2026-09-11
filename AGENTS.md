@@ -13,7 +13,7 @@ reading in full before a substantial change. `docs/SPECIFICATION.md` and
 (`§5.1`, `annexe B §2.4`); those references are real and resolvable — follow
 them rather than guessing why a value is what it is.
 
-## Two rules that override convenience
+## Three rules that override convenience
 
 **No real credential anywhere in this repo** — no PRONOTE username, password,
 2FA PIN, `jetonConnexionAppliMobile`, QR-code content, iCal URL
@@ -43,6 +43,11 @@ enforces this) and
 `tests/test_no_secret_in_state.py` checks a full cycle logs no secret. To debug,
 enable `custom_components.pronote_ng: debug` only, and never suggest `pronotepy`
 to a user in an issue.
+
+**Never commit or push to `main`.** One branch per subject, then a pull request.
+`main` moves only by merging a PR whose four workflows are green. A request to
+"commit and push" while `HEAD` is `main` means: create a branch, commit there,
+push the branch, open the PR. Direct `git push origin main` is forbidden.
 
 ## Commands
 
