@@ -1,0 +1,14 @@
+{
+  "code": 505,
+  "token": "not-a-real-token",
+  "data": {
+    "accounts": [
+      {
+        "id": 1,
+        "typeCompte": "E",
+        "prenom": "Enfant",
+        "nom": "Un"
+      }
+    ]
+  }
+}

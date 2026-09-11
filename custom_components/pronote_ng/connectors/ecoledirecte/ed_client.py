@@ -1,0 +1,236 @@
+"""Auditable HTTP client for the EcoleDirecte protocol."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import TYPE_CHECKING, Any, Protocol
+from urllib.parse import quote
+
+from aiohttp import ClientError, ClientTimeout
+
+from custom_components.pronote_ng.connectors.errors import (
+    ConnectorChallengeRequired,
+    ConnectorCredentialsError,
+    ConnectorError,
+    ConnectorTransportError,
+    ConnectorUndecodableError,
+)
+from custom_components.pronote_ng.connectors.protocol import ChallengeKind
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+API_BASE = "https://api.ecoledirecte.com/v3"
+ECOLEDIRECTE_API_VERSION = "4.101.3"
+DEFAULT_READ_TIMEOUT = 60.0
+
+_BASE_HEADERS = {
+    "accept": "application/json, text/plain, */*",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-language": "fr-FR,fr;q=0.9",
+    "connection": "keep-alive",
+    "content-type": "application/x-www-form-urlencoded",
+    "dnt": "1",
+    "origin": "https://www.ecoledirecte.com",
+    "priority": "1",
+    "referer": "https://www.ecoledirecte.com/",
+    "sec-ch-ua": ('"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"'),
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-site",
+    "user-agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/58.0.3029.110 Safari/537.3"
+    ),
+}
+
+
+class Response(Protocol):
+    """Response surface required from aiohttp or a test transport."""
+
+    headers: Mapping[str, str]
+    cookies: Mapping[str, object]
+
+    async def json(self, *, content_type: None = None) -> dict[str, Any]: ...
+
+
+class Transport(Protocol):
+    """Injectable HTTP boundary used by the client."""
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        **kwargs: object,
+    ) -> Response: ...
+
+
+class EcoleDirecteClient:
+    """Small stateful client that owns GTK and token headers."""
+
+    __slots__ = ("_headers", "_read_timeout", "_transport", "calls", "token")
+
+    def __init__(
+        self,
+        transport: Transport,
+        *,
+        read_timeout: float = DEFAULT_READ_TIMEOUT,
+    ) -> None:
+        self._transport = transport
+        self._read_timeout = read_timeout
+        self._headers = dict(_BASE_HEADERS)
+        self.calls = 0
+        self.token: str | None = None
+
+    def __repr__(self) -> str:
+        """Represent only non-secret client state."""
+        return (
+            f"{type(self).__name__}("
+            f"calls={self.calls}, authenticated={self.token is not None})"
+        )
+
+    async def login(
+        self,
+        username: str,
+        password: str,
+    ) -> dict[str, Any]:
+        """Fetch GTK, submit credentials once, and classify the business code."""
+        self._headers.pop("x-gtk", None)
+        gtk_response = await self._send(
+            "GET",
+            (f"{API_BASE}/login.awp?v={ECOLEDIRECTE_API_VERSION}&gtk=1"),
+            data=None,
+        )
+        gtk = _cookie_value(gtk_response.cookies.get("GTK"))
+        if gtk is None:
+            raise ConnectorTransportError("EcoleDirecte did not return a GTK cookie")
+        self._headers["x-gtk"] = gtk
+
+        payload = (
+            'data={"identifiant":"'
+            + _encode_string(username)
+            + '", "motdepasse":"'
+            + _encode_string(password)
+            + '", "isReLogin": false}'
+        )
+        response = await self._send(
+            "POST",
+            f"{API_BASE}/login.awp?v={ECOLEDIRECTE_API_VERSION}",
+            data=payload,
+        )
+        result = await self._read_response(response)
+        self._remember_response_tokens(response)
+        self._check_code(result)
+        self._headers.pop("x-gtk", None)
+        return result
+
+    async def request(
+        self,
+        path: str,
+        *,
+        verbe: str,
+        data: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """POST one protocol request and classify its JSON business code."""
+        response = await self._send(
+            "POST",
+            f"{API_BASE}{path}",
+            params={"verbe": verbe, "v": ECOLEDIRECTE_API_VERSION},
+            data=_encode_data(data),
+        )
+        result = await self._read_response(response)
+        self._remember_response_tokens(response)
+        self._check_code(result)
+        return result
+
+    async def _send(
+        self,
+        method: str,
+        url: str,
+        **kwargs: object,
+    ) -> Response:
+        self.calls += 1
+        try:
+            request = self._transport.request(
+                method,
+                url,
+                headers=dict(self._headers),
+                timeout=ClientTimeout(total=self._read_timeout),
+                **kwargs,
+            )
+            return await asyncio.wait_for(request, timeout=self._read_timeout)
+        except (ClientError, OSError, TimeoutError) as error:
+            raise ConnectorTransportError("EcoleDirecte request failed") from error
+
+    async def _read_response(self, response: Response) -> dict[str, Any]:
+        try:
+            result = await response.json(content_type=None)
+        except (TypeError, ValueError) as error:
+            raise ConnectorUndecodableError(
+                "EcoleDirecte returned invalid JSON"
+            ) from error
+        if not isinstance(result, dict):
+            raise ConnectorUndecodableError(
+                "EcoleDirecte returned a non-object payload"
+            )
+        return result
+
+    def _remember_response_tokens(self, response: Response) -> None:
+        token = _header(response.headers, "x-token")
+        if token is not None:
+            self.token = token
+            self._headers["x-token"] = token
+        token_2fa = _header(response.headers, "2FA-Token")
+        if token_2fa is not None:
+            self._headers["2FA-Token"] = token_2fa
+
+    def _forget_tokens(self) -> None:
+        self.token = None
+        self._headers.pop("x-token", None)
+        self._headers.pop("2FA-Token", None)
+
+    def _check_code(self, result: Mapping[str, Any]) -> None:
+        code = result.get("code")
+        if code in {200, 210}:
+            return
+        if code == 250:
+            raise ConnectorChallengeRequired(ChallengeKind.QCM)
+        if code == 505:
+            raise ConnectorCredentialsError("EcoleDirecte rejected the credentials")
+        if code == 517:
+            raise ConnectorUndecodableError(
+                "EcoleDirecte rejected the declared API version"
+            )
+        if code in {520, 525}:
+            self._forget_tokens()
+            raise ConnectorError("EcoleDirecte session token is no longer valid")
+        raise ConnectorUndecodableError(
+            f"EcoleDirecte returned an unsupported business code: {code!r}"
+        )
+
+
+def _encode_string(value: str) -> str:
+    return quote(value, safe="~()*!.'%\\").replace("\\", "\\\\")
+
+
+def _encode_data(data: Mapping[str, Any]) -> str:
+    return "data=" + json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def _cookie_value(cookie: object | None) -> str | None:
+    if cookie is None:
+        return None
+    value = getattr(cookie, "value", cookie)
+    return value if isinstance(value, str) else None
+
+
+def _header(headers: Mapping[str, str], name: str) -> str | None:
+    wanted = name.casefold()
+    return next(
+        (value for key, value in headers.items() if key.casefold() == wanted),
+        None,
+    )
