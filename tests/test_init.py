@@ -117,6 +117,45 @@ async def test_setup_uses_the_pronote_connector(account: PronoteAccount) -> None
     assert account.connector.capabilities.source is Source.PRONOTE
 
 
+async def test_an_unselected_child_with_unreadable_facts_does_not_block_setup(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """A child excluded in the flow must be filtered before its facts are decoded."""
+    from custom_components.pronote_ng.gateway import PronoteGateway
+
+    del school_day, no_spacing
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        data={**mock_entry.data, CONF_CHILDREN: [STUDENT_ONE]},
+    )
+    original = PronoteGateway.session_facts
+
+    def session_facts(gateway: PronoteGateway, client: FakeClient) -> Any:
+        if client.selected_child_id == STUDENT_TWO:
+            raise ValueError("unselected child is unreadable")
+        return original(gateway, client)
+
+    with (
+        patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=parent_client,
+        ),
+        patch.object(PronoteGateway, "session_facts", session_facts),
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+    account = mock_entry.runtime_data
+    assert [student.id for student in account.students] == [STUDENT_ONE]
+
+    await hass.config_entries.async_unload(mock_entry.entry_id)
+    await hass.async_block_till_done()
+
+
 async def test_account_now_is_timezone_aware(account: PronoteAccount) -> None:
     """Naive datetimes in entity state lose ordering and locale in one stroke."""
     assert account.now().tzinfo is not None

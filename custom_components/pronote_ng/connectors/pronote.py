@@ -26,7 +26,7 @@ from .errors import ConnectorChildMissingError, ConnectorUnsupportedError
 from .protocol import ConnectorCapabilities, Source
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping, Sequence
 
     from ..hardened_client import HardenedClient  # noqa: TID252
     from ..models import Period  # noqa: TID252
@@ -98,14 +98,18 @@ class PronoteConnector:
         return self.gateway.today()
 
     async def async_open(self) -> None:
-        """Open the session and cache the zero-cost bootstrap facts."""
+        """Open the session and discover its children without reading their facts."""
         self._student_ids = await self.session.run(
             str(Tier.SESSION),
             Priority.CRITICAL,
             _client_student_ids,
             cost=0,
         )
-        for student_id in self._student_ids:
+        self._session_facts.clear()
+
+    async def async_load_session_facts(self, student_ids: Sequence[str]) -> None:
+        """Cache zero-cost bootstrap facts for the selected children only."""
+        for student_id in student_ids:
             result = await self.session.run(
                 str(Tier.SESSION),
                 Priority.CRITICAL,

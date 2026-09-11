@@ -464,7 +464,9 @@ class PronoteAccount:
         current: Period | None = None
 
         await self.connector.async_open()
-        for student_id in self._student_ids():
+        student_ids = self._student_ids()
+        await self.connector.async_load_session_facts(student_ids)
+        for student_id in student_ids:
             facts = self.connector.session_facts(student_id)
             students.append(facts.student)
             session_snapshots.append(facts)
