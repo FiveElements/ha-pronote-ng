@@ -288,8 +288,9 @@ class SerialExecutor:
 
         The deadline is not redundant with the HTTP timeout. It bounds the one
         case the staleness regime of §5.4 would otherwise disguise: a call that
-        never returns, whose symptom is entities quietly ageing with nothing in
-        the log.
+        never returns, whose symptom is entities quietly ageing. The user-facing
+        log for that outage is the session's one INFO (Silver
+        ``log-when-unavailable``), not a line per abandoned call.
 
         What happens after the deadline is worth being exact about, because the
         obvious guess is wrong. The abandoned callable keeps running in the
@@ -309,9 +310,11 @@ class SerialExecutor:
             try:
                 return await asyncio.wait_for(future, timeout=self.deadline)
             except TimeoutError:
-                # error(), not exception(): the traceback is asyncio's own and
-                # says nothing useful, whereas the message is the diagnosis.
-                _LOGGER.error(  # noqa: TRY400
+                # debug(), not error(): the Silver rule ``log-when-unavailable``
+                # allows one INFO for the outage, on the session, not one error
+                # per abandoned call. The stall mechanics still belong here for
+                # somebody who has turned debug on.
+                _LOGGER.debug(
                     "A PRONOTE call exceeded %.0fs and was abandoned. The worker "
                     "thread is still finishing it, so the next call queues "
                     "behind it rather than running beside it -- expect a stall, "
@@ -384,6 +387,12 @@ class SessionManager:
         # Held across "pick a client, wait, call, retry" -- see the module
         # docstring.
         self._gate = asyncio.Lock()
+
+        # Silver ``log-when-unavailable``: one INFO when PRONOTE stops
+        # answering, one INFO when it answers again. The flag is on the
+        # session, not on a coordinator, because there is one coordinator per
+        # tier and a single outage would otherwise print ten lines.
+        self._unavailable_logged = False
 
     # -- observable state --------------------------------------------------
 
@@ -534,14 +543,20 @@ class SessionManager:
         except TimeoutError as error:
             # §3.2 requires an abandoned call to mark the account as failing;
             # it is a real failure even though nothing came back to classify.
+            self._note_unreachable("a PRONOTE call exceeded its deadline")
             self._limiter.note_failure()
             raise IntegrationFault("a PRONOTE call exceeded its deadline") from error
+        except OSError as error:
+            self._note_unreachable(str(error) or type(error).__name__)
+            self._limiter.note_failure()
+            raise
         except PronoteAPIError as error:
             return await self._handle_protocol_error(
                 error, tier, priority, fn, student_id=student_id, cost=cost
             )
 
         self._last_success = self._clock()
+        self._note_reachable()
         self._note_survival(gap)
         self._reconcile(tier, result, cost)
         return result
@@ -580,6 +595,26 @@ class SessionManager:
         if self._last_success is None:
             return 0.0
         return self._clock() - self._last_success
+
+    def _note_unreachable(self, reason: str) -> None:
+        """Log once when PRONOTE stops answering.
+
+        Silver ``log-when-unavailable``: INFO, and only the first time. A
+        second failed call in the same outage must stay silent -- that is
+        what used to fill the log when every coordinator printed its own
+        error for the same unreachable server.
+        """
+        if self._unavailable_logged:
+            return
+        _LOGGER.info("PRONOTE is unavailable: %s", reason)
+        self._unavailable_logged = True
+
+    def _note_reachable(self) -> None:
+        """Log once when PRONOTE answers again after an outage."""
+        if not self._unavailable_logged:
+            return
+        _LOGGER.info("PRONOTE is back online")
+        self._unavailable_logged = False
 
     async def _handle_protocol_error(
         self,
@@ -690,6 +725,7 @@ class SessionManager:
             self._limiter.note_failure()
             raise
         self._last_success = self._clock()
+        self._note_reachable()
         self._reconcile(tier, result, cost)
         return result
 
@@ -814,11 +850,12 @@ class SessionManager:
             )
             self._limiter.note_login(LoginOutcome.UNDECODABLE)
             raise AccountUnreadable(str(error)) from error
-        except _TRANSPORT_ERRORS:
+        except _TRANSPORT_ERRORS as error:
             # `requests` failures land here, and none of them is a
             # `PronoteAPIError`: `requests.Timeout` inherits from `OSError`.
             # Reaching this branch is what makes the backoff engage and the
             # bootstrap GET get counted.
+            self._note_unreachable(str(error) or type(error).__name__)
             self._limiter.note_login(LoginOutcome.TRANSPORT)
             raise
 
@@ -833,6 +870,7 @@ class SessionManager:
         self._client = client
         self._opened_at = self._clock()
         self._last_success = self._opened_at
+        self._note_reachable()
         self._session_batch_id = self._batch_id
         if self._short_timeout_confirmed and self._probe_due():
             self._last_probe = self._clock()

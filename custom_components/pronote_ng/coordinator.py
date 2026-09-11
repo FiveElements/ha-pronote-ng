@@ -20,9 +20,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DOMAIN, Tier
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
+    from . import PronoteConfigEntry
     from .models import Snapshot
 
 _LOGGER: Final = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class PronoteTierCoordinator(DataUpdateCoordinator[TierData]):
     def __init__(
         self,
         hass: HomeAssistant,
-        entry: ConfigEntry,
+        entry: PronoteConfigEntry,
         tier: Tier,
     ) -> None:
         super().__init__(
@@ -99,10 +99,15 @@ class PronoteTierCoordinator(DataUpdateCoordinator[TierData]):
         self.async_set_updated_data(merged)
 
     def note_failure(self, error: Exception) -> None:
-        """Record a failure without discarding the data.
+        """Record a failure without discarding the data or flooding the log.
 
-        ``last_update_success`` flips, so Home Assistant logs a single line at
-        the success-to-failure transition rather than a traceback per attempt
-        (§5.3), while ``self.data`` stays exactly as it was.
+        ``last_update_success`` flips so diagnostics can tell a stale snapshot
+        from one that never arrived. Logging is not done here: one failed tick
+        would otherwise emit one error per coordinator. The Silver rule
+        ``log-when-unavailable`` lives on the session, once for the service,
+        at INFO.
         """
-        self.async_set_update_error(error)
+        self.last_exception = error
+        if self.last_update_success:
+            self.last_update_success = False
+            self.async_update_listeners()

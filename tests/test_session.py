@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import logging
 import random
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -523,6 +524,63 @@ async def test_a_call_that_never_returns_marks_the_account_as_failing(
     assert harness.limiter.snapshot_counters()["consecutive_failures"] > (
         failures_before
     )
+
+
+async def test_an_unreachable_server_is_logged_once_and_again_when_it_returns(
+    harness: Harness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Silver ``log-when-unavailable``: one INFO down, one INFO up, nothing else.
+
+    The coordinator cannot do this job. There is one coordinator per tier, and
+    a tick that cannot reach PRONOTE would otherwise print ten error lines for
+    one outage -- then stay silent on recovery, because these coordinators
+    never run ``_async_refresh``. The session is the one place that sees both
+    the transport failure and the next success, for the account as a whole.
+    """
+    caplog.set_level(logging.INFO, logger="custom_components.pronote_ng.session")
+
+    with pytest.raises(IntegrationFault):
+        await harness.manager.run(
+            "timetable", Priority.HIGH, _work(raises=TimeoutError())
+        )
+    down = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.INFO and "unavailable" in record.getMessage()
+    ]
+    assert len(down) == 1
+
+    # The first timeout opened a backoff hold. Advance past it so the next
+    # call is another real attempt, not a silent ``TierDeferred``.
+    harness.clock.advance(120)
+    caplog.clear()
+    with pytest.raises(IntegrationFault):
+        await harness.manager.run(
+            "homework", Priority.NORMAL, _work(raises=TimeoutError())
+        )
+    assert not [
+        record
+        for record in caplog.records
+        if record.levelno == logging.INFO and "unavailable" in record.getMessage()
+    ]
+
+    harness.clock.advance(120)
+    caplog.clear()
+    await harness.manager.run("timetable", Priority.HIGH, _work())
+    up = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.INFO and "back online" in record.getMessage()
+    ]
+    assert len(up) == 1
+
+    caplog.clear()
+    await harness.manager.run("homework", Priority.NORMAL, _work())
+    assert not [
+        record
+        for record in caplog.records
+        if record.levelno == logging.INFO and "back online" in record.getMessage()
+    ]
 
 
 # ---------------------------------------------------------------------------

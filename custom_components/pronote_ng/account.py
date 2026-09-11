@@ -97,8 +97,7 @@ from .urls import public_url
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from homeassistant.config_entries import ConfigEntry
-
+    from . import PronoteConfigEntry
     from .coordinator import TierData
     from .delta import DeltaEvent
 
@@ -174,7 +173,7 @@ def _establishment_timezone(hass: HomeAssistant, options: Mapping[str, Any]) -> 
 class PronoteAccount:
     """Orchestrates one PRONOTE account: session, budget, cadence, snapshots."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PronoteConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
         self.state = AccountState()
@@ -1374,7 +1373,7 @@ def _saved_snapshots(hass: HomeAssistant) -> dict[str, dict[Tier, TierData]]:
     return store
 
 
-def _credentials_from_entry(entry: ConfigEntry) -> SessionCredentials:
+def _credentials_from_entry(entry: PronoteConfigEntry) -> SessionCredentials:
     """Read the credentials out of the config entry."""
     data = entry.data
     return SessionCredentials(

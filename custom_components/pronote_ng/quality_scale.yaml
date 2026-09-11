@@ -1,0 +1,109 @@
+# Home Assistant integration quality scale.
+# https://developers.home-assistant.io/docs/core/integration-quality-scale/
+#
+# Custom integrations are not scored on home-assistant.io (they sit in the
+# "Custom" special tier). This file tracks the same rules so a Core submission
+# — or a reviewer — can see what is done, what is exempt, and what is left.
+rules:
+  # Bronze
+  action-setup: done
+  appropriate-polling: done
+  brands:
+    status: todo
+    comment: >
+      Brand assets are referenced via BRAND_LOGO_URL; the local
+      custom_components/pronote_ng/brand/ folder is not in the repository yet.
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-actions: done
+  docs-conditions: done
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-triggers: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage:
+    status: todo
+    comment: >
+      The CI gate is 80 % global (100 % on ratelimit, scheduler, gateway,
+      delta). Silver requires 95 % on every integration module.
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery:
+    status: exempt
+    comment: >
+      Cloud polling of a school PRONOTE portal; there is no local discovery
+      signal (mDNS, DHCP, SSDP).
+  discovery-update-info:
+    status: exempt
+    comment: No discovery, so there is no discovery payload to refresh.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: todo
+    comment: >
+      Children are learned at setup. A pupil added later on the parent
+      account appears after a reload, not during the running tick.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: todo
+    comment: >
+      List sensors (week timetable, grades, discussions, …) and per-period
+      history are enabled by default; they are noisy for the recorder.
+  entity-translations: done
+  exception-translations: done
+  icon-translations:
+    status: todo
+    comment: No icons.json yet.
+  reconfiguration-flow:
+    status: todo
+    comment: >
+      Options and reauth exist; there is no async_step_reconfigure to change
+      the URL or ENT without removing the entry.
+  repair-issues: done
+  stale-devices:
+    status: todo
+    comment: >
+      async_remove_config_entry_device lets the user delete a superseded
+      child device; the integration does not remove it on its own, because
+      PRONOTE child identifiers rotate.
+
+  # Platinum
+  async-dependency:
+    status: todo
+    comment: >
+      pronotepy is synchronous (requests). Wrapping it in an executor does
+      not satisfy this rule, which has no exemption.
+  inject-websession:
+    status: todo
+    comment: >
+      Depends on an asyncio HTTP client. pronotepy does not accept an
+      aiohttp or httpx session.
+  strict-typing: done

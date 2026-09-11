@@ -1368,10 +1368,12 @@ Deux méthodes, et leur asymétrie est le mécanisme :
   écrivain, et il n'est appelé qu'après un succès — voilà comment la règle « une
   collecte en échec ne remplace jamais un bon instantané » est appliquée : par
   construction, pas par vérification.
-* `note_failure(error)` appelle `async_set_update_error`, ce qui fait basculer
-  `last_update_success` — donc Home Assistant journalise **une** ligne à la
-  transition succès→échec au lieu d'une trace par tentative — pendant que
-  `self.data` reste exactement ce qu'il était.
+* `note_failure(error)` fait basculer `last_update_success` sans journaliser :
+  un tick en échec ne doit pas imprimer une erreur par coordinateur (un par
+  palier). La règle Silver `log-when-unavailable` vit sur la session : un INFO
+  quand PRONOTE ne répond plus, un INFO quand il répond à nouveau
+  (`session.py`, `_note_unreachable` / `_note_reachable`). `self.data` reste
+  exactement ce qu'il était.
 
 `always_update=False` évite les écritures d'état pour des données identiques.
 

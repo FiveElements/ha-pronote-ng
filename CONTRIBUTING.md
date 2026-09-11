@@ -151,6 +151,12 @@ Le portail exige **80 %** globalement, et **100 %** sur quatre modules :
 Pour chacun, la métrique retenue est le **minimum de la couverture de lignes et
 de branches** : 100 % de lignes avec une branche manquante ne passe pas.
 
+L'inventaire des règles [Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/)
+vit dans `custom_components/pronote_ng/quality_scale.yaml`. Une intégration
+HACS n'affiche pas de palier bronze/argent/or/platine ; le fichier sert à
+suivre ce qui est fait, exempté, ou encore ouvert. Ne marquez pas une règle
+`done` sans que le code (ou une exemption commentée) le tienne.
+
 ### 3.2 La documentation
 
 ```bash
