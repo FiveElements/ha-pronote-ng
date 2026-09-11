@@ -7,9 +7,8 @@ from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from custom_components.pronote_ng.connectors.errors import ConnectorUndecodableError
-from custom_components.pronote_ng.const import GradeStatus
-from custom_components.pronote_ng.models import (
+from ...const import GradeStatus  # noqa: TID252
+from ...models import (  # noqa: TID252
     Absence,
     AttendanceFacts,
     Average,
@@ -23,6 +22,7 @@ from custom_components.pronote_ng.models import (
     Punishment,
     TimetableFacts,
 )
+from ..errors import ConnectorUndecodableError  # noqa: TID252
 
 
 def _parse_fr_decimal(text: str) -> float | None:
