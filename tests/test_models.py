@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+from typing import get_type_hints
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -22,6 +23,8 @@ import pytest
 from custom_components.pronote_ng import models
 from custom_components.pronote_ng.const import GradeStatus
 from custom_components.pronote_ng.models import (
+    Absence,
+    Delay,
     Grade,
     Lesson,
     Menu,
@@ -211,6 +214,47 @@ def test_a_grade_may_hold_a_value_or_a_status_but_not_both() -> None:
 
     with pytest.raises(ValueError, match="both a value"):
         a_grade(value=14.5, status=GradeStatus.ABSENT)
+
+
+# ---------------------------------------------------------------------------
+# Attendance
+# ---------------------------------------------------------------------------
+
+
+def test_a_delay_without_a_duration_is_none_not_zero() -> None:
+    """An ED connector must be able to publish JSON ``null`` rather than ``0``.
+
+    A ``numeric_state`` on ``minutes=0`` would stay valid forever and never
+    fire, which is the same trap ``Grade.value`` already avoids by publishing
+    ``None`` for sentinels.
+    """
+    delay = Delay(
+        id="D1",
+        at=dt.datetime(2026, 9, 11, 8, 0, tzinfo=dt.UTC),
+        minutes=None,
+        justified=False,
+        justification=None,
+        reasons=(),
+    )
+
+    assert get_type_hints(Delay)["minutes"] == int | None
+    assert delay.minutes is None
+
+
+def test_an_absence_without_a_day_count_is_none_not_zero() -> None:
+    """The absence DTO carries the ED contract too, not a made-up zero."""
+    absence = Absence(
+        id="A1",
+        from_date=dt.datetime(2026, 9, 11, 8, 0, tzinfo=dt.UTC),
+        to_date=dt.datetime(2026, 9, 11, 17, 0, tzinfo=dt.UTC),
+        justified=False,
+        hours=None,
+        days=None,
+        reasons=(),
+    )
+
+    assert get_type_hints(Absence)["days"] == int | None
+    assert absence.days is None
 
 
 # ---------------------------------------------------------------------------

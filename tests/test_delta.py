@@ -477,6 +477,43 @@ def test_absences_delays_and_punishments_are_three_collections() -> None:
     assert by_type[EVENT_PUNISHMENT_ADDED].attributes["nature"] == "Retenue"
 
 
+def test_absence_days_and_delay_minutes_can_be_missing_in_event_payloads() -> None:
+    """The event payload must copy ``None`` through unchanged for ED."""
+    detector = DeltaDetector()
+    detector.attendance(STUDENT, attendance())
+
+    events = detector.attendance(
+        STUDENT,
+        attendance(
+            absences=(
+                Absence(
+                    id="A1",
+                    from_date=dt.datetime(2026, 9, 11, 8, 0, tzinfo=dt.UTC),
+                    to_date=dt.datetime(2026, 9, 11, 17, 0, tzinfo=dt.UTC),
+                    justified=False,
+                    hours=None,
+                    days=None,
+                    reasons=(),
+                ),
+            ),
+            delays=(
+                Delay(
+                    id="D1",
+                    at=dt.datetime(2026, 9, 11, 8, 0, tzinfo=dt.UTC),
+                    minutes=None,
+                    justified=False,
+                    justification=None,
+                    reasons=(),
+                ),
+            ),
+        ),
+    )
+
+    by_type = {event.event_type: event for event in events}
+    assert by_type[EVENT_ABSENCE_ADDED].attributes["days"] is None
+    assert by_type[EVENT_DELAY_ADDED].attributes["minutes"] is None
+
+
 def test_a_punishment_event_lists_its_scheduled_slots() -> None:
     """So an automation can put the detention in a calendar."""
     detector = DeltaDetector()

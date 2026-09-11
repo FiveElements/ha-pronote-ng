@@ -316,7 +316,7 @@ class Absence:
     to_date: datetime
     justified: bool
     hours: str | None
-    days: int
+    days: int | None
     reasons: tuple[str, ...]
 
 
@@ -326,7 +326,7 @@ class Delay:
 
     id: str
     at: datetime
-    minutes: int
+    minutes: int | None
     justified: bool
     justification: str | None
     reasons: tuple[str, ...]
