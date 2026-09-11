@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time
-from typing import Any
-from zoneinfo import ZoneInfo
+from typing import TYPE_CHECKING, Any
 
 from ...const import GradeStatus  # noqa: TID252
 from ...models import (  # noqa: TID252
@@ -20,9 +19,14 @@ from ...models import (  # noqa: TID252
     MarksFacts,
     Period,
     Punishment,
+    SessionFacts,
+    Student,
     TimetableFacts,
 )
 from ..errors import ConnectorUndecodableError  # noqa: TID252
+
+if TYPE_CHECKING:
+    from zoneinfo import ZoneInfo
 
 
 def _parse_fr_decimal(text: str) -> float | None:
@@ -55,10 +59,17 @@ def _mapping(value: object) -> Mapping[str, Any]:
 
 
 def _mappings(value: object) -> tuple[Mapping[str, Any], ...]:
-    """Return a tuple containing only mapping entries."""
+    """Return a list of mappings, rejecting any corrupt entry."""
     if not isinstance(value, list):
         raise ConnectorUndecodableError("EcoleDirecte returned an unexpected list")
-    return tuple(item for item in value if isinstance(item, Mapping))
+    mappings: list[Mapping[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ConnectorUndecodableError(
+                "EcoleDirecte returned a non-object list entry"
+            )
+        mappings.append(item)
+    return tuple(mappings)
 
 
 def _optional_text(value: object) -> str | None:
@@ -81,7 +92,63 @@ def _texts(value: object) -> tuple[str, ...]:
     return tuple(text for item in values if (text := _optional_text(item)) is not None)
 
 
-def _aware_datetime(value: object, zone: str) -> datetime:
+def _student_sources(payload: object) -> tuple[Mapping[str, Any], ...]:
+    """Return every pupil record from pupil and parent account shapes."""
+    data = _mapping(_data(payload))
+    if "accounts" not in data:
+        raise ConnectorUndecodableError("EcoleDirecte accounts key is missing")
+    sources: list[Mapping[str, Any]] = []
+    for account in _mappings(data["accounts"]):
+        if account.get("typeCompte") == "E":
+            sources.append(account)
+            continue
+        profile = _mapping(account.get("profile"))
+        sources.extend(_mappings(profile.get("eleves")))
+    return tuple(sources)
+
+
+def _student_from_source(source: Mapping[str, Any]) -> Student:
+    """Map one login pupil without exposing its source login identifier."""
+    if source.get("id") is None:
+        raise ConnectorUndecodableError("EcoleDirecte pupil id is missing")
+    first_name = _optional_text(source.get("prenom"))
+    last_name = _optional_text(source.get("nom"))
+    name = " ".join(part for part in (first_name, last_name) if part is not None)
+    return Student(
+        id=str(source["id"]),
+        name=name,
+        class_name=None,
+        establishment=None,
+        has_photo=False,
+    )
+
+
+def students_from_accounts(payload: object) -> tuple[Student, ...]:
+    """Map every pupil exposed by all login accounts."""
+    return tuple(_student_from_source(source) for source in _student_sources(payload))
+
+
+def student_login_ids_from_accounts(payload: object) -> dict[str, str]:
+    """Build the connector-private pupil-to-idLogin routing table."""
+    login_ids: dict[str, str] = {}
+    for source in _student_sources(payload):
+        if source.get("id") is None or source.get("idLogin") is None:
+            raise ConnectorUndecodableError(
+                "EcoleDirecte pupil routing identifiers are missing"
+            )
+        login_ids[str(source["id"])] = str(source["idLogin"])
+    return login_ids
+
+
+def session_facts_from_login(payload: object) -> tuple[SessionFacts, ...]:
+    """Create zero-call session facts for every login pupil."""
+    return tuple(
+        SessionFacts(student=student, periods=(), current_period=None)
+        for student in students_from_accounts(payload)
+    )
+
+
+def _aware_datetime(value: object, zone: ZoneInfo) -> datetime:
     """Parse one ISO-like API timestamp in the entry's zone."""
     if not isinstance(value, str):
         raise ConnectorUndecodableError("EcoleDirecte returned an invalid date")
@@ -91,13 +158,12 @@ def _aware_datetime(value: object, zone: str) -> datetime:
         raise ConnectorUndecodableError(
             "EcoleDirecte returned an invalid date"
         ) from error
-    timezone = ZoneInfo(zone)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone)
-    return parsed.astimezone(timezone)
+        return parsed.replace(tzinfo=zone)
+    return parsed.astimezone(zone)
 
 
-def _midnight(value: object, zone: str) -> datetime:
+def _midnight(value: object, zone: ZoneInfo) -> datetime:
     """Parse an API day as midnight in the entry's zone."""
     if not isinstance(value, str):
         raise ConnectorUndecodableError("EcoleDirecte returned an invalid day")
@@ -107,10 +173,10 @@ def _midnight(value: object, zone: str) -> datetime:
         raise ConnectorUndecodableError(
             "EcoleDirecte returned an invalid day"
         ) from error
-    return datetime.combine(parsed, time.min, tzinfo=ZoneInfo(zone))
+    return datetime.combine(parsed, time.min, tzinfo=zone)
 
 
-def lesson_from_ed(raw: Mapping[str, Any], *, zone: str) -> Lesson:
+def lesson_from_ed(raw: Mapping[str, Any], *, zone: ZoneInfo) -> Lesson:
     """Map one EcoleDirecte timetable entry."""
     start = _aware_datetime(raw.get("start_date"), zone)
     end = _aware_datetime(raw.get("end_date"), zone)
@@ -140,7 +206,7 @@ def lesson_from_ed(raw: Mapping[str, Any], *, zone: str) -> Lesson:
     )
 
 
-def timetable_facts(payload: object, *, zone: str) -> TimetableFacts:
+def timetable_facts(payload: object, *, zone: ZoneInfo) -> TimetableFacts:
     """Map a complete EcoleDirecte timetable response."""
     lessons = tuple(lesson_from_ed(raw, zone=zone) for raw in _mappings(_data(payload)))
     weeks = tuple(sorted({lesson.start.isocalendar().week for lesson in lessons}))
@@ -221,7 +287,7 @@ def grades_from_notes(payload: object) -> tuple[Grade, ...]:
     return tuple(grades)
 
 
-def periods_from_notes(payload: object, *, zone: str) -> tuple[Period, ...]:
+def periods_from_notes(payload: object, *, zone: ZoneInfo) -> tuple[Period, ...]:
     """Map non-annual periods in response order."""
     data = _mapping(_data(payload))
     raw_periods = _mappings(data.get("periodes", []))
@@ -244,7 +310,7 @@ def periods_from_notes(payload: object, *, zone: str) -> tuple[Period, ...]:
 def current_period_from_notes(
     payload: object,
     *,
-    zone: str,
+    zone: ZoneInfo,
 ) -> Period | None:
     """Return the first open, non-annual EcoleDirecte period."""
     data = _mapping(_data(payload))
@@ -325,8 +391,7 @@ def marks_facts(payload: object, *, current_period_id: str) -> MarksFacts:
 def attendance_facts(
     payload: object,
     *,
-    period_id: str = "",
-    zone: str = "Europe/Paris",
+    zone: ZoneInfo,
 ) -> AttendanceFacts:
     """Map absences, delays, and punishments from one response."""
     data = _mapping(_data(payload))
@@ -378,7 +443,7 @@ def attendance_facts(
         if raw.get("typeElement") == "Punition"
     )
     return AttendanceFacts(
-        period_id=period_id,
+        period_id="",
         absences=tuple(absences),
         delays=tuple(delays),
         punishments=punishments,

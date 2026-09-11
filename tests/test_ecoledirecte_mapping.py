@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from custom_components.pronote_ng.connectors.ecoledirecte import ed_mapping
 from custom_components.pronote_ng.connectors.ecoledirecte.ed_mapping import (
     attendance_facts,
     grades_from_notes,
@@ -22,6 +25,7 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_mapping import (
 from custom_components.pronote_ng.connectors.errors import ConnectorUndecodableError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ecoledirecte"
+ZONE = ZoneInfo("Europe/Paris")
 
 
 def load_json(name: str) -> dict[str, Any]:
@@ -42,7 +46,7 @@ def minimal_ed_lesson() -> dict[str, Any]:
 # fmt: off
 def test_an_annulled_ed_lesson_maps_to_a_canceled_lesson() -> None:
     """binary_sensor.cours_annules must turn on without a Jinja walk of the JSON."""
-    facts = timetable_facts(load_json("emploi_du_temps.json"), zone="Europe/Paris")
+    facts = timetable_facts(load_json("emploi_du_temps.json"), zone=ZONE)
     canceled = [lesson for lesson in facts.lessons if lesson.canceled]
     assert len(canceled) == 1
     assert canceled[0].end.tzinfo is not None
@@ -52,7 +56,7 @@ def test_an_annulled_ed_lesson_maps_to_a_canceled_lesson() -> None:
 
 def test_a_permanence_is_a_followed_slot_not_a_detention() -> None:
     """Study hall is not a detention; _in_class filters only canceled and exempted."""
-    facts = timetable_facts(load_json("emploi_du_temps.json"), zone="Europe/Paris")
+    facts = timetable_facts(load_json("emploi_du_temps.json"), zone=ZONE)
     study = next(lesson for lesson in facts.lessons if lesson.status == "PERMANENCE")
     assert study.detention is False
     assert study.canceled is False
@@ -62,7 +66,7 @@ def test_a_permanence_is_a_followed_slot_not_a_detention() -> None:
 def test_an_unknown_type_cours_does_not_become_a_calendar_status() -> None:
     """_lesson_events puts Lesson.status on the first line of the calendar description."""
     raw = {**minimal_ed_lesson(), "typeCours": "JETON-INCONNU"}
-    lesson = lesson_from_ed(raw, zone="Europe/Paris")
+    lesson = lesson_from_ed(raw, zone=ZONE)
     assert lesson.status is None
     assert lesson.detention is False
 
@@ -91,7 +95,7 @@ def test_a_missing_notes_key_is_undecodable_not_an_empty_term() -> None:
 
 def test_an_ed_absence_does_not_invent_a_period_unique_id() -> None:
     """History sensors are Pronote-only; a sentinel period_id would mint _pN anyway."""
-    facts = attendance_facts(load_json("vie_scolaire.json"), period_id="")
+    facts = attendance_facts(load_json("vie_scolaire.json"), zone=ZONE)
     assert facts.period_id == ""
     assert facts.absences[0].days is None
     assert facts.delays[0].minutes is None
@@ -102,7 +106,7 @@ def test_an_ed_lesson_serializes_to_the_card_contract_not_the_aplim_keys() -> No
     """ha-pronote-ng-cards read subject/canceled; a matiere/is_annule payload would render empty."""
     from custom_components.pronote_ng.sensor import _lesson_dict
 
-    facts = timetable_facts(load_json("emploi_du_temps.json"), zone="Europe/Paris")
+    facts = timetable_facts(load_json("emploi_du_temps.json"), zone=ZONE)
     payload = _lesson_dict(facts.lessons[0])
     assert "subject" in payload
     assert "canceled" in payload
@@ -112,3 +116,73 @@ def test_an_ed_lesson_serializes_to_the_card_contract_not_the_aplim_keys() -> No
     assert payload["detention"] is False
     assert "salle" not in payload
 # fmt: on
+
+
+def test_login_mapping_produces_every_student_and_empty_session_facts() -> None:
+    """Task 9 needs all pupil shapes plus zero-call session snapshots."""
+    payload = {
+        "data": {
+            "accounts": [
+                {
+                    "id": 1,
+                    "idLogin": 101,
+                    "typeCompte": "E",
+                    "prenom": "Enfant",
+                    "nom": "Un",
+                },
+                {
+                    "id": 9,
+                    "typeCompte": "P",
+                    "profile": {
+                        "eleves": [
+                            {
+                                "id": 2,
+                                "idLogin": 102,
+                                "prenom": "Enfant",
+                                "nom": "Deux",
+                            },
+                            {
+                                "id": 3,
+                                "idLogin": 103,
+                                "prenom": "Enfant",
+                                "nom": "Trois",
+                            },
+                        ]
+                    },
+                },
+            ]
+        }
+    }
+
+    students = ed_mapping.students_from_accounts(payload)
+    sessions = ed_mapping.session_facts_from_login(payload)
+    login_ids = ed_mapping.student_login_ids_from_accounts(payload)
+
+    assert tuple(student.id for student in students) == ("1", "2", "3")
+    assert tuple(facts.student for facts in sessions) == students
+    assert all(
+        facts.periods == () and facts.current_period is None for facts in sessions
+    )
+    assert login_ids == {"1": "101", "2": "102", "3": "103"}
+
+
+def test_mapping_helpers_require_a_zoneinfo_object() -> None:
+    """A zone name must be resolved once by the connector, not by every mapper."""
+    signature = inspect.signature(timetable_facts)
+    assert signature.parameters["zone"].annotation == "ZoneInfo"
+    lesson = lesson_from_ed(minimal_ed_lesson(), zone=ZONE)
+    assert lesson.start.tzinfo is ZONE
+
+
+def test_attendance_cannot_accept_a_diverging_period_id() -> None:
+    """EcoleDirecte attendance has no period identity for history entities."""
+    assert "period_id" not in inspect.signature(attendance_facts).parameters
+    facts = attendance_facts(load_json("vie_scolaire.json"), zone=ZONE)
+    assert facts.period_id == ""
+
+
+def test_a_corrupted_list_entry_fails_instead_of_returning_partial_data() -> None:
+    """Dropping one malformed item would make a broken response look complete."""
+    payload: list[object] = [minimal_ed_lesson(), "not-a-dictionary"]
+    with pytest.raises(ConnectorUndecodableError):
+        timetable_facts(payload, zone=ZONE)
