@@ -16,6 +16,10 @@ copyright: MIT — Jérôme Morille
 # that no longer resolves -- which is what actually keeps the two in step.
 docs_dir: docs
 
+# Specs and plans under superpowers/ are design drafts, not the published site.
+exclude_docs: |
+  superpowers/
+
 theme:
   name: material
   # French, because every document is. This drives the search tokeniser and

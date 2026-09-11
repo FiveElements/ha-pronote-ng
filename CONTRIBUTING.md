@@ -356,12 +356,17 @@ contrat de coût indémontrable.
 
 ## 8. Ouvrir une pull request
 
+`main` n'est jamais poussée en direct. Tout changement arrive par une *pull
+request* depuis une branche de sujet. Un `git push origin main` est une erreur,
+pas un raccourci.
+
 1. Une branche par sujet, depuis `main`.
 2. Les portails de la section 3 au vert **en local**.
 3. Un message de commit qui dit ce qui change **et pourquoi**. Si vous
    corrigez un bug, décrivez le symptôme qu'un utilisateur voyait ; c'est ce
    qui permet à quelqu'un de juger si votre correction est la bonne.
-4. Les quatre workflows (`Validate`, `Hassfest`, `HACS`, `Docs`) au vert sur la
+4. Pousser **la branche**, ouvrir la PR.
+5. Les quatre workflows (`Validate`, `Hassfest`, `HACS`, `Docs`) au vert sur la
    PR.
 
 N'incrémentez **pas** la version dans `manifest.json` : c'est fait au moment de
@@ -374,7 +379,7 @@ la publication, et `release.yml` refuse un tag dont le manifeste diverge.
 Réservé aux mainteneurs.
 
 1. Porter `manifest.json` à la version voulue, sans le `v`.
-2. Fusionner sur `main`, workflows au vert.
+2. Fusionner la *pull request* sur `main`, workflows au vert.
 3. `git tag -a vX.Y.Z && git push origin vX.Y.Z`.
 
 `release.yml` vérifie que le manifeste et le tag concordent — une intégration
