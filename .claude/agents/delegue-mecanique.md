@@ -240,9 +240,9 @@ moyen de distinguer un travail fait d'un travail cru fait.
 Dans le prompt de délégation, trois choses, et rien de plus :
 
 1. **La tâche, en commandes ou en étapes nommées** — « les six portails hôte
-   puis les deux conteneur sur HEAD », « pousser `main` et surveiller les
-   quatre workflows », « installer 0.0.19 et redémarrer ». Pas d'objectif à
-   interpréter.
+   puis les deux conteneur sur HEAD », « pousser la branche de la PR et
+   surveiller les quatre workflows », « installer 0.0.19 et redémarrer ». Pas
+   d'objectif à interpréter.
 2. **Les artefacts attendus**, y compris tout texte que le délégué n'a pas le
    droit d'écrire lui-même : message de commit, message de tag annoté, numéro
    de version, référence de base pour `--since=`.

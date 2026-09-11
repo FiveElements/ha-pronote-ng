@@ -1,0 +1,16 @@
+---
+description: Interdit de committer ou pousser sur main ; tout passe par une PR
+alwaysApply: true
+---
+
+# Jamais sur `main` en direct
+
+`main` n'accepte que des fusions de pull request.
+
+- Créer une branche depuis `main` (un sujet = une branche).
+- Commiter et pousser **cette** branche, jamais `main`.
+- Ouvrir une PR avec `gh pr create`.
+- Attendre les quatre workflows verts (`Validate`, `Hassfest`, `HACS`, `Docs`) avant de fusionner.
+- Ne jamais `git push origin main`, `--force` sur `main`, ni commiter tant que `HEAD` est `main`.
+
+Même si l'utilisateur dit « commit et push » alors que `HEAD` est `main` : créer une branche, y commiter, pousser, ouvrir la PR.
