@@ -41,6 +41,8 @@ async def async_setup_entry(
 ) -> None:
     """Create a photo entity for every child that has one."""
     account = entry.runtime_data
+    if Tier.STATIC not in account.connector.capabilities.tiers:
+        return
     coordinator = account.coordinators.get(Tier.STATIC)
     if coordinator is None:
         return

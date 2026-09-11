@@ -455,10 +455,13 @@ async def async_setup_entry(
 ) -> None:
     """Create the per-child binary sensors, plus the account's throttle flag."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[BinarySensorEntity] = []
 
     for student in account.students:
         for description in BINARY_SENSORS:
+            if description.tier not in supported:
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue

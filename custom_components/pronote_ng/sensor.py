@@ -1522,10 +1522,13 @@ async def async_setup_entry(
 ) -> None:
     """Create every sensor for every child, plus the account diagnostics."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[SensorEntity] = []
 
     for student in account.students:
         for description in (*PRIMITIVE_SENSORS, *LIST_SENSORS):
+            if description.tier not in supported:
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
@@ -1550,6 +1553,8 @@ def _history_sensors(account: PronoteAccount, student: Student) -> list[SensorEn
     (§2.4). The *displayed* name carries the label through a placeholder, so it
     stays readable.
     """
+    if Tier.HISTORY not in account.connector.capabilities.tiers:
+        return []
     coordinator = account.coordinators.get(Tier.HISTORY)
     if coordinator is None:
         return []

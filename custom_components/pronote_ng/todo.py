@@ -52,6 +52,8 @@ async def async_setup_entry(
 ) -> None:
     """Create one homework list per child."""
     account = entry.runtime_data
+    if Tier.HOMEWORK not in account.connector.capabilities.tiers:
+        return
     coordinator = account.coordinators.get(Tier.HOMEWORK)
     if coordinator is None:
         return

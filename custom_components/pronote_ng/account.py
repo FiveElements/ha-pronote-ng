@@ -95,6 +95,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from . import PronoteConfigEntry
+    from .connectors.protocol import ConnectorCapabilities
     from .coordinator import TierData
     from .delta import DeltaEvent
     from .gateway import PronoteGateway
@@ -170,6 +171,16 @@ def _establishment_timezone(hass: HomeAssistant, options: Mapping[str, Any]) -> 
     return name
 
 
+def scheduled_tiers(
+    capabilities: ConnectorCapabilities, enabled: Mapping[Tier, bool] | None
+) -> frozenset[Tier]:
+    """The tiers both configured on and actually supported by the connector."""
+    announced = frozenset(capabilities.tiers)
+    if enabled is None:
+        return announced
+    return frozenset(tier for tier in announced if enabled.get(tier, True))
+
+
 class PronoteAccount:
     """Orchestrates one PRONOTE account: session, budget, cadence, snapshots."""
 
@@ -208,8 +219,13 @@ class PronoteAccount:
             history_periods=int(options.get("history_periods", 0) or 0),
             on_credentials_rotated=self._async_persist_credentials,
         )
+        enabled = tier_enabled(options)
+        supported = scheduled_tiers(self.connector.capabilities, enabled)
         self.scheduler = FetchScheduler(
-            default_plans(tier_intervals(options), tier_enabled(options)),
+            default_plans(
+                tier_intervals(options),
+                {tier: tier in supported for tier in enabled},
+            ),
             clock=time.monotonic,
             now=self.connector.now,
         )

@@ -257,6 +257,15 @@ def _require_writes(account: PronoteAccount) -> None:
         )
 
 
+def _require_service(account: PronoteAccount, service: str) -> None:
+    """Refuse a service the connector does not advertise."""
+    if service not in account.connector.capabilities.services:
+        raise ServiceValidationError(
+            f"{account.connector.capabilities.source} does not support "
+            f"service {service}"
+        )
+
+
 async def _run(
     account: PronoteAccount,
     tier: Tier,
@@ -300,12 +309,23 @@ async def _async_refresh(call: ServiceCall) -> None:
     call placed on the wire (§5.1).
     """
     account, _ = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
+    _require_service(account, SERVICE_REFRESH)
     requested = call.data.get(ATTR_TIERS)
     tiers = (
-        [Tier(value) for value in requested]
+        [
+            tier
+            for tier in (Tier(value) for value in requested)
+            if tier in account.connector.capabilities.tiers
+        ]
         if requested
-        else [tier for tier in Tier if tier is not Tier.SESSION]
+        else [
+            tier
+            for tier in Tier
+            if tier is not Tier.SESSION and tier in account.connector.capabilities.tiers
+        ]
     )
+    if not tiers:
+        return
     account.scheduler.request(tiers)
     await account.async_request_tick()
 
@@ -318,6 +338,7 @@ async def _async_get_ical_url(call: ServiceCall) -> ServiceResponse:
     (§8.2).
     """
     account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_GET_ICAL_URL)
 
     def work(client: Any) -> tuple[str, int]:
         return account.gateway.ical_url(client)
@@ -333,6 +354,7 @@ async def _async_get_identity(call: ServiceCall) -> ServiceResponse:
     data with no business in a state machine that gets recorded and backed up.
     """
     account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_GET_IDENTITY)
 
     def work(client: Any) -> tuple[Identity, int]:
         return account.gateway.identity(client)
@@ -363,6 +385,7 @@ async def _async_get_identity(call: ServiceCall) -> ServiceResponse:
 async def _async_mark_homework_done(call: ServiceCall) -> None:
     """Tick or untick one homework item."""
     account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_MARK_HOMEWORK_DONE)
     _require_writes(account)
     homework_id = call.data[ATTR_HOMEWORK_ID]
     done = call.data[ATTR_DONE]
@@ -379,6 +402,7 @@ async def _async_mark_homework_done(call: ServiceCall) -> None:
 async def _async_mark_information_read(call: ServiceCall) -> None:
     """Mark one news item as read."""
     account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_MARK_INFORMATION_READ)
     _require_writes(account)
     information_id = call.data[ATTR_INFORMATION_ID]
 
@@ -398,6 +422,7 @@ async def _async_send_message(call: ServiceCall) -> None:
     account (annexe B §8).
     """
     account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_SEND_MESSAGE)
     _require_writes(account)
     message = call.data[ATTR_MESSAGE]
     discussion_id = call.data.get(ATTR_DISCUSSION_ID)
@@ -451,6 +476,7 @@ async def _async_generate_timetable_pdf(call: ServiceCall) -> ServiceResponse:
     carries its own authorisation.
     """
     account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_GENERATE_TIMETABLE_PDF)
     day: date | None = call.data.get(ATTR_DAY)
     portrait = call.data[ATTR_ORIENTATION] == ORIENTATION_PORTRAIT
 
@@ -468,6 +494,7 @@ async def _async_get_rate_limit_status(call: ServiceCall) -> ServiceResponse:
     poll from a template or a dashboard while tuning the cadence (§6.6).
     """
     account, _ = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
+    _require_service(account, SERVICE_GET_RATE_LIMIT_STATUS)
     counters = account.limiter.snapshot_counters()
     return {
         **counters,

@@ -151,9 +151,12 @@ async def async_setup_entry(
 ) -> None:
     """Create the three calendars for every child."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[CalendarEntity] = []
     for student in account.students:
         for description in CALENDARS:
+            if description.tier not in supported:
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue

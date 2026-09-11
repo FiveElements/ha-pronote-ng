@@ -6,7 +6,19 @@ from datetime import date, datetime, timedelta
 import time
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from ..const import Priority, SessionStrategy, Tier  # noqa: TID252
+from ..const import (  # noqa: TID252
+    SERVICE_GENERATE_TIMETABLE_PDF,
+    SERVICE_GET_ICAL_URL,
+    SERVICE_GET_IDENTITY,
+    SERVICE_GET_RATE_LIMIT_STATUS,
+    SERVICE_MARK_HOMEWORK_DONE,
+    SERVICE_MARK_INFORMATION_READ,
+    SERVICE_REFRESH,
+    SERVICE_SEND_MESSAGE,
+    Priority,
+    SessionStrategy,
+    Tier,
+)
 from ..gateway import PronoteGateway  # noqa: TID252
 from ..models import (  # noqa: TID252
     AttendanceFacts,
@@ -33,6 +45,25 @@ if TYPE_CHECKING:
 
 
 _COLLECTABLE_TIERS: Final = frozenset(tier for tier in Tier if tier is not Tier.SESSION)
+_SUPPORTED_SERVICES: Final = frozenset(
+    {
+        SERVICE_REFRESH,
+        SERVICE_GET_ICAL_URL,
+        SERVICE_GET_IDENTITY,
+        SERVICE_MARK_HOMEWORK_DONE,
+        SERVICE_MARK_INFORMATION_READ,
+        SERVICE_SEND_MESSAGE,
+        SERVICE_GENERATE_TIMETABLE_PDF,
+        SERVICE_GET_RATE_LIMIT_STATUS,
+    }
+)
+_SUPPORTED_WRITES: Final = frozenset(
+    {
+        SERVICE_MARK_HOMEWORK_DONE,
+        SERVICE_MARK_INFORMATION_READ,
+        SERVICE_SEND_MESSAGE,
+    }
+)
 
 
 class PronoteConnector:
@@ -41,8 +72,8 @@ class PronoteConnector:
     CAPABILITIES: Final = ConnectorCapabilities(
         source=Source.PRONOTE,
         tiers=_COLLECTABLE_TIERS,
-        writes=frozenset(),
-        services=frozenset(),
+        writes=_SUPPORTED_WRITES,
+        services=_SUPPORTED_SERVICES,
     )
 
     def __init__(
