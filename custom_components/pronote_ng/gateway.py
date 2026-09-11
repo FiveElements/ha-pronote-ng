@@ -89,6 +89,7 @@ from .models import (
     Student,
     TeachingStaffMember,
     TimetableFacts,
+    GatewayResult,
 )
 
 if TYPE_CHECKING:
@@ -187,22 +188,6 @@ class AttachmentUnavailable(Exception):  # noqa: N818 -- surfaced as an HTTP sta
         super().__init__(f"PRONOTE answered {status} for the document {name!r}")
         self.name = name
         self.status = status
-
-
-class GatewayResult[T]:
-    """A tier's facts plus what they actually cost on the wire.
-
-    Returning the cost rather than inferring it is what makes the per-tier
-    contract test of §11.1 possible: an accidental property access doubles the
-    cost without anything breaking, and that is the regression this whole
-    project exists to prevent.
-    """
-
-    __slots__ = ("calls", "facts")
-
-    def __init__(self, facts: T, calls: int) -> None:
-        self.facts = facts
-        self.calls = calls
 
 
 # ---------------------------------------------------------------------------
