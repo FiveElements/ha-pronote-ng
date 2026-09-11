@@ -123,7 +123,7 @@ def _snapshot(
     """Wrap facts with the instant they were obtained."""
     return Snapshot(
         data=data,
-        fetched_at=account.gateway.now(),
+        fetched_at=account.now(),
         tier=tier,
         calls=calls,
         student_id=student_id,
@@ -144,7 +144,7 @@ async def _timetable(
     is a scheduling question: tomorrow is only in another week on one day in
     seven, and that is exactly the 1.14 requests per batch annexe B budgets.
     """
-    today = account.gateway.today()
+    today = account.today()
     tomorrow = today + timedelta(days=1)
     include_next_week = tomorrow.isocalendar()[1] != today.isocalendar()[1]
 

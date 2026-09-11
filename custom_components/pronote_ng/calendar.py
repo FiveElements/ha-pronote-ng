@@ -190,7 +190,7 @@ class PronoteCalendar(PronoteEntity, CalendarEntity):
     @property
     def event(self) -> CalendarEvent | None:
         """The event in progress, else the next one to start."""
-        now = self.account.gateway.now()
+        now = self.account.now()
         events = self._events()
 
         current = [item for item in events if _starts_at(item) <= now < _ends_at(item)]

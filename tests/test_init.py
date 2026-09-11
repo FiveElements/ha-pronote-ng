@@ -111,6 +111,12 @@ async def test_setup_loads_the_entry_and_every_platform(
     assert hass.data[DOMAIN][mock_entry.entry_id] is account
 
 
+async def test_account_now_is_timezone_aware(account: PronoteAccount) -> None:
+    """Naive datetimes in entity state lose ordering and locale in one stroke."""
+    assert account.now().tzinfo is not None
+    assert account.today() == account.now().date()
+
+
 async def test_a_device_per_child_hangs_off_the_account_device(
     hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
 ) -> None:

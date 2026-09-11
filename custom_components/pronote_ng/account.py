@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Final
@@ -333,6 +333,14 @@ class PronoteAccount:
             or "PRONOTE"
         )
 
+    def now(self) -> datetime:
+        """The current instant in the establishment's timezone."""
+        return self.gateway.now()
+
+    def today(self) -> date:
+        """Today's date in the establishment's timezone."""
+        return self.gateway.today()
+
     # -- setup and teardown ------------------------------------------------
 
     async def async_setup(self) -> None:
@@ -479,7 +487,7 @@ class PronoteAccount:
                 student.id,
                 Snapshot(
                     data=facts,
-                    fetched_at=self.gateway.now(),
+                    fetched_at=self.now(),
                     tier=Tier.SESSION,
                     calls=0,
                     student_id=student.id,
@@ -1043,7 +1051,7 @@ class PronoteAccount:
 
         self.scheduler.mark_collected(tier)
         record.consecutive_failures = 0
-        record.last_success = self.gateway.now()
+        record.last_success = self.now()
         record.last_duration_ms = int((time.monotonic() - started) * 1000)
         record.last_calls = calls
         self.state.last_collection_tier = tier
@@ -1111,7 +1119,7 @@ class PronoteAccount:
         collected_at = self.scheduler.last_collected_at(tier)
         if collected_at is None:
             return 0.0
-        return self.limiter.quiet_seconds_between(collected_at, self.gateway.now())
+        return self.limiter.quiet_seconds_between(collected_at, self.now())
 
     def has_data(self, tier: Tier, student_id: str) -> bool:
         """Whether a (tier, student) pair ever produced a snapshot."""
@@ -1132,7 +1140,7 @@ class PronoteAccount:
         period cannot change, so re-reading it every three hours spends calls on
         a constant result (§5.2).
         """
-        now = self.gateway.now()
+        now = self.now()
         if tier is Tier.HISTORY:
             return tuple(
                 period
