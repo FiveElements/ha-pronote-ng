@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Statut** | Conception — 11 septembre 2026, revue [`2026-09-11-connecteurs-modele-commun-revue.md`](./2026-09-11-connecteurs-modele-commun-revue.md) intégrée, réponse [`2026-09-11-connecteurs-modele-commun-reponse.md`](./2026-09-11-connecteurs-modele-commun-reponse.md) |
+| **Statut** | Conception — 11 septembre 2026. Revue : [`2026-09-11-connecteurs-modele-commun-revue.md`](./2026-09-11-connecteurs-modele-commun-revue.md). Réponse : [`2026-09-11-connecteurs-modele-commun-reponse.md`](./2026-09-11-connecteurs-modele-commun-reponse.md). Suite de revue : **§7 du même fichier revue**, pas un quatrième document. |
 | **Périmètre** | Couture `SchoolConnector`, DTO Pronote comme pivot interne, attributs annexe A comme pivot cartes, Ecoledirecte lecture (**quatre** paliers collectés) |
 | **Hors périmètre** | Rebranding du domaine / HACS / blueprints ; Platinum `async-dependency` Pronote ; extraire une PyPI ; un foyer mixte sur **une** entry |
 | **Implémentation** | [`docs/superpowers/plans/2026-09-11-connecteurs-modele-commun.md`](../plans/2026-09-11-connecteurs-modele-commun.md) |
@@ -27,10 +27,10 @@ Revue du 11 septembre : la coupe « le connecteur possède le fil » tenait ; le
 | Session HTTP | `async_create_clientsession(hass)` **puis** écraser UA / origin / referer par le jeu `EDClient`. Session dédiée (cookies GTK). |
 | Couture Pronote | `PronoteAccount.__init__` ne construit **rien** de source-spécifique. `build_connector()` d'abord, horloge du connecteur, **puis** le scheduler. Une entry ED ne crée ni `SerialExecutor`, ni `SessionManager`, ni `RateLimiter` Pronote. `tiers.py` n'appelle plus `session.run`. Services / todo / PJ / image : `PronoteExtras`. |
 | Produit ED v1 | **Quatre** paliers collectés (`TIMETABLE`, `HOMEWORK`, `MARKS`, `ATTENDANCE`). `SESSION` n'est **jamais** passé à `async_collect`. Pas les blueprints Pronote. Devoirs **sans corps**. |
-| Permanence | `typeCours == "PERMANENCE"` → créneau suivi, `detention=False` (ce n'est pas une retenue). `_in_class` ne filtre que `canceled` et `exempted` : `in_class` **s'allume**. `status` = `"PERMANENCE"` pour la carte. |
-| Durées absentes | `Delay.minutes` et `Absence.days` deviennent `int \| None`. ED : `None`, sérialisé `null`. **Jamais** `0` (un `numeric_state` resterait valide et ne partirait jamais). |
+| Permanence | `typeCours == "PERMANENCE"` → créneau suivi, `detention=False` (ce n'est pas une retenue). `_in_class` ne filtre que `canceled` et `exempted` : `in_class` **s'allume**. `status` = `"PERMANENCE"`. Ensemble **fermé** : tout autre `typeCours` (y compris un jeton Aplim inconnu) → `status=None`, **pas** la valeur brute. `_lesson_events` (calendrier `timetable`) met `Lesson.status` en première ligne de description. |
+| Durées absentes | `Delay.minutes` et `Absence.days` deviennent `int \| None`. ED : `None`, sérialisé `null`. **Jamais** `0` (un `numeric_state` resterait valide et ne partirait jamais). Dette Pronote, hors chantier : `minutes=int(upstream.minutes or 0)` reste ; seul ED honore `None`. |
 | `Lesson.duration` | Pronote = **heures**. ED : `0` (Pronote-only). Pas de minutes dans le même champ. |
-| Période ED | Après `MARKS`, republier `SessionFacts` sur le coordinateur `SESSION` (`calls=0`). `AttendanceFacts.period_id` = `""` **constant** pour la vie du connecteur (pas de bascule de clé delta). |
+| Période ED | Après `MARKS`, republier `SessionFacts` sur le coordinateur `SESSION` (`calls=0`). `_current_period_name` lit ce `SessionFacts`, pas `account.state`. `AccountState.periods` / `current_period` est une comptabilité **séparée** (`periods_for`, garde-fous `_marks` / `_attendance` / `_evaluations`). `AttendanceFacts.period_id` = `""` **constant** pour la vie du connecteur (pas de bascule de clé delta). |
 | Couverture | `check_coverage.py` indexe par suffixe de chemin (`pronote_ng/ratelimit.py`), pas le basename. Fichiers ED : noms distincts (`ed_limiter.py`, `ed_client.py`, `ed_mapping.py`) **et** 100 % (échec invisible). |
 | Fenêtre EDT ED | **Un** POST, `dateDebut` = lundi ISO, `dateFin` = dimanche de la semaine suivante. Pas de repli un jour / un POST. |
 | Cadences ED | Mêmes `DEFAULT_TIER_INTERVALS` que Pronote pour les paliers recouverts. Pas une seconde horloge. |
@@ -259,7 +259,7 @@ class SchoolConnector(Protocol):
 
 `PronoteAccount.now` / `today` délèguent au connecteur. Fuseau : `OPT_ESTABLISHMENT_TIMEZONE` (défaut = fuseau HA), pour Pronote **et** ED.
 
-Ce n'est pas un préalable mécanique. Aujourd'hui `gateway.now()` / `gateway.today()` sont appelés depuis `account.py`, `sensor.py`, `binary_sensor.py`, `calendar.py` et `tiers.py`, et il reste des dizaines de `.gateway` hors `account.py` / `gateway.py`. La PR horloge est celle qui touche le plus de fichiers du chantier. Rien d'autre ne s'en sert comme raccourci : `account.now()` est le seul chemin.
+Ce n'est pas un préalable mécanique. Hors `account.py` / `gateway.py`, 67 références `.gateway` : **42** sont `now()` / `today()` (`sensor.py` 23, `binary_sensor.py` 16, `calendar.py` 1, `tiers.py` 2) ; les 25 autres sont le fil Pronote (`tiers.py` 13 protocolaires, `services.py` 8, `attachment.py` 2, `todo.py` / `image.py` 1 chacun). Plus 4 `now()` dans `account.py` : 46 appels horloge au total. La PR horloge est celle qui touche le plus de fichiers du chantier — une quarantaine de sites dans trois modules d'entités, pas le reliquat de 12. Le fil (`PronoteExtras`, executor) est une autre PR. Rien d'autre ne s'en sert comme raccourci : `account.now()` est le seul chemin.
 
 ### 5.5 Fabrique
 
@@ -450,9 +450,11 @@ Pas de second POST « demain est un autre ISO ». Pas de boucle un jour = un POS
 | `color` | `background_color` |
 | `dispensable` / `dispense` | `exempted` |
 | `typeCours == "PERMANENCE"` | créneau suivi : `detention=False`, `status="PERMANENCE"` (`_in_class` ne filtre pas `detention`) |
-| `typeCours` autre que `COURS` / `PERMANENCE` | `status` = la valeur brute ; `detention=False` |
+| `typeCours` autre (y compris `COURS`, absent, jeton inconnu) | `status=None` ; `detention=False` |
 
-Pronote-only : `num=0`, `place=0`, `virtual_classrooms=()`, `memo=None`, `outing=False`, `test=False`, `duration=0` (le champ Pronote est en **heures**). `end_inferred=False`. `status` : `None` si `typeCours` est `COURS` ou absent.
+Pronote-only : `num=0`, `place=0`, `virtual_classrooms=()`, `memo=None`, `outing=False`, `test=False`, `duration=0` (le champ Pronote est en **heures**). `end_inferred=False`.
+
+`status` est un ensemble **fermé**. Seul le jeton documenté `PERMANENCE` produit `"PERMANENCE"`. Tout le reste → `None`. Pas de valeur brute : `_lesson_events` (calendrier `timetable`) place `Lesson.status` en première ligne de description ; `_lesson_dict` le publie en attribut ; `change_signature` en fait un `lesson_status_changed`. Côté Pronote, `Statut` est de la prose d'établissement (« Cours annulé ») ; un jeton d'énumération Aplim en capitales n'en est pas. Rien de visible par l'utilisateur n'est codé en dur sous `custom_components/` : un jeton inconnu n'a pas de chaîne de traduction.
 
 `TimetableFacts.lessons == all_lessons`. **Interdit** d'appeler `deduplicate_lessons`. Delta ED : identité = `Lesson.id` ; changement = `change_signature` (annulé, salles, profs, horaires). Une substitution Pronote (deux `N`, un `place`) n'a pas d'équivalent à chercher.
 
@@ -529,7 +531,7 @@ Pas de parse de `displayDate` ni de `dateDeroulement` (prose / HTML). Une date A
 | --- | --- |
 | `id` | `id` (str) |
 | `date` | `at` |
-| — | `minutes=None` (pas `0` ; ED n'envoie pas une durée entière) |
+| — | `minutes=None` (pas `0` ; ED n'envoie pas une durée entière). Pronote : `int(upstream.minutes or 0)` reste (dette) |
 | `justifie` | `justified` |
 | `commentaire` | `justification` (`None` si vide) |
 | `motif` | `reasons` |
@@ -552,7 +554,9 @@ Tous les `data.accounts`, pas seulement `[0]`. `typeCompte == "E"` : l'élève e
 
 Minting `child_keys.py` inchangé (clé HA ≠ id Aplim brut dans l'UI).
 
-`SessionFacts.periods` / `current_period` : vides après `async_open`. `_async_load_session_facts` est le seul écrivain de `AccountState.periods` aujourd'hui — donc **après une collecte `MARKS` réussie**, le connecteur met à jour ses périodes internes et le compte **republie** le coordinateur `SESSION` (`GatewayResult` à `calls=0`, pas un nouvel appel réseau). Sans ce pas, `current_period` reste `unknown` pour toujours.
+`SessionFacts.periods` / `current_period` : vides après `async_open`. `_current_period_name` (et `_current_period_attributes`) prennent un `SessionFacts` — le snapshot du coordinateur — et non `account.state`. Republier le coordinateur `SESSION` après `MARKS` (`GatewayResult` à `calls=0`, pas un nouvel appel réseau) déplace donc bien l'entité.
+
+`AccountState.periods` / `current_period` est une comptabilité **séparée**, lue par `periods_for` et par les garde-fous `_marks` / `_attendance` / `_evaluations`. `_async_load_session_facts` en est aujourd'hui le seul écrivain. Inerte côté ED (`HISTORY` n'est pas capable) : n'en corriger qu'une moitié ne casse rien tout de suite, et laisse `periods_for` sur le tuple vide.
 
 `AttendanceFacts.period_id` ne suit **pas** cette mise à jour (§7.9).
 
@@ -704,9 +708,10 @@ Les colonnes « Hors contrat » sont des clés **à ne pas publier** en attribut
 | `color` | `background_color` | `background_color` | — |
 | `dispensable` / `dispense` | `exempted` | `exempted` | `dispense` |
 | `typeCours == "PERMANENCE"` | `detention=False`, `status="PERMANENCE"` | `detention`, `status` | traiter la permanence comme une retenue |
+| `typeCours` autre / inconnu | `detention=False`, `status=None` | `status` absent/`null` | jeton Aplim brut dans l'agenda |
 | — | `test=False`, `outing=False`, `num=0`, `place=0`, `duration=0`, `end_inferred=False` | mêmes clés | `is_morning` / `is_afternoon` (calculés, pas dans le pivot) |
 
-Une permanence est un créneau suivi : `in_class` **s'allume**. `detention=False` (ce n'est pas une retenue). La carte EDT peut afficher `status`. Un badge dédié côté cartes est une exigence vers le dépôt frère, pas un changement de DTO.
+Une permanence est un créneau suivi : `in_class` **s'allume**. `detention=False` (ce n'est pas une retenue). La carte EDT peut afficher `status="PERMANENCE"`. Un `typeCours` hors de l'ensemble fermé ne publie **pas** le jeton : `_lesson_events` le mettrait sinon en première ligne de description calendrier. Un badge dédié côté cartes est une exigence vers le dépôt frère, pas un changement de DTO.
 
 `Lesson.slot_key` (`place`) : Pronote-only, **interdit** dans un test ED, **absent** des attributs cartes.
 
@@ -752,7 +757,7 @@ La carte devoirs affiche matière + échéance + fait/à faire. L'énoncé vide 
 | `justifie` | `justified` | `justified` | `justifie` |
 | `libelle` | `Absence.hours` | `hours` (chaîne) | `libelle` |
 | `motif` | `reasons` | `reasons[]` | `motif` |
-| — | `Delay.minutes=None` | `minutes: null` | `0` (fabriquerait un `numeric_state` mort) |
+| — | `Delay.minutes=None` (ED). Pronote : `int(… or 0)` (dette) | `minutes: null` côté ED | `0` (fabriquerait un `numeric_state` mort) |
 | — | `Absence.days=None` | `days: null` | `0` |
 | `par` | `Punishment.giver` | `giver` | — |
 | `libelle` punition | `nature` | `nature` | `libelle` |
@@ -783,7 +788,7 @@ Les blueprints d'automatisation Pronote NG **ne** sont **pas** promis (devoirs s
 
 ### 9.4 Défauts Pronote-only (rappel constructeur ED)
 
-Sur `Lesson` : `num=0`, `place=0`, `virtual_classrooms=()`, `status=None` sauf permanence (`"PERMANENCE"`), `memo=None`, `outing=False`, `test=False`, `duration=0` (heures Pronote, pas des minutes), `end_inferred=False`.
+Sur `Lesson` : `num=0`, `place=0`, `virtual_classrooms=()`, `status=None` sauf le jeton documenté `PERMANENCE` (`"PERMANENCE"`), `memo=None`, `outing=False`, `test=False`, `duration=0` (heures Pronote, pas des minutes), `end_inferred=False`. Un `typeCours` inconnu ne devient pas `status`.
 
 Ne pas s'en servir pour dédupliquer, ni pour allumer `next_test` / `outing_today`.
 
@@ -794,7 +799,7 @@ Ne pas s'en servir pour dédupliquer, ni pour allumer `next_test` / `outing_toda
 - Suite Pronote verte après emballage (`session.build_client` toujours patché **derrière** `PronoteConnector`).
 - Fixtures ED manuscrites, `Enfant Un`, `demo.example.invalid`.
 - Client (`ed_client.py`) : GTK puis login ; 505 ; 250 → séquence 6 appels si `qcm_json` connu ; 517 ; 520/525 oublient le jeton ; UA stable ; `calls`.
-- Mapping (`ed_mapping.py`) : tableaux §7.6–§7.9 ; permanence → `detention=False` + `status="PERMANENCE"` + `in_class` allumé ; `duration=0` ; devoirs sans corps ; pas de `deduplicate_lessons` ; absences vs retards par `typeElement` ; `minutes is None` / `days is None` ; encouragements ignorés.
+- Mapping (`ed_mapping.py`) : tableaux §7.6–§7.9 ; permanence → `detention=False` + `status="PERMANENCE"` + `in_class` allumé ; `typeCours` inconnu → `status is None` (pas le jeton brut) ; `duration=0` ; devoirs sans corps ; pas de `deduplicate_lessons` ; absences vs retards par `typeElement` ; `minutes is None` / `days is None` ; encouragements ignorés. Pronote garde `minutes=int(upstream.minutes or 0)` (dette, hors chantier).
 - Pivot cartes : `_lesson_dict` / `_homework_dict` / `_grade_dict` / `_delay_dict` sur un DTO ED portent les clés de l'annexe A (`subject`, `canceled`, `value`, `classroom`, `minutes` à `null`), pas `matiere` / `is_annule` / `note_sur`.
 - Connecteur : un POST EDT = `calls==1` ; deux collects sérialisés ; `renewtoken` compté à part ; un 505 n'écrit pas le `login_guard` Pronote ni le `limiter_state_store` d'une autre entry ; un 250 n'incrémente pas `failed_logins` ; un 520 facture un login (2) au prochain `async_open` ; le seau ED refuse un coût 1 puis un charge 6 ; après `MARKS`, le coordinateur `SESSION` est republié (`calls=0`).
 - Construction : une entry ED ne crée ni `SerialExecutor`, ni `SessionManager`, ni `RateLimiter` Pronote.
@@ -825,9 +830,9 @@ Ne pas s'en servir pour dédupliquer, ni pour allumer `next_test` / `outing_toda
 - Les services iCal / PDF / PJ échouent proprement sur une entry ED.
 - Pas d'entité menu / discussion / `session_age` / `select` stratégie sur un connecteur sans `PronoteExtras`.
 - DTO ED gelés, timezone-aware, sans JSON résiduel.
-- `Delay.minutes` / `Absence.days` ED = `None` → JSON `null`, jamais `0`.
+- `Delay.minutes` / `Absence.days` ED = `None` → JSON `null`, jamais `0`. Pronote continue de fabriquer `0` via `int(upstream.minutes or 0)` (dette datée, hors chantier).
 - Attributs cartes = clés de l'annexe A §2.1 (`subject`, `canceled`, `value`, `classroom`, …), jamais `matiere` / `is_annule` / `note_sur`.
-- Une Lesson ED passée dans `_lesson_dict` produit les mêmes clés qu'une Lesson Pronote. Permanence : `detention` faux, `status="PERMANENCE"`.
+- Une Lesson ED passée dans `_lesson_dict` produit les mêmes clés qu'une Lesson Pronote. Permanence : `detention` faux, `status="PERMANENCE"`. `typeCours` inconnu : `status is None`, pas le jeton.
 - ha-pronote-ng-cards : exigence vers le dépôt frère — les clés listées au §9.3 ne bougent pas. Évaluations et menu : incomplete. `pronote-ng-mode-collecte` : absent sur ED.
 - 505 ED sans effet sur le garde-fou IP d'une entry Pronote voisine **ni** sur `login_guard()` Pronote (flow).
 - Flow ED : 3 × 505 / h tiennent **son** garde-fou, pas celui de Pronote.

@@ -7,6 +7,7 @@
 | **Plan** | [`docs/superpowers/plans/2026-09-11-connecteurs-modele-commun.md`](../plans/2026-09-11-connecteurs-modele-commun.md) |
 | **Date** | 11 septembre 2026 |
 | **Méthode** | Chaque constat de la revue a été relu contre `custom_components/pronote_ng/` **avant** d'être intégré. Les objections ci-dessous sont des désaccords techniques, pas des préférences de rédaction. |
+| **Suite** | Le §7 de la revue (même fichier) est la suite, pas un quatrième document. O1 : chiffres corrigés ci-dessous. |
 
 ---
 
@@ -26,11 +27,25 @@ Le reste de cette réponse est un décompte : accepté, puis les points où on *
 
 La revue compte 46 `gateway.now()` / `gateway.today()` **et** 67 références `.gateway` hors `account.py` / `gateway.py`, et en conclut que l'étape « `account.now` / `today` » est *la* PR du chantier.
 
-Les 46 appels horloge sont bien là (`sensor.py`, `binary_sensor.py`, `calendar.py`, `tiers.py`, `account.py`). Ça justifie une PR dédiée, la plus large en nombre de fichiers.
+Les 46 appels horloge sont bien là : 42 hors `account.py` / `gateway.py` (`sensor.py` 23, `binary_sensor.py` 16, `calendar.py` 1, `tiers.py` 2) plus 4 `now()` dans `account.py`. Ça justifie une PR dédiée, la plus large en nombre de fichiers — une quarantaine de sites dans trois modules d'entités, pas un préalable de 12 appels.
 
-Les 67 `.gateway` ne sont pas de l'horloge. `services.py` (8), `attachment.py` (2), `todo.py`, `image.py`, et le capteur `session_age` lisent `account.session` / `account.gateway.timetable` (et voisins). Les fondre dans la PR horloge mélangerait deux coupes : « qui donne l'heure » et « qui possède le fil Pronote ». La seconde est `PronoteExtras` + déplacement de l'executor dans `PronoteConnector`.
+La phrase précédente « les 67 `.gateway` ne sont pas de l'horloge » était fausse. Ventilation relu :
+
+| Module | `.gateway` | dont horloge |
+| --- | --- | --- |
+| `sensor.py` | 23 | 23 |
+| `binary_sensor.py` | 16 | 16 |
+| `calendar.py` | 1 | 1 |
+| `tiers.py` | 15 | 2 |
+| `services.py`, `attachment.py`, `todo.py`, `image.py` | 12 | 0 |
+
+42 des 67 **sont** de l'horloge ; 12 (les modules cités pour le fil) ne le sont pas ; les 13 restants dans `tiers.py` sont protocolaires. Le capteur `session_age` lit `account.session.session_age`, pas `gateway.timetable` — une des 23 horloges de `sensor.py` sert au `remaining` du limiteur.
+
+La coupe en deux PR reste : « qui donne l'heure » / « qui possède le fil Pronote ». Les fondre mélangerait Task 3 et `PronoteExtras` + executor. La Task 3 se dimensionne sur les 42, pas sur le reliquat.
 
 **Décision :** la PR horloge ne fait que `account.now()` / `today()` comme unique chemin d'horloge. Le reste de `.gateway` part avec la Task `PronoteConnector`, pas avant.
+
+Sur le §7.2 de la revue : la fonction s'appelle `_lesson_events`, pas `_timetable_events`. Elle est branchée comme `events_fn` du calendrier `key="timetable"`. Le constat tient : `lesson.status` est le premier élément de `description_parts`.
 
 ### O2. §2.4 — pas de conversion de `duration` en heures
 
@@ -156,9 +171,9 @@ Vérifié : l'ancienne `_module_coverage` rangeait sous `Path(filename).name`. U
 | Spec §7.10, §8.1 | Republie `SESSION` après `MARKS` |
 | Spec §3.5, §5.2 | Quatre paliers ; `SESSION` jamais collecté |
 | Spec §7.1, plan Task 11 | `ecoledirecte-watch` |
-| Plan Task 3 | Horloge = grosse PR, **seulement** `now` / `today` (O1) |
+| Plan Task 3 | Horloge = grosse PR (~42 `now`/`today` dans 3 modules d'entités), **seulement** `now` / `today` (O1, chiffres corrigés) |
 | Plan Task 4 | Objets Pronote dans le connecteur, pas dans `__init__` |
 | Plan Tasks 7–9 | `ed_client.py`, `ed_mapping.py`, `ed_limiter.py` |
-| `scripts/check_coverage.py` + tests | Corrigé, non commité |
+| `scripts/check_coverage.py` + tests | PR #12 ; réserves revue §7.5 (test `main()`, message « absent » vs ambigu) |
 
-Rien d'autre n'est implémenté. Pas de commit demandé.
+Rien d'autre n'est implémenté. La suite de revue est le §7 du fichier revue, pas un quatrième document.
