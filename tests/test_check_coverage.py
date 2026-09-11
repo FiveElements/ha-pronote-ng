@@ -31,8 +31,12 @@ def _class(parent: Element, filename: str, hits: str) -> None:
     SubElement(lines, "line", number="1", hits=hits)
 
 
-def _report(*files: tuple[str, str]) -> Element:
+def _report(*files: tuple[str, str], source: str | None = None) -> Element:
     root = Element("coverage", attrib={"line-rate": "1.0", "branch-rate": "1.0"})
+    if source is not None:
+        sources = SubElement(root, "sources")
+        element = SubElement(sources, "source")
+        element.text = source
     packages = SubElement(root, "packages")
     package = SubElement(packages, "package")
     classes = SubElement(package, "classes")
@@ -60,6 +64,21 @@ def test_the_gate_finds_pronote_modules_under_the_package_prefix() -> None:
     root = _report(("custom_components/pronote_ng/gateway.py", "1"))
     per_module = check_coverage._module_coverage(root)
     assert check_coverage.coverage_for(per_module, "pronote_ng/gateway.py") == 100.0
+
+
+def test_a_package_relative_cobertura_report_joins_source_to_find_pronote() -> None:
+    """CI writes basenames; joining <source> is what makes the suffix exist."""
+    root = _report(
+        ("ratelimit.py", "1"),
+        ("connectors/ecoledirecte/ratelimit.py", "0"),
+        source="/home/runner/work/ha-pronote-ng/ha-pronote-ng/custom_components/pronote_ng",
+    )
+    per_module = check_coverage._module_coverage(root)
+    assert check_coverage.coverage_for(per_module, "pronote_ng/ratelimit.py") == 100.0
+    ed = check_coverage.coverage_for(
+        per_module, "pronote_ng/connectors/ecoledirecte/ratelimit.py"
+    )
+    assert ed == 0.0
 
 
 def test_an_ambiguous_suffix_is_missing_so_the_gate_fails_closed() -> None:

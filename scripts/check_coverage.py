@@ -37,8 +37,26 @@ def _posix(filename: str) -> str:
     return Path(filename).as_posix().replace("\\", "/")
 
 
+def _report_paths(root: ET.Element, filename: str) -> tuple[str, ...]:
+    """Filenames as written, plus each ``<source>`` joined in front.
+
+    ``pytest --cov=custom_components/pronote_ng`` writes Cobertura basenames
+    (``ratelimit.py``) and puts the package directory in ``<source>``. A
+    suffix lookup of ``pronote_ng/ratelimit.py`` only works after that join.
+    A second ``ratelimit.py`` under ``connectors/ecoledirecte/`` stays a
+    different path: it does not end with ``/pronote_ng/ratelimit.py``.
+    """
+    filename = _posix(filename)
+    paths = [filename]
+    for source in root.iter("source"):
+        text = (source.text or "").strip()
+        if text:
+            paths.append(_posix(f"{text.rstrip('/')}/{filename}"))
+    return tuple(paths)
+
+
 def _module_coverage(root: ET.Element) -> dict[str, float]:
-    """Return per-file coverage keyed by the posix path in the report."""
+    """Return per-file coverage keyed by every path the report can name."""
     result: dict[str, float] = {}
     for class_element in root.iter("class"):
         filename = _posix(class_element.get("filename", ""))
@@ -52,7 +70,9 @@ def _module_coverage(root: ET.Element) -> dict[str, float]:
                 taken, possible = (int(part) for part in fraction.split("/"))
                 total += possible
                 covered += taken
-        result[filename] = 100.0 * covered / total if total else 100.0
+        percent = 100.0 * covered / total if total else 100.0
+        for path in _report_paths(root, filename):
+            result[path] = percent
     return result
 
 
