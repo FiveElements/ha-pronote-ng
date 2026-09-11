@@ -110,19 +110,18 @@ class EcoleDirecteClient:
             raise ConnectorTransportError("EcoleDirecte did not return a GTK cookie")
         self._headers["x-gtk"] = gtk
 
-        payload = (
-            'data={"identifiant":"'
-            + _encode_string(username)
-            + '", "motdepasse":"'
-            + _encode_string(password)
-            + '", "isReLogin": false}'
+        payload = _encode_data(
+            {
+                "identifiant": username,
+                "motdepasse": password,
+                "isReLogin": False,
+            }
         )
-        response = await self._send(
+        response, result = await self._send_json(
             "POST",
             f"{API_BASE}/login.awp?v={ECOLEDIRECTE_API_VERSION}",
             data=payload,
         )
-        result = await self._read_response(response)
         self._remember_response_tokens(response)
         self._check_code(result)
         self._headers.pop("x-gtk", None)
@@ -136,13 +135,12 @@ class EcoleDirecteClient:
         data: Mapping[str, Any],
     ) -> dict[str, Any]:
         """POST one protocol request and classify its JSON business code."""
-        response = await self._send(
+        response, result = await self._send_json(
             "POST",
             f"{API_BASE}{path}",
             params={"verbe": verbe, "v": ECOLEDIRECTE_API_VERSION},
             data=_encode_data(data),
         )
-        result = await self._read_response(response)
         self._remember_response_tokens(response)
         self._check_code(result)
         return result
@@ -166,9 +164,31 @@ class EcoleDirecteClient:
         except (ClientError, OSError, TimeoutError) as error:
             raise ConnectorTransportError("EcoleDirecte request failed") from error
 
-    async def _read_response(self, response: Response) -> dict[str, Any]:
-        try:
+    async def _send_json(
+        self,
+        method: str,
+        url: str,
+        **kwargs: object,
+    ) -> tuple[Response, dict[str, Any]]:
+        async def request_and_read() -> tuple[Response, dict[str, Any]]:
+            self.calls += 1
+            response = await self._transport.request(
+                method,
+                url,
+                headers=dict(self._headers),
+                timeout=ClientTimeout(total=self._read_timeout),
+                **kwargs,
+            )
             result = await response.json(content_type=None)
+            return response, result
+
+        try:
+            response, result = await asyncio.wait_for(
+                request_and_read(),
+                timeout=self._read_timeout,
+            )
+        except (ClientError, OSError, TimeoutError) as error:
+            raise ConnectorTransportError("EcoleDirecte request failed") from error
         except (TypeError, ValueError) as error:
             raise ConnectorUndecodableError(
                 "EcoleDirecte returned invalid JSON"
@@ -177,7 +197,7 @@ class EcoleDirecteClient:
             raise ConnectorUndecodableError(
                 "EcoleDirecte returned a non-object payload"
             )
-        return result
+        return response, result
 
     def _remember_response_tokens(self, response: Response) -> None:
         token = _header(response.headers, "x-token")
@@ -213,12 +233,9 @@ class EcoleDirecteClient:
         )
 
 
-def _encode_string(value: str) -> str:
-    return quote(value, safe="~()*!.'%\\").replace("\\", "\\\\")
-
-
 def _encode_data(data: Mapping[str, Any]) -> str:
-    return "data=" + json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    serialized = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return "data=" + quote(serialized, safe="")
 
 
 def _cookie_value(cookie: object | None) -> str | None:

@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any, Self
+from urllib.parse import parse_qs
 
+from aiohttp import ClientPayloadError
 import pytest
 
 from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
@@ -19,6 +22,7 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
 from custom_components.pronote_ng.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
+    ConnectorTransportError,
 )
 from custom_components.pronote_ng.connectors.protocol import ChallengeKind
 
@@ -37,10 +41,31 @@ class FakeResponse:
     payload: dict[str, Any]
     headers: dict[str, str]
     cookies: dict[str, str]
+    json_delay: float = 0
+    json_error: Exception | None = None
 
     async def json(self, *, content_type: None = None) -> dict[str, Any]:
         """Return the scripted JSON response."""
+        await asyncio.sleep(self.json_delay)
+        if self.json_error is not None:
+            raise self.json_error
         return self.payload
+
+
+@dataclass(slots=True)
+class StaticTransport:
+    """Return one response while keeping the HTTP call itself immediate."""
+
+    response: FakeResponse
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        **kwargs: object,
+    ) -> FakeResponse:
+        """Return the response whose body behavior is under test."""
+        return self.response
 
 
 class RecordingTransport:
@@ -53,6 +78,7 @@ class RecordingTransport:
         self._script = list(script)
         self.urls: list[str] = []
         self.headers_on: list[dict[str, str]] = []
+        self.data_on: list[object] = []
 
     @classmethod
     def scripted(
@@ -76,6 +102,7 @@ class RecordingTransport:
         assert isinstance(headers, Mapping)
         self.urls.append(url)
         self.headers_on.append(dict(headers))
+        self.data_on.append(kwargs.get("data"))
         response_headers = (
             {"x-token": "not-a-real-token"} if payload.get("code") in {200, 250} else {}
         )
@@ -128,3 +155,56 @@ async def test_a_250_keeps_the_token_for_the_qcm() -> None:
         await client.login("demo.example.invalid", "not-a-real-password")
     assert caught.value.kind is ChallengeKind.QCM
     assert client.token == "not-a-real-token"
+
+
+@pytest.mark.asyncio
+async def test_login_form_encodes_the_complete_json_object() -> None:
+    """Quotes and literal percent escapes must survive form decoding as valid JSON."""
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_ok.json")),
+        ]
+    )
+    client = EcoleDirecteClient(transport)
+
+    await client.login('demo"a%2Fb', "not-a-real-password")
+
+    encoded_form = transport.data_on[1]
+    assert isinstance(encoded_form, str)
+    login_data = json.loads(parse_qs(encoded_form)["data"][0])
+    assert login_data == {
+        "identifiant": 'demo"a%2Fb',
+        "motdepasse": "not-a-real-password",
+        "isReLogin": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_json_read_timeout_is_a_transport_error() -> None:
+    """The read deadline must cover the body, not only response headers."""
+    response = FakeResponse(
+        {"code": 200},
+        {},
+        {},
+        json_delay=0.02,
+    )
+    client = EcoleDirecteClient(StaticTransport(response), read_timeout=0.001)
+
+    with pytest.raises(ConnectorTransportError):
+        await client.request("/eleves/1/notes.awp", verbe="get", data={})
+
+
+@pytest.mark.asyncio
+async def test_a_payload_read_failure_is_a_transport_error() -> None:
+    """An interrupted aiohttp body is a transport failure, not a raw library error."""
+    response = FakeResponse(
+        {"code": 200},
+        {},
+        {},
+        json_error=ClientPayloadError("scripted body failure"),
+    )
+    client = EcoleDirecteClient(StaticTransport(response))
+
+    with pytest.raises(ConnectorTransportError):
+        await client.request("/eleves/1/notes.awp", verbe="get", data={})
