@@ -1,9 +1,5 @@
 """The connector seam: costs are declared, protocol objects do not leak."""
 
-from custom_components.pronote_ng.connectors.errors import (
-    ConnectorChildMissingError,
-    ConnectorUnsupportedError,
-)
 from custom_components.pronote_ng.connectors.protocol import (
     ConnectorCapabilities,
     Source,

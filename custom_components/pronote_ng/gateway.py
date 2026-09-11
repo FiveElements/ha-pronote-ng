@@ -66,6 +66,7 @@ from .models import (
     DiscussionsFacts,
     Evaluation,
     EvaluationsFacts,
+    GatewayResult,
     Grade,
     Guardian,
     Homework,
@@ -89,7 +90,6 @@ from .models import (
     Student,
     TeachingStaffMember,
     TimetableFacts,
-    GatewayResult,
 )
 
 if TYPE_CHECKING:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from .protocol import ChallengeKind
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from custom_components.pronote_ng.connectors.protocol import ChallengeKind
 
 
 class ConnectorError(Exception):
@@ -15,7 +18,7 @@ class ConnectorCredentialsError(ConnectorError):
     """The connector could not authenticate with the provided credentials."""
 
 
-class ConnectorChallengeRequired(ConnectorError):
+class ConnectorChallengeRequired(ConnectorError):  # noqa: N818 -- spec name
     """The connector requires a human challenge response before continuing."""
 
     __slots__ = ("kind",)

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
-from ..const import Priority, Tier
-from ..models import GatewayResult, SessionFacts
+from custom_components.pronote_ng.const import Tier
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+
+    from custom_components.pronote_ng.const import Priority
+    from custom_components.pronote_ng.models import GatewayResult, SessionFacts
 
 
 class Source(StrEnum):
