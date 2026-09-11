@@ -17,7 +17,7 @@
 - Jamais le journaliseur `pronotepy` **ni** `ecoledirecte` / `ecoledirecte_api` en DEBUG ; pas de clé `loggers` dans `manifest.json`.
 - Coût déclaré avant l'envoi, pas de remboursement. Login ED : 2, puis +4 si 250, **avant** la suite. EDT ED : 1 POST.
 - Rien de `pronotepy` ni de JSON Ecoledirecte au-delà du connecteur concerné. Pas de dépendance PyPI `ecoledirecte`.
-- Pivot cartes = clés de l'annexe A (`subject`, `canceled`, `value`, `classroom`), jamais `matiere` / `is_annule` / `note_sur`. Même `translation_key` qu'une entry Pronote. Permanence : `detention=False`, `status="PERMANENCE"`. `Delay.minutes` / `Absence.days` ED = `None` (`null`), jamais `0`.
+- Pivot cartes = clés de l'annexe A (`subject`, `canceled`, `value`, `classroom`), jamais `matiere` / `is_annule` / `note_sur`. Même `translation_key` qu'une entry Pronote. Permanence : `detention=False`, `status="PERMANENCE"`. `typeCours` inconnu → `status is None`, pas le jeton brut. `Delay.minutes` / `Absence.days` ED = `None` (`null`), jamais `0`. Pronote garde `minutes=int(upstream.minutes or 0)` (dette, hors chantier).
 - Une entry ED ne crée ni `SerialExecutor`, ni `SessionManager`, ni `RateLimiter` Pronote.
 - `manifest.json` version **inchangée**.
 - Une branche par sujet, PR vers `main` ; pas de push direct.
@@ -153,7 +153,7 @@ Un `0` publié là où Aplim n'envoie pas de durée entière ferait tenir un dé
 - Test: `tests/test_models.py` s'il existe, sinon `tests/test_connector_protocol.py` (construction HA-free) + un test capteur Docker pour le dict
 
 **Interfaces:**
-- Pronote : le gateway continue de passer un `int` quand la bibliothèque en donne un
+- Pronote : le gateway **ne change pas**. `minutes=int(upstream.minutes or 0)` reste : un `None` changerait les charges utiles `delay_added` des instances qui tournent. Dette datée, hors ce chantier. Après Task 1b le type est `int | None` ; **seul ED** publie `None`.
 - ED (Task 8) : `None`
 
 - [ ] **Step 1: Write the failing tests**
@@ -179,7 +179,7 @@ def test_a_delay_without_a_duration_is_none_not_zero() -> None:
 
 - [ ] **Step 2: Run to verify fail** — `minutes: int` rejects `None` (ou le constructeur l'accepte déjà si le champ n'est pas annoté strictement ; alors le test du sérialiseur doit échouer : aujourd'hui `_delay_dict` publie `0` dès que le DTO a `0`)
 
-- [ ] **Step 3: Implement** les deux `Optional`. Ne pas changer le mapping Pronote (`int(upstream.minutes or 0)` reste un problème Pronote hors chantier). Les sérialiseurs recopient `None`.
+- [ ] **Step 3: Implement** les deux `Optional`. **Ne pas** toucher `PronoteGateway` : `minutes=int(upstream.minutes or 0)` et `days=int(upstream.days or 0)` restent. Les sérialiseurs recopient `None` quand le DTO en porte un (chemin ED).
 
 - [ ] **Step 4: Run** HA-free `test_delta.py` + Docker `test_sensor.py` / événements retard.
 
@@ -268,7 +268,21 @@ git commit -m "test(connecteurs): un faux connecteur déclare son coût et refus
 
 ### Task 3: Horloge `account.now` / `account.today`
 
-**Cette tâche est la PR qui touche le plus de fichiers du chantier** (spec §5.4). Ce n'est pas un préalable mécanique à coller entre deux refactors : 46 appels `gateway.now()` / `today()` plus des dizaines de `.gateway` hors `account.py`. Après elle, `account.now()` est le **seul** chemin.
+**Cette tâche est la grosse PR d'horloge** (spec §5.4) — pas un préalable mécanique de quelques appels à coller entre deux refactors.
+
+Comptage relu (références `.gateway` hors `account.py` / `gateway.py`) :
+
+| Module | `.gateway` | dont `now()` / `today()` |
+| --- | --- | --- |
+| `sensor.py` | 23 | **23** |
+| `binary_sensor.py` | 16 | **16** |
+| `calendar.py` | 1 | **1** |
+| `tiers.py` | 15 | 2 |
+| `services.py`, `attachment.py`, `todo.py`, `image.py` | 12 | 0 |
+
+42 des 67 **sont** de l'horloge ; plus 4 `now()` dans `account.py` = 46. Les 12 de `services` / `attachment` / `todo` / `image` (et les 13 protocolaires de `tiers.py`) **ne** sont **pas** cette tâche : c'est le fil Pronote (`PronoteExtras` + Task 4).
+
+Dimensionner ici : une quarantaine de sites dans **trois modules d'entités** (`sensor.py`, `binary_sensor.py`, `calendar.py`). Après elle, `account.now()` / `today()` est le **seul** chemin d'horloge.
 
 **Files:**
 - Modify: `custom_components/pronote_ng/account.py`
@@ -622,6 +636,14 @@ def test_a_permanence_is_a_followed_slot_not_a_detention() -> None:
     assert study.duration == 0
 
 
+def test_an_unknown_type_cours_does_not_become_a_calendar_status() -> None:
+    """_lesson_events puts Lesson.status on the first line of the calendar description."""
+    raw = {**minimal_ed_lesson(), "typeCours": "JETON-INCONNU"}
+    lesson = lesson_from_ed(raw, zone="Europe/Paris")
+    assert lesson.status is None
+    assert lesson.detention is False
+
+
 def test_homework_v1_has_no_body_because_the_list_endpoint_does_not_pay_for_it() -> None:
     """Fetching each due date would explode the daily cap; empty prose is honest."""
     facts = homework_facts(load_json("cahier_de_texte.json"))
@@ -895,13 +917,13 @@ git commit -m "docs: la voie réseau est un connecteur, pas le gateway Pronote"
 | §3.4–3.5 capacités, quatre paliers ED, `SESSION` jamais collecté | 2, 5, 9 |
 | §3.6 entry sans source = Pronote | 6 |
 | §5 contrat + erreurs | 1, 2 |
-| §5.4 horloge (grosse PR) | 3 |
+| §5.4 horloge (grosse PR : ~42 `now`/`today` dans 3 modules d'entités) | 3 |
 | §5.5 fabrique + `__init__` sans objets Pronote | 4, 6 |
 | §6 PronoteConnector + PronoteExtras + `previous_unread` | 4 |
 | §7.1 pas de PyPI `ecoledirecte` + sonde `ecoledirecte-watch` | 7, 11 |
 | §7.2–7.4 transport, codes, QCM | 7, 10 |
 | §7.5 session, couches, auth, flow ED ≠ `login_guard` Pronote | 9, 10 |
-| §7.6–7.9 mapping (permanence, `minutes`/`days` `None`, `duration=0`) | 1b, 8 |
+| §7.6–7.9 mapping (permanence, `typeCours` inconnu → `status is None`, `minutes`/`days` `None`, `duration=0`) | 1b, 8 |
 | §7.10–7.11 enfants, secrets, republie `SESSION` | 9, 10 |
 | §8.1 `tiers.py` sans `session.run` | 4 |
 | §8.2 cadences Pronote + estimateur ED | 5, 9 |
@@ -918,6 +940,20 @@ git commit -m "docs: la voie réseau est un connecteur, pas le gateway Pronote"
 - `ConnectorCapabilities(source, tiers, writes, services)` identique Tasks 1, 5, 9.
 - `ChallengeKind.QCM` (pas `qcm` en attribut Python : `QCM = "qcm"`).
 - `GatewayResult` toujours dans `models.py` après Task 1.
-- `Delay.minutes` / `Absence.days` : `int | None` après Task 1b ; ED passe `None`.
+- `Delay.minutes` / `Absence.days` : `int | None` après Task 1b ; ED passe `None`. Pronote garde `int(upstream.minutes or 0)` / `int(upstream.days or 0)` (dette).
+- `Lesson.status` ED : ensemble fermé (`PERMANENCE` → `"PERMANENCE"`) ; tout autre `typeCours` → `None`.
 - Fichiers ED : `ed_client.py`, `ed_mapping.py`, `ed_limiter.py` (jamais un basename déjà tenu par Pronote).
 - `CONF_SOURCE = "source"` ; valeur persistée `"pronote"` / `"ecoledirecte"` = `Source`.
+
+## Ouvert après revue §7 (pas un quatrième fichier)
+
+Les §1 à §5 de [`…-revue.md`](../specs/2026-09-11-connecteurs-modele-commun-revue.md) sont soldés. Reste, d'après le §7.7 de **ce** fichier revue :
+
+| # | Point | Où |
+| --- | --- | --- |
+| 7.2 | `typeCours` inconnu → `status is None` | spec §7.6 / §9.2 ; Task 8 (test ci-dessus) |
+| 7.3 | Dimensionnement Task 3 = ~42 sites d'horloge | Task 3 (tableau) |
+| 7.4 | `minutes=int(… or 0)` côté Pronote | Task 1b (dette, pas de correctif Pronote) |
+| 7.5.1 | Test `main()` de `check_coverage.py` | PR #12 (`chore/coverage-gate-path-suffix`), pas ce plan |
+| 7.5.2 | Message « absent » vs suffixe ambigu | idem #12 |
+| 7.6 | `AccountState` vs coordinateur `SESSION` | spec §7.10 |
