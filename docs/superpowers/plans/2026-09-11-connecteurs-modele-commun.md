@@ -806,7 +806,7 @@ git commit -m "feat(ed): connecteur lecture seule pour quatre paliers"
 ### Task 10: Config flow Ecoledirecte (identifiant, mot de passe, QCM)
 
 **Files:**
-- Modify: `custom_components/pronote_ng/config_flow.py` (étape source **seulement pour une nouvelle entrée** ; le chemin Pronote actuel reste le défaut si on détecte l'ancien user flow — plus simple : nouvelle `async_step_user` qui demande la source, puis `async_step_pronote_*` existant ou `async_step_ed_login`)
+- Modify: `custom_components/pronote_ng/config_flow.py`
 - Modify: `scripts/build_translations.py` (table — ne pas éditer `strings.json` à la main)
 - Run: `python scripts/build_translations.py`
 - Test: `tests/test_config_flow.py` (nouveaux tests, les anciens restent verts)

@@ -316,10 +316,12 @@ l'accompagne ne l'est pas : « `typeCours` autre que `COURS` / `PERMANENCE` →
 `status` = la **valeur brute** » fait passer du vocabulaire de protocole Aplim
 dans une chaîne visible par l'utilisateur, ce qui n'était pas le cas avant.
 
-`Lesson.status` n'est pas un champ interne. `_timetable_events` le place en
-**première ligne de la description de l'événement de calendrier** ;
-`_lesson_dict` le publie en attribut de carte ; `change_signature` en fait un
-`lesson_status_changed`. Côté Pronote, `Statut` est de la prose d'établissement
+`Lesson.status` n'est pas un champ interne. `_lesson_events` — l'`events_fn` du
+calendrier `key="timetable"`, dans `calendar.py` ; `delta.py` a un homonyme qui
+produit les événements de changement — le place en **première ligne de la
+description de l'événement de calendrier** ; `_lesson_dict` le publie en
+attribut de carte ; `change_signature` en fait un `lesson_status_changed`.
+Côté Pronote, `Statut` est de la prose d'établissement
 (« Cours annulé », « Prof absent ») ; côté ED ce serait un jeton d'énumération
 inconnu à l'avance, en capitales, rendu verbatim dans un agenda que des gens
 lisent.
@@ -405,3 +407,80 @@ tout de suite.
 | 7.6 | `AccountState` vs coordinateur `SESSION` | précision de rédaction |
 
 Rien d'autre n'est en suspens : les §1 à §5 de cette revue sont soldés.
+
+---
+
+## 8. Clôture
+
+### 8.1 Décisions de spec — tenues
+
+Relecture de l'état disque après #14 : les six points du §7 sont dans la spec,
+chacun à plusieurs endroits, et cohérents entre eux.
+
+| Point | Où | État |
+| --- | --- | --- |
+| 7.2 ensemble fermé `typeCours` | §0 Permanence, §7.6, §9.2, §9.4, §10, §12 | tenu ; `status=None` pour tout jeton hors `PERMANENCE`, et la raison (`_lesson_events` en première ligne de description) est citée sur place |
+| 7.3 dimensionnement horloge | §5.4 | tenu, avec une ventilation plus fine que la revue : 42 horloge / 25 fil hors `account.py`, plus 4 dans `account.py` = 46 |
+| 7.4 dette Pronote | §0 Durées absentes, §7.9, §9.2, §10, §12 | tenu ; `int(upstream.minutes or 0)` nommé comme dette datée à cinq endroits |
+| 7.6 `AccountState` séparé | §0 Période ED, §7.10 | tenu ; `_current_period_name` lit le `SessionFacts` du coordinateur |
+| O4 `SESSION` | §0, §3.5, §5.2, §10 | tenu ; hors `capabilities.tiers`, et `FakeConnector` doit le refuser |
+| O6 couverture | §0 Couverture, §10, §12 | tenu ; suffixe de chemin **et** noms `ed_*`, les trois à 100 % |
+
+Deux corrections à porter au crédit de la réponse plutôt qu'à celui de la revue :
+
+- **Le lecteur calendrier s'appelle `_lesson_events`**, `events_fn` du calendrier
+  `key="timetable"` dans `calendar.py` — `delta.py` a un homonyme pour les
+  événements de changement. Le §7.2 ci-dessus disait `_timetable_events` :
+  corrigé. Le constat, lui, tient : `Lesson.status` est bien la première ligne
+  de la description de l'événement.
+- Une seule scorie de rédaction dans §5.4 : la phrase énumère « les 25 autres »
+  puis conclut « pas le reliquat de 12 ». Les deux nombres sont justes — 25 est
+  le fil Pronote total, 12 ce qui reste une fois que `tiers.py` a cessé
+  d'appeler le gateway à la Task 4 — mais l'enchaînement se lit comme une
+  contradiction. Une incise suffit.
+
+### 8.2 Code — soldé
+
+`scripts/check_coverage.py` : #12 (indexation par suffixe) puis #15 (jointure
+`<source>` + basename, `main()` testé, message « matches more than one file »
+distinct de « absent »). Les deux réserves du §7.5 sont levées.
+
+#15 corrige plus qu'une formulation, et le mérite revient à la relecture :
+`pytest --cov=custom_components/pronote_ng` écrit des **basenames** dans
+`filename` et range le répertoire du paquet dans `<source>`. Sans la jointure,
+la clé `pronote_ng/ratelimit.py` ne matchait **aucun** chemin du vrai rapport —
+la barrière durcie par #12 aurait échoué en boucle sur l'artefact réel au lieu
+de mesurer quoi que ce soit. #12 seule était juste sur une fixture et fausse en
+production.
+
+Reste une robustesse mineure, sans conséquence connue : si un rapport portait
+deux `<source>` se terminant tous deux par `pronote_ng`, un même fichier
+produirait deux clés correspondantes et serait annoncé « matches more than one
+file ». L'échec va dans le bon sens (fail closed) et `pytest-cov` n'écrit
+qu'une source par `--cov` ; dédupliquer les correspondances par fichier plutôt
+que par clé fermerait le cas.
+
+### 8.3 État
+
+Les §1 à §7 de cette revue sont soldés : décisions de spec intégrées (#14),
+correctifs de barrière fusionnés (#12, #15). Ce qui reste n'est pas de la
+revue mais du chantier — le code des connecteurs, selon
+[le plan](../plans/2026-09-11-connecteurs-modele-commun.md).
+
+### 8.4 Deux corrections de rédaction, pas de décision
+
+Aucune des deux ne rouvre un arbitrage. Ce sont deux phrases qui se
+contredisent avec leur propre voisinage.
+
+1. **Spec §5.4** — la phrase énumère « les 25 autres sont le fil Pronote » puis
+   conclut « pas le reliquat de 12 ». Les deux nombres sont justes ; ce qui
+   manque est le pas entre eux : 13 des 25 sont dans `tiers.py` et disparaissent
+   à la Task 4, quand `tiers.py` cesse d'appeler le gateway. Restent 12 pour
+   `PronoteExtras`. Une incise.
+2. **Plan, Task 10, ligne `Files:`** — elle porte encore « plus simple :
+   nouvelle `async_step_user` qui demande la source ». Le Step 3 de la même
+   tâche dit l'inverse trois lignes plus bas (« ajouter un item de menu
+   `ecoledirecte` — **ne pas** intercaler un écran source devant, les tests
+   Pronote casseraient tous »), et c'est lui qui suit la spec (§3.6, §8.4 :
+   le wizard QR / identifiants / ENT ne change pas). Supprimer la parenthèse
+   périmée.
