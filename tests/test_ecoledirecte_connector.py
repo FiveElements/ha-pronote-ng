@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 import random
@@ -211,6 +212,56 @@ async def test_a_250_does_not_increment_failed_logins() -> None:
 
     assert limiter.failed_logins_last_hour == 0
     assert limiter.calls_today == 6
+
+
+@pytest.mark.asyncio
+async def test_async_open_replays_a_stored_qcm_answer() -> None:
+    """Runtime open must receive qcm_json; credentials alone never reach 200."""
+    question = "Couleur préférée ?"
+    answer = "Bleu"
+    encoded_question = base64.b64encode(question.encode()).decode()
+    encoded_answer = base64.b64encode(answer.encode()).decode()
+    client = EcoleDirecteClient(
+        RecordingTransport.scripted(
+            [
+                ("GET", "login.awp", {"gtk": "gtk-demo"}),
+                ("POST", "login.awp", load_fixture("login_250.json")),
+                (
+                    "POST",
+                    "doubleauth.awp",
+                    {
+                        "code": 200,
+                        "data": {
+                            "question": encoded_question,
+                            "propositions": [encoded_answer],
+                        },
+                    },
+                ),
+                (
+                    "POST",
+                    "doubleauth.awp",
+                    {
+                        "code": 200,
+                        "data": {"cn": "not-a-real-cn", "cv": "not-a-real-cv"},
+                    },
+                ),
+                ("GET", "login.awp", {"gtk": "gtk-after-qcm"}),
+                ("POST", "login.awp", load_fixture("login_ok.json")),
+            ]
+        )
+    )
+    connector = EcoledirecteConnector(
+        client=client,
+        zone="Europe/Paris",
+        username="demo.example.invalid",
+        password="not-a-real-password",
+        qcm_json={question: answer},
+    )
+
+    await connector.async_open()
+
+    assert client.calls == 6
+    assert connector.student_ids() == ("1",)
 
 
 @pytest.mark.asyncio

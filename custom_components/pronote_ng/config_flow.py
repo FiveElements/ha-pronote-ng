@@ -245,6 +245,9 @@ REAUTH_SCHEMA: Final = vol.Schema(
 _NEVER_PERSISTED: Final = frozenset(
     {CONF_QR_PAYLOAD, CONF_QR_PIN, CONF_ACCOUNT_PIN, "account_id"}
 )
+_ED_PERSISTED: Final = frozenset(
+    {CONF_SOURCE, "username", "password", "qcm_json", CONF_CHILD_KEYS}
+)
 
 
 def _log_rejected_payload(error: Exception, raw: object) -> None:
@@ -355,21 +358,25 @@ async def _probe_ecoledirecte(
     qcm_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Authenticate against EcoleDirecte with its own limiter and HTTP session."""
-    del qcm_json
+    answers = qcm_json if qcm_json is not None else {}
     limiter = _ecoledirecte_flow_limiter(hass)
     client = EcoleDirecteClient(
         cast("Transport", async_create_clientsession(hass)),
     )
     try:
         payload = await limiter.login(
-            lambda: client.login(username, password),
+            lambda: client.login(
+                username,
+                password,
+                answers,
+                charge_qcm=limiter.charge_qcm,
+            ),
             cost=2,
         )
     except ConnectorCredentialsError:
         limiter.note_bad_credentials()
         raise
     except ConnectorChallengeRequired:
-        await limiter.charge_qcm()
         limiter.note_qcm()
         raise
     except ConnectorTransportError:
@@ -575,8 +582,10 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         except ConnectorChallengeRequired:
             return await self.async_step_ecoledirecte_qcm()
+        except LoginRefusedByLimiter:
+            errors["base"] = "rate_limited"
         except ConnectorCredentialsError:
-            errors["base"] = "invalid_auth"
+            errors["base"] = "ed_invalid_auth"
         except ConnectorTransportError:
             errors["base"] = "cannot_connect"
         except Exception:
@@ -592,7 +601,6 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data[CONF_CHILD_KEYS] = pair([], students)[1]
             if len(students) > 1:
                 return await self.async_step_children()
-            self._data[CONF_CHILDREN] = [student_id for student_id, _ in students]
             return self._async_create()
         return self.async_show_form(
             step_id=STEP_ECOLEDIRECTE,
@@ -612,7 +620,16 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         should not pay for four (annexe B §5.3).
         """
         if user_input is not None:
-            self._data[CONF_CHILDREN] = user_input[CONF_CHILDREN]
+            selected = set(user_input[CONF_CHILDREN])
+            if self._data.get(CONF_SOURCE) == Source.ECOLEDIRECTE.value:
+                chosen = [
+                    (student_id, name)
+                    for student_id, name in self._children
+                    if student_id in selected
+                ]
+                self._data[CONF_CHILD_KEYS] = pair([], chosen)[1]
+            else:
+                self._data[CONF_CHILDREN] = user_input[CONF_CHILDREN]
             return self._async_create()
 
         return self.async_show_form(
@@ -987,6 +1004,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             for key, value in self._data.items()
             if key not in _NEVER_PERSISTED and value is not None
         }
+        if data.get(CONF_SOURCE) == Source.ECOLEDIRECTE.value:
+            data = {key: data[key] for key in _ED_PERSISTED if key in data}
         return self.async_create_entry(title=str(self._data["title"]), data=data)
 
 

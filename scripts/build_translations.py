@@ -379,10 +379,13 @@ CONFIG_EN: dict[str, Any] = {
         ),
         "invalid_qcm": "Enter a JSON object containing the security answers.",
         "cannot_connect": "Could not reach the server.",
+        "ed_invalid_auth": (
+            "EcoleDirecte refused these credentials. Check them before trying again."
+        ),
         "rate_limited": (
             "Too many login attempts in the last hour, so this one was not "
             "sent. Wait a little before trying again: repeatedly retrying a "
-            "login is what gets an address blocked by PRONOTE."
+            "login is what gets an address blocked."
         ),
         "unknown": "Unexpected error. Check the Home Assistant log.",
     },
@@ -617,11 +620,14 @@ CONFIG_FR: dict[str, Any] = {
         ),
         "invalid_qcm": ("Saisissez un objet JSON contenant les réponses de sécurité."),
         "cannot_connect": "Impossible de joindre le serveur.",
+        "ed_invalid_auth": (
+            "EcoleDirecte a refusé ces identifiants. Vérifiez-les avant de recommencer."
+        ),
         "rate_limited": (
             "Trop de tentatives de connexion dans la dernière heure : celle-ci "
             "n'a pas été envoyée. Attendez un peu avant de réessayer, car "
             "réessayer une connexion en boucle est précisément ce qui fait "
-            "bloquer une adresse par PRONOTE."
+            "bloquer une adresse."
         ),
         "unknown": "Erreur inattendue. Consultez le journal de Home Assistant.",
     },

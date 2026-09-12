@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
@@ -168,6 +169,160 @@ async def test_a_250_keeps_the_token_for_the_qcm() -> None:
         await client.login("demo.example.invalid", "not-a-real-password")
     assert caught.value.kind is ChallengeKind.QCM
     assert client.token == "not-a-real-token"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_qcm_question_exposes_decoded_choices() -> None:
+    """The flow needs readable choices before it can ask a human for one."""
+    question = "Couleur préférée ?"
+    propositions = ("Bleu", "Vert")
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_250.json")),
+            (
+                "POST",
+                "doubleauth.awp",
+                {
+                    "code": 200,
+                    "data": {
+                        "question": base64.b64encode(question.encode()).decode(),
+                        "propositions": [
+                            base64.b64encode(value.encode()).decode()
+                            for value in propositions
+                        ],
+                    },
+                },
+            ),
+        ]
+    )
+    client = EcoleDirecteClient(transport)
+
+    with pytest.raises(ConnectorChallengeRequired) as caught:
+        await client.login(
+            "demo.example.invalid",
+            "not-a-real-password",
+            qcm_json={},
+        )
+
+    assert caught.value.question == question
+    assert caught.value.propositions == propositions
+    assert client.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_a_known_qcm_answer_completes_the_login_with_four_more_calls() -> None:
+    """A stored answer must drive doubleauth and the final 200 login."""
+    question = "Couleur préférée ?"
+    answer = "Bleu"
+    encoded_question = base64.b64encode(question.encode()).decode()
+    encoded_answer = base64.b64encode(answer.encode()).decode()
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_250.json")),
+            (
+                "POST",
+                "doubleauth.awp",
+                {
+                    "code": 200,
+                    "data": {
+                        "question": encoded_question,
+                        "propositions": [encoded_answer],
+                    },
+                },
+            ),
+            (
+                "POST",
+                "doubleauth.awp",
+                {"code": 200, "data": {"cn": "not-a-real-cn", "cv": "not-a-real-cv"}},
+            ),
+            ("GET", "login.awp", {"gtk": "gtk-after-qcm"}),
+            ("POST", "login.awp", load_fixture("login_ok.json")),
+        ]
+    )
+    client = EcoleDirecteClient(transport)
+
+    result = await client.login(
+        "demo.example.invalid",
+        "not-a-real-password",
+        qcm_json={question: answer},
+    )
+
+    assert result["code"] == 200
+    assert client.calls == 6
+    assert json.loads(parse_qs(str(transport.data_on[3]))["data"][0]) == {
+        "choix": encoded_answer
+    }
+    assert json.loads(parse_qs(str(transport.data_on[5]))["data"][0]) == {
+        "identifiant": "demo.example.invalid",
+        "motdepasse": "not-a-real-password",
+        "isReLogin": False,
+        "uuid": "",
+        "fa": [{"cn": "not-a-real-cn", "cv": "not-a-real-cv"}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_login_rejects_210_while_collection_accepts_it() -> None:
+    """An empty collection is valid, but an empty login cannot name an account."""
+    login_transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", {"code": 210, "data": {}}),
+        ]
+    )
+    with pytest.raises(ConnectorUndecodableError, match=r"login.*210"):
+        await EcoleDirecteClient(login_transport).login(
+            "demo.example.invalid", "not-a-real-password"
+        )
+
+    collection_client = EcoleDirecteClient(
+        StaticTransport(FakeResponse({"code": 210, "data": {}}, {}, {}))
+    )
+    assert (await collection_client.request("/empty.awp", verbe="get", data={}))[
+        "code"
+    ] == 210
+
+
+@pytest.mark.asyncio
+async def test_qcm_continuation_is_charged_before_the_get() -> None:
+    """Admission must precede the GET: a late charge lets a second caller through."""
+    charged_after: list[int] = []
+
+    async def charge_qcm() -> None:
+        charged_after.append(client.calls)
+
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_250.json")),
+            (
+                "POST",
+                "doubleauth.awp",
+                {
+                    "code": 200,
+                    "data": {
+                        "question": base64.b64encode(
+                            "Couleur préférée ?".encode()
+                        ).decode(),
+                        "propositions": [base64.b64encode(b"Bleu").decode()],
+                    },
+                },
+            ),
+        ]
+    )
+    client = EcoleDirecteClient(transport)
+
+    with pytest.raises(ConnectorChallengeRequired):
+        await client.login(
+            "demo.example.invalid",
+            "not-a-real-password",
+            qcm_json={},
+            charge_qcm=charge_qcm,
+        )
+
+    assert charged_after == [2]
 
 
 @pytest.mark.asyncio

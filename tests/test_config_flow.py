@@ -47,6 +47,7 @@ from custom_components.pronote_ng.connectors.errors import ConnectorChallengeReq
 from custom_components.pronote_ng.connectors.protocol import ChallengeKind
 from custom_components.pronote_ng.const import (
     CONF_ACCOUNT_PIN,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_CLIENT_IDENTIFIER,
     CONF_ENT,
@@ -62,7 +63,9 @@ from custom_components.pronote_ng.const import (
 from custom_components.pronote_ng.login_guard import login_guard
 from custom_components.pronote_ng.ratelimit import (
     REQUESTS_PER_LOGIN,
+    DeferReason,
     LoginOutcome,
+    LoginRefusedByLimiter,
 )
 from custom_components.pronote_ng.urls import public_url, url_host
 
@@ -211,6 +214,96 @@ async def test_a_250_opens_the_qcm_step_and_does_not_create_the_entry(
         )
     assert challenged["type"] is FlowResultType.FORM
     assert challenged["step_id"] == "ecoledirecte_qcm"
+    assert hass.config_entries.async_entries(DOMAIN) == []
+
+
+async def test_an_ecoledirecte_qcm_submit_creates_the_entry_after_200(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """A remembered answer is only persisted once the login itself is 200."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        side_effect=ConnectorChallengeRequired(ChallengeKind.QCM),
+    ):
+        challenged = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+    assert challenged["step_id"] == "ecoledirecte_qcm"
+
+    answers = {"Couleur préférée ?": "Bleu"}
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        return_value={"students": (("1", "Enfant Un"),)},
+    ) as probe:
+        created = await hass.config_entries.flow.async_configure(
+            challenged["flow_id"],
+            {"qcm_json": json.dumps(answers, ensure_ascii=False)},
+        )
+
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["data"]["qcm_json"] == answers
+    assert probe.call_args.args[3] == answers
+
+
+async def test_an_ecoledirecte_entry_persists_exactly_the_contract_keys(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """Title belongs to Home Assistant; children are recorded only as minted keys."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        return_value={"students": (("1", "Enfant Un"),)},
+    ):
+        created = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["title"]
+    assert set(created["data"]) == {
+        CONF_SOURCE,
+        "username",
+        "password",
+        "qcm_json",
+        CONF_CHILD_KEYS,
+    }
+    assert created["data"][CONF_CHILD_KEYS]
+
+
+async def test_an_ecoledirecte_limiter_refusal_is_rate_limited(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """A refused admission is a budget decision, not an unexpected stack trace."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        side_effect=LoginRefusedByLimiter(DeferReason.LOGIN_CAP, 60),
+    ):
+        refused = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+
+    assert refused["type"] is FlowResultType.FORM
+    assert refused["errors"] == {"base": "rate_limited"}
     assert hass.config_entries.async_entries(DOMAIN) == []
 
 

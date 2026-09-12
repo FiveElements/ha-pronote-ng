@@ -103,7 +103,8 @@
       "unknown_ent": "Aucun fournisseur ENT de ce nom n'est installé. Choisissez-en un dans la liste plutôt que de le saisir : un nom non reconnu ne retombe pas sur quelque chose de raisonnable, il envoie l'identifiant et le mot de passe de ce portail au serveur PRONOTE.",
       "invalid_qcm": "Saisissez un objet JSON contenant les réponses de sécurité.",
       "cannot_connect": "Impossible de joindre le serveur.",
-      "rate_limited": "Trop de tentatives de connexion dans la dernière heure : celle-ci n'a pas été envoyée. Attendez un peu avant de réessayer, car réessayer une connexion en boucle est précisément ce qui fait bloquer une adresse par PRONOTE.",
+      "ed_invalid_auth": "EcoleDirecte a refusé ces identifiants. Vérifiez-les avant de recommencer.",
+      "rate_limited": "Trop de tentatives de connexion dans la dernière heure : celle-ci n'a pas été envoyée. Attendez un peu avant de réessayer, car réessayer une connexion en boucle est précisément ce qui fait bloquer une adresse.",
       "unknown": "Erreur inattendue. Consultez le journal de Home Assistant."
     },
     "abort": {

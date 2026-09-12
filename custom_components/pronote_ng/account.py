@@ -35,9 +35,10 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .child_keys import is_minted, pair
-from .connectors.factory import build_connector
+from .connectors.factory import build_connector, source_from_entry_data
 from .connectors.protocol import Source
 from .const import (
+    CHILD_RESOURCE_ID,
     CONF_ACCOUNT_PIN,
     CONF_CHILD_KEYS,
     CONF_CHILDREN,
@@ -176,6 +177,20 @@ def _establishment_timezone(hass: HomeAssistant, options: Mapping[str, Any]) -> 
     return name
 
 
+def _selected_children_from_entry(data: Mapping[str, Any]) -> tuple[str, ...]:
+    """Pronote stores `children`; ED stores the selection as `child_keys` only."""
+    stored = data.get(CONF_CHILDREN)
+    if stored:
+        return tuple(stored)
+    if source_from_entry_data(dict(data)) is not Source.ECOLEDIRECTE:
+        return ()
+    return tuple(
+        str(record[CHILD_RESOURCE_ID])
+        for record in (data.get(CONF_CHILD_KEYS) or ())
+        if isinstance(record, dict) and record.get(CHILD_RESOURCE_ID)
+    )
+
+
 def scheduled_tiers(
     capabilities: ConnectorCapabilities, enabled: Mapping[Tier, bool] | None
 ) -> frozenset[Tier]:
@@ -232,6 +247,7 @@ class PronoteAccount:
             connector_deps["client"] = connector_client
             connector_deps["username"] = str(entry.data.get("username", ""))
             connector_deps["password"] = str(entry.data.get("password", ""))
+            connector_deps["qcm_json"] = entry.data.get("qcm_json") or {}
         self.connector = build_connector(hass, entry, **connector_deps)
         enabled = tier_enabled(options)
         supported = scheduled_tiers(self.connector.capabilities, enabled)
@@ -282,9 +298,7 @@ class PronoteAccount:
             }
         )
 
-        self._selected_children: tuple[str, ...] = tuple(
-            entry.data.get(CONF_CHILDREN) or ()
-        )
+        self._selected_children = _selected_children_from_entry(entry.data)
         #: PRONOTE resource identifier -> the key this integration minted for
         #: that child. Filled by `_async_pair_children` during set-up, before
         #: any platform is forwarded, because `entity.py` reads it to build

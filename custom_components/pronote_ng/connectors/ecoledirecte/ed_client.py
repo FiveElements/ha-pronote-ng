@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
 from aiohttp import ClientError, ClientTimeout
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Mapping
 
 from ..errors import (  # noqa: TID252
     ConnectorChallengeRequired,
@@ -17,9 +21,6 @@ from ..errors import (  # noqa: TID252
     ConnectorUndecodableError,
 )
 from ..protocol import ChallengeKind  # noqa: TID252
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Mapping
 
 API_BASE = "https://api.ecoledirecte.com/v3"
 ECOLEDIRECTE_API_VERSION = "4.101.3"
@@ -97,8 +98,27 @@ class EcoleDirecteClient:
         self,
         username: str,
         password: str,
+        qcm_json: Mapping[str, Any] | None = None,
+        *,
+        charge_qcm: Callable[[], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
-        """Fetch GTK, submit credentials once, and classify the business code."""
+        """Fetch GTK, submit credentials, and continue a 250 through the QCM."""
+        result = await self._handshake_login(username, password)
+        if result.get("code") == 250 and qcm_json is not None:
+            if charge_qcm is not None:
+                await charge_qcm()
+            return await self._complete_qcm(username, password, qcm_json)
+        self._check_login_code(result)
+        self._headers.pop("x-gtk", None)
+        return result
+
+    async def _handshake_login(
+        self,
+        username: str,
+        password: str,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """GTK + credential POST. Does not classify 250 so the caller can continue."""
         self._headers.pop("x-gtk", None)
         gtk_response = await self._send(
             "GET",
@@ -110,22 +130,64 @@ class EcoleDirecteClient:
             raise ConnectorTransportError("EcoleDirecte did not return a GTK cookie")
         self._headers["x-gtk"] = gtk
 
-        payload = _encode_data(
-            {
-                "identifiant": username,
-                "motdepasse": password,
-                "isReLogin": False,
-            }
-        )
+        body: dict[str, Any] = {
+            "identifiant": username,
+            "motdepasse": password,
+            "isReLogin": False,
+        }
+        if extra is not None:
+            body.update(extra)
         response, result = await self._send_json(
             "POST",
             f"{API_BASE}/login.awp?v={ECOLEDIRECTE_API_VERSION}",
-            data=payload,
+            data=_encode_data(body),
         )
         self._remember_response_tokens(response)
-        self._check_code(result)
+        return result
+
+    async def _complete_qcm(
+        self,
+        username: str,
+        password: str,
+        qcm_json: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """GET the question, POST a known choice, then GTK + relogin with cn/cv."""
+        quiz = await self.request("/connexion/doubleauth.awp", verbe="get", data={})
+        payload = quiz["data"]
+        question = _decode_b64(payload["question"])
+        propositions = tuple(_decode_b64(item) for item in payload["propositions"])
+        answer = qcm_json.get(question)
+        if not isinstance(answer, str):
+            raise ConnectorChallengeRequired(
+                ChallengeKind.QCM,
+                question=question,
+                propositions=propositions,
+            )
+        posted = await self.request(
+            "/connexion/doubleauth.awp",
+            verbe="post",
+            data={"choix": base64.b64encode(answer.encode()).decode()},
+        )
+        factor = posted["data"]
+        result = await self._handshake_login(
+            username,
+            password,
+            extra={
+                "uuid": "",
+                "fa": [{"cn": factor["cn"], "cv": factor["cv"]}],
+            },
+        )
+        self._check_login_code(result)
         self._headers.pop("x-gtk", None)
         return result
+
+    def _check_login_code(self, result: Mapping[str, Any]) -> None:
+        """Enrolment succeeds only on JSON 200; 210 is not a login."""
+        if result.get("code") == 210:
+            raise ConnectorUndecodableError(
+                "EcoleDirecte login returned business code 210"
+            )
+        self._check_code(result)
 
     async def request(
         self,
@@ -251,3 +313,7 @@ def _header(headers: Mapping[str, str], name: str) -> str | None:
         (value for key, value in headers.items() if key.casefold() == wanted),
         None,
     )
+
+
+def _decode_b64(value: str) -> str:
+    return base64.b64decode(value).decode()

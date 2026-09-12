@@ -62,6 +62,7 @@ class EcoledirecteConnector:
         timezone: str | None = None,
         username: str | None = None,
         password: str | None = None,
+        qcm_json: Mapping[str, Any] | None = None,
         limiter: EdRateLimiter | None = None,
         rate_limit_config: RateLimitConfig | None = None,
         limiter_state: Mapping[str, Any] | None = None,
@@ -71,6 +72,7 @@ class EcoledirecteConnector:
         self._zone = ZoneInfo(zone or timezone or "UTC")
         self._username = username or ""
         self._password = password or ""
+        self._qcm_json = qcm_json
         self.limiter = limiter or EdRateLimiter(
             rate_limit_config or _default_config(),
             now=self.now,
@@ -101,14 +103,22 @@ class EcoledirecteConnector:
         calls_before = self.client.calls
         try:
             payload = await self.limiter.login(
-                lambda: self.client.login(self._username, self._password),
+                lambda: self.client.login(
+                    self._username,
+                    self._password,
+                    self._qcm_json,
+                    charge_qcm=self.limiter.charge_qcm
+                    if self._qcm_json is not None
+                    else None,
+                ),
                 cost=2,
             )
         except ConnectorCredentialsError:
             self.limiter.note_bad_credentials()
             raise
         except ConnectorChallengeRequired:
-            await self.limiter.charge_qcm()
+            if self._qcm_json is None:
+                await self.limiter.charge_qcm()
             self.limiter.note_qcm()
             raise
         except ConnectorTransportError:
@@ -117,7 +127,8 @@ class EcoledirecteConnector:
         else:
             self.limiter.note_success()
         actual = self.client.calls - calls_before
-        await self.limiter.reconcile_login(charged=2, actual=actual)
+        admitted = 2 + (4 if actual > 2 else 0)
+        await self.limiter.reconcile_login(charged=admitted, actual=actual)
         self._authenticated_at = time.monotonic()
         facts = session_facts_from_login(payload)
         self._session_facts = {item.student.id: item for item in facts}

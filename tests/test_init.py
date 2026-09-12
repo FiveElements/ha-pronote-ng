@@ -42,11 +42,23 @@ from custom_components.pronote_ng.account import (
 from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
     EcoledirecteConnector,
 )
+from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+    EcoleDirecteClient,
+)
 from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
     EdRateLimiter,
 )
+from custom_components.pronote_ng.connectors.pronote import (
+    RateLimiter as PronoteConnectorRateLimiter,
+    SerialExecutor as PronoteConnectorSerialExecutor,
+    SessionManager as PronoteConnectorSessionManager,
+)
 from custom_components.pronote_ng.connectors.protocol import Source
 from custom_components.pronote_ng.const import (
+    CHILD_KEY,
+    CHILD_NAME,
+    CHILD_RESOURCE_ID,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_SOURCE,
     DOMAIN,
@@ -67,15 +79,14 @@ from custom_components.pronote_ng.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
     RateLimitConfig,
-    RateLimiter,
 )
 from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
-from custom_components.pronote_ng.session import SerialExecutor, SessionManager
 from custom_components.pronote_ng.tiers import (
     _FIRST_COLLECTION_ATTEMPTS,
     _priority_for,
     collect_tier,
 )
+from tests.test_ecoledirecte_client import RecordingTransport
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
@@ -792,16 +803,16 @@ async def test_an_ed_entry_instantiates_no_pronote_network_primitive(
         patch.object(PronoteAccount, "async_setup", return_value=None),
         patch.object(PronoteAccount, "async_start_first_collection"),
         patch(
-            "custom_components.pronote_ng.session.SerialExecutor",
-            wraps=SerialExecutor,
+            "custom_components.pronote_ng.connectors.pronote.SerialExecutor",
+            wraps=PronoteConnectorSerialExecutor,
         ) as executor,
         patch(
-            "custom_components.pronote_ng.session.SessionManager",
-            wraps=SessionManager,
+            "custom_components.pronote_ng.connectors.pronote.SessionManager",
+            wraps=PronoteConnectorSessionManager,
         ) as session_manager,
         patch(
-            "custom_components.pronote_ng.ratelimit.RateLimiter",
-            wraps=RateLimiter,
+            "custom_components.pronote_ng.connectors.pronote.RateLimiter",
+            wraps=PronoteConnectorRateLimiter,
         ) as pronote_limiter,
         patch.object(
             hass.config_entries,
@@ -817,6 +828,39 @@ async def test_an_ed_entry_instantiates_no_pronote_network_primitive(
     executor.assert_not_called()
     session_manager.assert_not_called()
     pronote_limiter.assert_not_called()
+
+
+async def test_an_ed_account_without_children_follows_child_key_resource_ids(
+    hass: HomeAssistant,
+) -> None:
+    """ED persists the selection as minted keys, not a second children list."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        data={
+            CONF_SOURCE: Source.ECOLEDIRECTE.value,
+            "username": "demo.example.invalid",
+            "password": "not-a-real-password",
+            "qcm_json": {},
+            CONF_CHILD_KEYS: [
+                {
+                    CHILD_KEY: "child-1",
+                    CHILD_RESOURCE_ID: "1",
+                    CHILD_NAME: "Enfant Un",
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    account = PronoteAccount(
+        hass,
+        entry,
+        connector_client=EcoleDirecteClient(RecordingTransport.scripted([])),
+    )
+
+    assert account._selected_children == ("1",)
 
 
 async def test_a_stale_child_device_can_be_deleted(

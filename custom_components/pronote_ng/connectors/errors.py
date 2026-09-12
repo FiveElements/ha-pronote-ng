@@ -21,11 +21,19 @@ class ConnectorCredentialsError(ConnectorError):
 class ConnectorChallengeRequired(ConnectorError):  # noqa: N818 -- spec name
     """The connector requires a human challenge response before continuing."""
 
-    __slots__ = ("kind",)
+    __slots__ = ("kind", "propositions", "question")
 
-    def __init__(self, kind: ChallengeKind) -> None:
+    def __init__(
+        self,
+        kind: ChallengeKind,
+        *,
+        question: str | None = None,
+        propositions: tuple[str, ...] = (),
+    ) -> None:
         super().__init__(f"connector challenge required: {kind}")
         self.kind = kind
+        self.question = question
+        self.propositions = propositions
 
 
 class ConnectorUndecodableError(ConnectorError):
