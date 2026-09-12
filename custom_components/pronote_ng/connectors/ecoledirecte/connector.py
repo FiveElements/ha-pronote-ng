@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import time
 from typing import TYPE_CHECKING, Any, Final
 from zoneinfo import ZoneInfo
@@ -66,9 +66,12 @@ class EcoledirecteConnector:
         limiter: EdRateLimiter | None = None,
         rate_limit_config: RateLimitConfig | None = None,
         limiter_state: Mapping[str, Any] | None = None,
+        read_timeout: float | None = None,
         **_unused: Any,
     ) -> None:
         self.client = client
+        if read_timeout is not None:
+            self.client.configure_read_timeout(read_timeout)
         self._zone = ZoneInfo(zone or timezone or "UTC")
         self._username = username or ""
         self._password = password or ""
@@ -168,6 +171,7 @@ class EcoledirecteConnector:
             raise ConnectorChildMissingError(student_id)
 
         async with self._lock:
+            await self.async_open()
             await self._select_student(student_id)
             calls_before = self.client.calls
             try:
@@ -177,7 +181,7 @@ class EcoledirecteConnector:
                     lambda: self.client.request(
                         self._path(tier, student_id),
                         verbe="get",
-                        data={},
+                        data=self._request_data(tier),
                     ),
                 )
             except ConnectorTransportError:
@@ -188,6 +192,7 @@ class EcoledirecteConnector:
             return GatewayResult(facts, calls=calls)
 
     async def _select_student(self, student_id: str) -> None:
+        await self.async_open()
         login_id = self._login_ids[student_id]
         if login_id == self._current_login_id:
             return
@@ -205,6 +210,19 @@ class EcoledirecteConnector:
             self.limiter.note_transport_failure()
             raise
         self._current_login_id = login_id
+
+    def _request_data(self, tier: Tier) -> dict[str, Any]:
+        """Only TIMETABLE posts a date window; other capable tiers stay empty."""
+        if tier is not Tier.TIMETABLE:
+            return {}
+        today = self.today()
+        monday = today - timedelta(days=today.weekday())
+        sunday_next = monday + timedelta(days=13)
+        return {
+            "dateDebut": monday.isoformat(),
+            "dateFin": sunday_next.isoformat(),
+            "avecTrous": False,
+        }
 
     @staticmethod
     def _path(tier: Tier, student_id: str) -> str:

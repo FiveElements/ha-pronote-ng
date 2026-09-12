@@ -135,12 +135,13 @@ def test_login_mapping_produces_every_student_and_empty_session_facts() -> None:
                     "typeCompte": "P",
                     "profile": {
                         "eleves": [
-                            {
-                                "id": 2,
-                                "idLogin": 102,
-                                "prenom": "Enfant",
-                                "nom": "Deux",
-                            },
+                                {
+                                    "id": 2,
+                                    "idLogin": 102,
+                                    "prenom": "Enfant",
+                                    "nom": "Deux",
+                                    "classe": {"libelle": "5e Demo"},
+                                },
                             {
                                 "id": 3,
                                 "idLogin": 103,
@@ -159,11 +160,21 @@ def test_login_mapping_produces_every_student_and_empty_session_facts() -> None:
     login_ids = ed_mapping.student_login_ids_from_accounts(payload)
 
     assert tuple(student.id for student in students) == ("1", "2", "3")
+    assert students[0].class_name is None
+    assert students[1].class_name == "5e Demo"
+    assert students[2].class_name is None
     assert tuple(facts.student for facts in sessions) == students
     assert all(
         facts.periods == () and facts.current_period is None for facts in sessions
     )
     assert login_ids == {"1": "101", "2": "102", "3": "103"}
+
+
+def test_the_login_fixture_maps_the_class_label_onto_the_student() -> None:
+    """The pupil card reads class_name; leaving it None blanks the ED student card."""
+    students = ed_mapping.students_from_accounts(load_json("login_ok.json"))
+
+    assert students[0].class_name == "4e Demo"
 
 
 def test_mapping_helpers_require_a_zoneinfo_object() -> None:

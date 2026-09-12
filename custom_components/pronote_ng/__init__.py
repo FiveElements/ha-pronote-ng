@@ -25,9 +25,16 @@ from pronotepy.exceptions import PronoteAPIError
 from .account import PronoteAccount
 from .attachment import async_register_view
 from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
+from .connectors.errors import (
+    ConnectorChallengeRequired,
+    ConnectorCredentialsError,
+    ConnectorTransportError,
+)
 from .connectors.factory import source_from_entry_data
 from .connectors.protocol import Source
-from .const import DOMAIN
+from .const import DEFAULT_READ_TIMEOUT, DOMAIN, OPT_READ_TIMEOUT
+from .options import bounded_option
+from .ratelimit import LoginRefusedByLimiter
 from .services import async_setup_services
 from .session import (
     AccountUnreadable,
@@ -102,6 +109,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
     connector_client = (
         EcoleDirecteClient(
             cast("Transport", async_create_clientsession(hass)),
+            read_timeout=bounded_option(
+                entry.options, OPT_READ_TIMEOUT, DEFAULT_READ_TIMEOUT
+            ),
         )
         if source_from_entry_data(dict(entry.data)) is Source.ECOLEDIRECTE
         else None
@@ -110,7 +120,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
 
     try:
         await account.async_setup()
-    except (InvalidCredentials, MfaRequired) as error:
+    except (
+        InvalidCredentials,
+        MfaRequired,
+        ConnectorCredentialsError,
+        ConnectorChallengeRequired,
+    ) as error:
         # A re-authentication flow, never a silently broken entry (§7.2). For
         # MFA specifically the flow has to *ask for the PIN*: a secret we refuse
         # to store is a secret we must know how to request again (§8.1).
@@ -132,7 +147,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
         account.async_open_unreadable_issue()
         await account.async_unload()
         raise ConfigEntryNotReady(str(error)) from error
-    except (LoginRefused, IntegrationFault) as error:
+    except (LoginRefused, LoginRefusedByLimiter, IntegrationFault) as error:
+        await account.async_unload()
+        raise ConfigEntryNotReady(str(error)) from error
+    except ConnectorTransportError as error:
+        account.async_open_bootstrap_issue()
         await account.async_unload()
         raise ConfigEntryNotReady(str(error)) from error
     except PronoteAPIError as error:

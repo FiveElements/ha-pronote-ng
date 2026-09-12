@@ -8,7 +8,10 @@ import asyncio
 import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+import json
 import random
+from urllib.parse import parse_qs
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -25,6 +28,7 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
 from custom_components.pronote_ng.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
+    ConnectorError,
     ConnectorTransportError,
     ConnectorUnsupportedError,
 )
@@ -61,6 +65,67 @@ async def test_timetable_collect_declares_the_posts_the_client_actually_made() -
     )
     assert result.calls == client.calls - calls_before
     assert result.facts.lessons[0].start.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_a_timetable_post_asks_monday_through_the_following_sunday() -> None:
+    """One EDT window in the connector timezone, not an empty body."""
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_ok.json")),
+            ("POST", "emploidutemps.awp", load_fixture("emploi_du_temps.json")),
+        ]
+    )
+    client = EcoleDirecteClient(transport)
+    connector = EcoledirecteConnector(client=client, zone="Europe/Paris")
+    connector.now = lambda: datetime(2026, 9, 11, 15, tzinfo=ZoneInfo("Europe/Paris"))
+    await connector.async_open()
+
+    await connector.async_collect(Tier.TIMETABLE, "1", priority=Priority.HIGH)
+
+    body = json.loads(parse_qs(str(transport.data_on[2]))["data"][0])
+    assert body == {
+        "dateDebut": "2026-09-07",
+        "dateFin": "2026-09-20",
+        "avecTrous": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_520_on_collect_relogs_on_the_next_collect() -> None:
+    """Forgetting the token is useless unless the next collect bills a full login."""
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_ok.json")),
+            ("POST", "emploidutemps.awp", {"code": 520}),
+            ("GET", "login.awp", {"gtk": "gtk-relogin"}),
+            ("POST", "login.awp", load_fixture("login_ok.json")),
+            ("POST", "emploidutemps.awp", load_fixture("emploi_du_temps.json")),
+        ]
+    )
+    client = EcoleDirecteClient(transport)
+    connector = EcoledirecteConnector(client=client, zone="Europe/Paris")
+    await connector.async_open()
+    logins_after_open = connector.limiter.logins_today
+
+    with pytest.raises(ConnectorError):
+        await connector.async_collect(Tier.TIMETABLE, "1", priority=Priority.HIGH)
+
+    assert client.token is None
+    result = await connector.async_collect(Tier.TIMETABLE, "1", priority=Priority.HIGH)
+
+    assert connector.limiter.logins_today == logins_after_open + 1
+    assert result.calls == 1
+    assert client.token is not None
+
+
+def test_the_connector_applies_the_entry_read_timeout_to_the_client() -> None:
+    """The deadline lives on the client; dropping it leaves 60 s forever."""
+    client = EcoleDirecteClient(RecordingTransport.scripted([]), read_timeout=60.0)
+    EcoledirecteConnector(client=client, zone="Europe/Paris", read_timeout=12.0)
+    assert client.read_timeout == 12.0
 
 
 @pytest.mark.asyncio
@@ -671,6 +736,7 @@ def test_state_round_trip_keeps_only_same_day_budget_and_live_holds() -> None:
     same_day.import_state(state)
     assert same_day.calls_today == source.calls_today
     assert same_day.state is LimiterState.CREDENTIALS_HOLD
+    assert same_day.snapshot_counters()["reason"] is not None
 
     tomorrow_clock = ManualClock(wall=clock.wall + timedelta(days=1))
     next_day = EdRateLimiter(
@@ -812,6 +878,21 @@ def test_quiet_duration_counts_only_the_exact_overlap() -> None:
     end = datetime(2026, 9, 12, 6, 30, tzinfo=UTC)
     assert limiter.quiet_seconds_between(start, end) == 8 * 3600
     assert limiter.quiet_seconds_between(end, start) == 0
+
+
+def test_the_ed_estimator_is_login_plus_one_post_per_capable_tier_per_child() -> None:
+    """The annexe B Pronote estimator would quote ~180 requests for an ED run."""
+    from custom_components.pronote_ng.options import (
+        estimate_ecoledirecte_daily_requests,
+    )
+
+    assert estimate_ecoledirecte_daily_requests({}, students=2) == 2 + 4 * 2
+    assert (
+        estimate_ecoledirecte_daily_requests(
+            {}, students=1, include_qcm=True, multi_establishment=True
+        )
+        == 2 + 4 + 4 + 1
+    )
 
 
 def test_hold_deadline_and_cap_warning_are_visible_and_persisted() -> None:

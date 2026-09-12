@@ -32,6 +32,11 @@ class ConnectorCapabilities:
     services: frozenset[str]
 
 
+def has_pronote_extras(connector: object) -> bool:
+    """Whether the connector owns the PRONOTE session/gateway façade."""
+    return hasattr(connector, "session") and hasattr(connector, "gateway")
+
+
 class SchoolConnector(Protocol):
     capabilities: ConnectorCapabilities
 

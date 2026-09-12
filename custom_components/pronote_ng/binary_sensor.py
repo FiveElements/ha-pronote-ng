@@ -31,6 +31,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import callback
 
 from .account import PronoteAccount
+from .connectors.protocol import Source
 from .const import Tier
 from .entity import (
     ClockDrivenMixin,
@@ -461,6 +462,11 @@ async def async_setup_entry(
     for student in account.students:
         for description in BINARY_SENSORS:
             if description.tier not in supported:
+                continue
+            if (
+                account.connector.capabilities.source is Source.ECOLEDIRECTE
+                and description.key in {"outing_today", "test_today", "holidays"}
+            ):
                 continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:

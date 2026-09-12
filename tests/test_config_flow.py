@@ -45,6 +45,9 @@ from custom_components.pronote_ng.config_flow import (
     ProbeQrInvalid,
     ProbeQrRefused,
 )
+from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
+    EdRateLimiter,
+)
 from custom_components.pronote_ng.connectors.errors import ConnectorChallengeRequired
 from custom_components.pronote_ng.connectors.protocol import ChallengeKind
 from custom_components.pronote_ng.const import (
@@ -62,7 +65,8 @@ from custom_components.pronote_ng.const import (
     DOMAIN,
     LoginMode,
 )
-from custom_components.pronote_ng.login_guard import login_guard
+from custom_components.pronote_ng.login_guard import limiter_state_store, login_guard
+from custom_components.pronote_ng.options import build_rate_limit_config
 from custom_components.pronote_ng.ratelimit import (
     REQUESTS_PER_LOGIN,
     DeferReason,
@@ -378,6 +382,107 @@ async def test_an_ecoledirecte_limiter_refusal_is_rate_limited(
     assert refused["type"] is FlowResultType.FORM
     assert refused["errors"] == {"base": "rate_limited"}
     assert hass.config_entries.async_entries(DOMAIN) == []
+
+
+async def test_an_ed_reauth_asks_for_identifier_and_qcm_not_a_pronote_probe(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """Enrolment-style repair: identifier + QCM, and this entry's ED hold is cleared."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="ecoledirecte:demo.example.invalid",
+        data={
+            CONF_SOURCE: "ecoledirecte",
+            "username": "demo.example.invalid",
+            "password": "old-password",
+            "qcm_json": {},
+            CONF_CHILD_KEYS: [
+                {
+                    "key": "child-1",
+                    "resource_id": "1",
+                    "name": "Enfant Un",
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    held = EdRateLimiter(build_rate_limit_config({}))
+    held.note_bad_credentials()
+    held.note_bad_credentials()
+    held.note_bad_credentials()
+    limiter_state_store(hass)[entry.entry_id] = held.export_state()
+
+    result = await entry.start_reauth_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "ecoledirecte"
+    assert entry.entry_id not in limiter_state_store(hass)
+
+    with (
+        patch(
+            "custom_components.pronote_ng.config_flow._probe",
+            side_effect=AssertionError("Pronote probe must not run for ED reauth"),
+        ),
+        patch(
+            "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+            return_value={"students": (("1", "Enfant Un"),)},
+        ),
+    ):
+        done = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+
+    assert done["type"] is FlowResultType.ABORT
+    assert done["reason"] == "reauth_successful"
+    assert entry.data["password"] == "not-a-real-password"
+    assert CONF_CHILD_KEYS in entry.data
+
+
+async def test_ed_options_hide_pronote_only_controls_and_count_child_keys(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """ED options are not the Pronote page with an annexe B estimate."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="ecoledirecte:demo.example.invalid-options",
+        data={
+            CONF_SOURCE: "ecoledirecte",
+            "username": "demo.example.invalid",
+            "password": "not-a-real-password",
+            "qcm_json": {},
+            CONF_CHILD_KEYS: [
+                {"key": "child-1", "resource_id": "1", "name": "Enfant Un"},
+                {"key": "child-2", "resource_id": "2", "name": "Enfant Deux"},
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+
+    opened = await hass.config_entries.options.async_init(entry.entry_id)
+    assert opened["type"] is FlowResultType.MENU
+    assert opened["description_placeholders"]["students"] == "2"
+    assert opened["description_placeholders"]["estimate"] == "10"
+
+    general = await hass.config_entries.options.async_configure(
+        opened["flow_id"], {"next_step_id": "general"}
+    )
+    general_keys = {
+        getattr(key, "schema", key) for key in general["data_schema"].schema
+    }
+    assert "session_strategy" not in general_keys
+    assert "write_operations_enabled" not in general_keys
+
+    hass.config_entries.options.async_abort(opened["flow_id"])
+    tiers_menu = await hass.config_entries.options.async_init(entry.entry_id)
+    tiers = await hass.config_entries.options.async_configure(
+        tiers_menu["flow_id"], {"next_step_id": "tiers"}
+    )
+    tier_keys = {getattr(key, "schema", key) for key in tiers["data_schema"].schema}
+    assert "interval_timetable" in tier_keys
+    assert "enabled_timetable" in tier_keys
+    assert "interval_news" not in tier_keys
+    assert "enabled_news" not in tier_keys
+    assert "interval_menus" not in tier_keys
 
 
 async def test_a_single_child_account_is_created_straight_away(

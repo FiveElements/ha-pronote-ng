@@ -258,6 +258,8 @@ async def test_a_known_qcm_answer_completes_the_login_with_four_more_calls() -> 
         "identifiant": "demo.example.invalid",
         "motdepasse": "not-a-real-password",
         "isReLogin": False,
+        "cn": "not-a-real-cn",
+        "cv": "not-a-real-cv",
         "uuid": "",
         "fa": [{"cn": "not-a-real-cn", "cv": "not-a-real-cv"}],
     }

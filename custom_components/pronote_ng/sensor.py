@@ -33,6 +33,7 @@ from homeassistant.core import callback
 
 from .account import PronoteAccount
 from .attachment import fingerprint, signed_path
+from .connectors.protocol import Source, has_pronote_extras
 from .const import (
     DEFAULT_HOMEWORK_HORIZON,
     DEFAULT_WAKE_MARGIN,
@@ -1527,7 +1528,15 @@ async def async_setup_entry(
 
     for student in account.students:
         for description in (*PRIMITIVE_SENSORS, *LIST_SENSORS):
-            if description.tier not in supported:
+            if (
+                description.tier is not Tier.SESSION
+                and description.tier not in supported
+            ):
+                continue
+            if (
+                account.connector.capabilities.source is Source.ECOLEDIRECTE
+                and description.key == "next_test"
+            ):
                 continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
@@ -1863,18 +1872,19 @@ def _diagnostic_sensors(account: PronoteAccount) -> list[SensorEntity]:
     A setting nobody can observe does not get tuned; it gets endured (§6.6).
     """
     coordinator = account.coordinators[Tier.SESSION]
+    keys = [
+        "calls_today",
+        "remaining_budget",
+        "last_collection",
+        "next_collection",
+        "logins_today",
+        "limiter_state",
+    ]
+    if has_pronote_extras(account.connector):
+        keys[4:4] = ["session_age", "session_lifetime"]
     return [
         PronoteLimiterSensor(account, coordinator, key)
-        for key in (
-            "calls_today",
-            "remaining_budget",
-            "last_collection",
-            "next_collection",
-            "session_age",
-            "session_lifetime",
-            "logins_today",
-            "limiter_state",
-        )
+        for key in keys
     ]
 
 
@@ -1942,7 +1952,6 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
     def extra_state_attributes(self) -> dict[str, Any]:  # noqa: PLR0911
         """Context for the reading."""
         limiter = self.account.limiter
-        session = self.account.session
         match self._key:
             case "calls_today":
                 return {
@@ -2025,6 +2034,7 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                 # The measured value, and how it is being acted on. This is what
                 # turns the session strategy from a bet into an observation
                 # (§6.5).
+                session = self.account.session
                 return {
                     "samples": len(session.lifetime.samples),
                     "last_expiry": (

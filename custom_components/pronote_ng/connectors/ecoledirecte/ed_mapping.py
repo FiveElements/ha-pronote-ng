@@ -107,6 +107,22 @@ def _student_sources(payload: object) -> tuple[Mapping[str, Any], ...]:
     return tuple(sources)
 
 
+def _optional_mapping(value: object) -> Mapping[str, Any] | None:
+    """Return a mapping when the API supplied one, else nothing."""
+    return value if isinstance(value, Mapping) else None
+
+
+def _class_label(source: Mapping[str, Any]) -> str | None:
+    """Read the class label from a pupil or parent-child login record."""
+    profile = _optional_mapping(source.get("profile"))
+    classe = _optional_mapping(profile.get("classe") if profile is not None else None)
+    if classe is None:
+        classe = _optional_mapping(source.get("classe"))
+    if classe is None:
+        return None
+    return _optional_text(classe.get("libelle"))
+
+
 def _student_from_source(source: Mapping[str, Any]) -> Student:
     """Map one login pupil without exposing its source login identifier."""
     if source.get("id") is None:
@@ -117,7 +133,7 @@ def _student_from_source(source: Mapping[str, Any]) -> Student:
     return Student(
         id=str(source["id"]),
         name=name,
-        class_name=None,
+        class_name=_class_label(source),
         establishment=None,
         has_photo=False,
     )

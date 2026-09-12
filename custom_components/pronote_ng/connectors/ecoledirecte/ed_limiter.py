@@ -424,6 +424,7 @@ class EdRateLimiter:
             )
 
     def snapshot_counters(self) -> dict[str, Any]:
+        reason = self._hold_reason if self._hold_active() else None
         return {
             "calls_today": self.calls_today,
             "calls_by_tier": dict(self._calls_by_tier),
@@ -434,5 +435,7 @@ class EdRateLimiter:
                 0, self.config.max_requests_per_day - self._calls_today
             ),
             "state": str(self.state),
+            "reason": str(reason) if reason else None,
+            "consecutive_failures": self._consecutive_failures,
             "throttled": self._throttled_since is not None,
         }

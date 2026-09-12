@@ -87,6 +87,15 @@ class EcoleDirecteClient:
         self.calls = 0
         self.token: str | None = None
 
+    @property
+    def read_timeout(self) -> float:
+        """Deadline applied to every aiohttp call and ``wait_for``."""
+        return self._read_timeout
+
+    def configure_read_timeout(self, read_timeout: float) -> None:
+        """Apply the entry deadline after construction."""
+        self._read_timeout = read_timeout
+
     def __repr__(self) -> str:
         """Represent only non-secret client state."""
         return (
@@ -173,6 +182,8 @@ class EcoleDirecteClient:
             username,
             password,
             extra={
+                "cn": factor["cn"],
+                "cv": factor["cv"],
                 "uuid": "",
                 "fa": [{"cn": factor["cn"], "cv": factor["cv"]}],
             },

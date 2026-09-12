@@ -8,7 +8,12 @@
         "idLogin": 101,
         "typeCompte": "E",
         "prenom": "Enfant",
-        "nom": "Un"
+        "nom": "Un",
+        "profile": {
+          "classe": {
+            "libelle": "4e Demo"
+          }
+        }
       }
     ]
   }
