@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from custom_components.pronote_ng.const import CONF_SOURCE
-
+from ..const import CONF_SOURCE  # noqa: TID252
 from .ecoledirecte.connector import EcoledirecteConnector
 from .pronote import PronoteConnector
 from .protocol import SchoolConnector, Source

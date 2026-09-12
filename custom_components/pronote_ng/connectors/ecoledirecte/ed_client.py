@@ -9,14 +9,14 @@ from urllib.parse import quote
 
 from aiohttp import ClientError, ClientTimeout
 
-from custom_components.pronote_ng.connectors.errors import (
+from ..errors import (  # noqa: TID252
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
     ConnectorError,
     ConnectorTransportError,
     ConnectorUndecodableError,
 )
-from custom_components.pronote_ng.connectors.protocol import ChallengeKind
+from ..protocol import ChallengeKind  # noqa: TID252
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
