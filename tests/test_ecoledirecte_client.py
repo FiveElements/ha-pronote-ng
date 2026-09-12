@@ -22,7 +22,9 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
 from custom_components.pronote_ng.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
+    ConnectorError,
     ConnectorTransportError,
+    ConnectorUndecodableError,
 )
 from custom_components.pronote_ng.connectors.protocol import ChallengeKind
 
@@ -73,7 +75,7 @@ class RecordingTransport:
 
     def __init__(
         self,
-        script: Sequence[tuple[str, str, dict[str, Any]]],
+        script: Sequence[tuple[str, str, object]],
     ) -> None:
         self._script = list(script)
         self.urls: list[str] = []
@@ -83,7 +85,7 @@ class RecordingTransport:
     @classmethod
     def scripted(
         cls,
-        script: Sequence[tuple[str, str, dict[str, Any]]],
+        script: Sequence[tuple[str, str, object]],
     ) -> Self:
         """Build a transport from ordered method/path/payload triples."""
         return cls(script)
@@ -103,11 +105,22 @@ class RecordingTransport:
         self.urls.append(url)
         self.headers_on.append(dict(headers))
         self.data_on.append(kwargs.get("data"))
-        response_headers = (
-            {"x-token": "not-a-real-token"} if payload.get("code") in {200, 250} else {}
+        business_payload = (
+            payload
+            if isinstance(payload, dict) and "code" in payload
+            else {"code": 200, "data": payload}
         )
-        cookies = {"GTK": payload["gtk"]} if "gtk" in payload else {}
-        return FakeResponse(payload, response_headers, cookies)
+        response_headers = (
+            {"x-token": "not-a-real-token"}
+            if business_payload.get("code") in {200, 250}
+            else {}
+        )
+        cookies = (
+            {"GTK": str(payload["gtk"])}
+            if isinstance(payload, dict) and "gtk" in payload
+            else {}
+        )
+        return FakeResponse(business_payload, response_headers, cookies)
 
 
 @pytest.mark.asyncio
@@ -208,3 +221,105 @@ async def test_a_payload_read_failure_is_a_transport_error() -> None:
 
     with pytest.raises(ConnectorTransportError):
         await client.request("/eleves/1/notes.awp", verbe="get", data={})
+
+
+def test_client_repr_never_contains_credential_material() -> None:
+    """Debugging an entry must reveal only cost and authentication state."""
+    client = EcoleDirecteClient(
+        RecordingTransport.scripted([]),
+    )
+    assert repr(client) == "EcoleDirecteClient(calls=0, authenticated=False)"
+
+
+@pytest.mark.asyncio
+async def test_a_login_without_a_gtk_cookie_is_a_transport_error() -> None:
+    """Submitting credentials without GTK would misclassify a bootstrap defect."""
+    client = EcoleDirecteClient(StaticTransport(FakeResponse({"code": 200}, {}, {})))
+    with pytest.raises(ConnectorTransportError, match="GTK"):
+        await client.login("demo.example.invalid", "not-a-real-password")
+
+
+@pytest.mark.asyncio
+async def test_a_bootstrap_socket_error_is_a_transport_error() -> None:
+    """The initial GET belongs to the same transport failure vocabulary."""
+
+    class BrokenTransport:
+        async def request(
+            self, method: str, url: str, **kwargs: object
+        ) -> FakeResponse:
+            raise OSError("scripted failure")
+
+    client = EcoleDirecteClient(BrokenTransport())
+    with pytest.raises(ConnectorTransportError):
+        await client.login("demo.example.invalid", "not-a-real-password")
+
+
+@pytest.mark.asyncio
+async def test_invalid_json_is_an_undecodable_response() -> None:
+    """A protocol body defect is not a transport or credentials failure."""
+    response = FakeResponse({"code": 200}, {}, {}, json_error=ValueError("bad"))
+    client = EcoleDirecteClient(StaticTransport(response))
+    with pytest.raises(ConnectorUndecodableError, match="invalid JSON"):
+        await client.request("/eleves/1/notes.awp", verbe="get", data={})
+
+
+@pytest.mark.asyncio
+async def test_a_non_object_json_body_is_undecodable() -> None:
+    """Business codes cannot be read safely from a JSON array."""
+    response = FakeResponse([], {}, {})  # type: ignore[arg-type]
+    client = EcoleDirecteClient(StaticTransport(response))
+    with pytest.raises(ConnectorUndecodableError, match="non-object"):
+        await client.request("/eleves/1/notes.awp", verbe="get", data={})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("code", "exception"),
+    [
+        (517, ConnectorUndecodableError),
+        (520, ConnectorError),
+        (525, ConnectorError),
+        (999, ConnectorUndecodableError),
+    ],
+)
+async def test_business_error_codes_keep_their_connector_vocabulary(
+    code: int, exception: type[ConnectorError]
+) -> None:
+    """Version, token, and unknown failures must not become bad passwords."""
+    client = EcoleDirecteClient(StaticTransport(FakeResponse({"code": code}, {}, {})))
+    client.token = "not-a-real-token"
+    with pytest.raises(exception):
+        await client.request("/eleves/1/notes.awp", verbe="get", data={})
+    if code in {520, 525}:
+        assert client.token is None
+
+
+@pytest.mark.asyncio
+async def test_a_2fa_token_is_sent_on_the_following_request() -> None:
+    """QCM continuation depends on retaining the dedicated response header."""
+
+    class TwoStepTransport:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.last_headers: Mapping[str, str] = {}
+
+        async def request(
+            self, method: str, url: str, **kwargs: object
+        ) -> FakeResponse:
+            self.calls += 1
+            headers = kwargs["headers"]
+            assert isinstance(headers, Mapping)
+            self.last_headers = headers
+            if self.calls == 1:
+                return FakeResponse(
+                    {"code": 200},
+                    {"2FA-Token": "not-a-real-2fa-token"},
+                    {},
+                )
+            return FakeResponse({"code": 200}, {}, {})
+
+    transport = TwoStepTransport()
+    client = EcoleDirecteClient(transport)
+    await client.request("/first.awp", verbe="get", data={})
+    await client.request("/second.awp", verbe="get", data={})
+    assert transport.last_headers["2FA-Token"] == "not-a-real-2fa-token"

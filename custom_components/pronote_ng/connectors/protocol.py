@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from ..const import Tier  # noqa: TID252
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date, datetime
 
     from ..const import Priority  # noqa: TID252
@@ -39,6 +40,8 @@ class SchoolConnector(Protocol):
     def today(self) -> date: ...
 
     async def async_open(self) -> None: ...
+
+    async def async_load_session_facts(self, student_ids: Sequence[str]) -> None: ...
 
     def session_facts(self, student_id: str) -> SessionFacts: ...
 

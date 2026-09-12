@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from custom_components.pronote_ng.const import CONF_SOURCE
 
+from .ecoledirecte.connector import EcoledirecteConnector
 from .pronote import PronoteConnector
 from .protocol import SchoolConnector, Source
 
@@ -27,7 +28,7 @@ def build_connector(
     del hass
     source = source_from_entry_data(dict(entry.data))
     if source is Source.PRONOTE:
-        return PronoteConnector(**deps)
+        return cast("SchoolConnector", PronoteConnector(**deps))
     if source is Source.ECOLEDIRECTE:
-        raise ValueError("ecoledirecte connector is not wired yet")
+        return cast("SchoolConnector", EcoledirecteConnector(**deps))
     raise ValueError(f"unsupported source: {source}")

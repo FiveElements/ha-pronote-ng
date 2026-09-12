@@ -186,3 +186,124 @@ def test_a_corrupted_list_entry_fails_instead_of_returning_partial_data() -> Non
     payload: list[object] = [minimal_ed_lesson(), "not-a-dictionary"]
     with pytest.raises(ConnectorUndecodableError):
         timetable_facts(payload, zone=ZONE)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        {"accounts": "not-a-list"},
+        {"accounts": [None]},
+    ],
+)
+def test_invalid_account_shapes_fail_closed(payload: object) -> None:
+    """A partial household would silently omit a child and all their entities."""
+    with pytest.raises(ConnectorUndecodableError):
+        ed_mapping.students_from_accounts(payload)
+
+
+def test_accounts_require_public_and_routing_identifiers() -> None:
+    """A child without either id cannot be collected or selected safely."""
+    missing_public = {"accounts": [{"typeCompte": "E", "idLogin": 101}]}
+    missing_login = {"accounts": [{"typeCompte": "E", "id": 1}]}
+    with pytest.raises(ConnectorUndecodableError, match="pupil id"):
+        ed_mapping.students_from_accounts(missing_public)
+    with pytest.raises(ConnectorUndecodableError, match="routing"):
+        ed_mapping.student_login_ids_from_accounts(missing_login)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {**minimal_ed_lesson(), "start_date": None},
+        {**minimal_ed_lesson(), "start_date": "not-a-date"},
+        {
+            **minimal_ed_lesson(),
+            "start_date": "2026-09-14T06:00:00+00:00",
+        },
+    ],
+)
+def test_lesson_dates_are_valid_and_normalized(raw: dict[str, Any]) -> None:
+    """Invalid dates fail the tier; aware dates adopt the entry timezone."""
+    if raw["start_date"] == "2026-09-14T06:00:00+00:00":
+        assert lesson_from_ed(raw, zone=ZONE).start.tzinfo is ZONE
+    else:
+        with pytest.raises(ConnectorUndecodableError):
+            lesson_from_ed(raw, zone=ZONE)
+
+
+@pytest.mark.parametrize("date_value", [None, "not-a-date"])
+def test_period_dates_must_be_iso_days(date_value: object) -> None:
+    """A malformed period must not mint a plausible history boundary."""
+    payload = load_json("notes.json")
+    payload["periodes"][0]["dateDebut"] = date_value
+    with pytest.raises(ConnectorUndecodableError):
+        ed_mapping.periods_from_notes(payload, zone=ZONE)
+
+
+def test_invalid_homework_and_grade_dates_fail_the_tier() -> None:
+    """Bad calendar keys must not become empty, apparently valid collections."""
+    with pytest.raises(ConnectorUndecodableError, match="homework date"):
+        homework_facts({"not-a-date": []})
+    notes = load_json("notes.json")
+    notes["notes"][0]["date"] = None
+    with pytest.raises(ConnectorUndecodableError, match="grade date"):
+        grades_from_notes(notes)
+    notes["notes"][0]["date"] = "not-a-date"
+    with pytest.raises(ConnectorUndecodableError, match="grade date"):
+        grades_from_notes(notes)
+
+
+def test_unreadable_decimals_and_optional_collections_remain_absent() -> None:
+    """Missing numeric evidence is None, never an invented zero."""
+    notes = load_json("notes.json")
+    notes["notes"][0]["valeur"] = "absent"
+    notes["notes"][0]["noteSur"] = None
+    grade = grades_from_notes(notes)[0]
+    assert grade.value is None
+    assert grade.out_of is None
+    assert ed_mapping._texts(None) == ()
+    assert ed_mapping._texts(" seul ") == ("seul",)
+
+
+def test_closed_or_incomplete_periods_produce_no_current_or_averages() -> None:
+    """No open term is different from selecting a fabricated fallback."""
+    notes = load_json("notes.json")
+    notes["periodes"][0]["cloture"] = True
+    notes["periodes"][0]["ensembleMatieres"] = None
+    notes["periodes"].append(
+        {
+            "idPeriode": "A002",
+            "periode": "Trimestre 2",
+            "dateDebut": "2027-01-01",
+            "dateFin": "2027-03-31",
+            "cloture": True,
+            "ensembleMatieres": {
+                "disciplines": [
+                    {
+                        "discipline": "Option",
+                        "groupeMatiere": True,
+                    }
+                ]
+            },
+        }
+    )
+    assert ed_mapping.current_period_from_notes(notes, zone=ZONE) is None
+    facts = marks_facts(notes, current_period_id="A001")
+    assert facts.averages == ()
+
+
+def test_missing_accounts_lists_and_grouped_averages_fail_or_skip() -> None:
+    """Missing identity fails, while aggregate subject rows are intentionally skipped."""
+    with pytest.raises(ConnectorUndecodableError, match="accounts key"):
+        ed_mapping.students_from_accounts({})
+    assert ed_mapping._texts(["", " professeur "]) == ("professeur",)
+    grouped = {
+        "ensembleMatieres": {
+            "disciplines": [
+                {"discipline": "Groupe", "groupeMatiere": True},
+                {"discipline": "Sous-matière", "codeSousMatiere": "SUB"},
+            ]
+        }
+    }
+    assert ed_mapping._averages(grouped) == ()

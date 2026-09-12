@@ -23,29 +23,40 @@ def test_an_entry_without_a_source_key_is_pronote() -> None:
     assert source_from_entry_data({"source": "ecoledirecte"}) is Source.ECOLEDIRECTE
 
 
-def test_building_an_ecoledirecte_connector_raises_until_it_is_wired() -> None:
-    """The factory must reject an unwired backend before account setup can drift."""
+def test_building_an_ecoledirecte_connector_uses_the_ready_client() -> None:
+    """The factory must select ED without constructing the Pronote transport stack."""
+    from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
+        EcoledirecteConnector,
+    )
+    from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+        EcoleDirecteClient,
+    )
     from custom_components.pronote_ng.connectors.factory import build_connector
+    from tests.test_ecoledirecte_client import RecordingTransport
 
     entry = SimpleNamespace(
         entry_id="entry-under-test",
         data={"source": "ecoledirecte"},
         options={},
     )
+    client = EcoleDirecteClient(RecordingTransport.scripted([]))
 
-    with pytest.raises(
-        ValueError, match="ecoledirecte connector is not wired yet"
-    ):
-        build_connector(None, entry)  # type: ignore[arg-type]
+    connector = build_connector(  # type: ignore[arg-type]
+        None,
+        entry,
+        client=client,
+        timezone="Europe/Paris",
+    )
+
+    assert isinstance(connector, EcoledirecteConnector)
+    assert connector.client is client
 
 
 def test_a_capability_set_that_omits_menus_does_not_list_that_tier() -> None:
     """An Ecoledirecte-shaped connector must not be asked for a canteen page."""
     caps = ConnectorCapabilities(
         source=Source.ECOLEDIRECTE,
-        tiers=frozenset(
-            {Tier.TIMETABLE, Tier.HOMEWORK, Tier.MARKS, Tier.ATTENDANCE}
-        ),
+        tiers=frozenset({Tier.TIMETABLE, Tier.HOMEWORK, Tier.MARKS, Tier.ATTENDANCE}),
         writes=frozenset(),
         services=frozenset(),
     )

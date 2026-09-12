@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
@@ -36,6 +36,7 @@ from homeassistant.util import dt as dt_util
 
 from .child_keys import is_minted, pair
 from .connectors.factory import build_connector
+from .connectors.protocol import Source
 from .const import (
     CONF_ACCOUNT_PIN,
     CONF_CHILD_KEYS,
@@ -96,6 +97,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from . import PronoteConfigEntry
+    from .connectors.ecoledirecte.ed_limiter import EdRateLimiter
+    from .connectors.pronote import PronoteConnector
     from .connectors.protocol import ConnectorCapabilities
     from .coordinator import TierData
     from .delta import DeltaEvent
@@ -314,22 +317,22 @@ class PronoteAccount:
     @property
     def gateway(self) -> PronoteGateway:
         """The PRONOTE extras gateway kept for services during the migration."""
-        return self.connector.gateway
+        return cast("PronoteConnector", self.connector).gateway
 
     @property
-    def limiter(self) -> RateLimiter:
+    def limiter(self) -> RateLimiter | EdRateLimiter:
         """The connector-owned limiter kept for account orchestration."""
-        return self.connector.limiter
+        return cast("PronoteConnector", self.connector).limiter
 
     @property
     def executor(self) -> SerialExecutor:
         """The connector-owned executor kept for compatibility."""
-        return self.connector.executor
+        return cast("PronoteConnector", self.connector).executor
 
     @property
     def session(self) -> SessionManager:
         """The connector-owned session kept for services during the migration."""
-        return self.connector.session
+        return cast("PronoteConnector", self.connector).session
 
     @property
     def establishment_name(self) -> str:
@@ -1036,6 +1039,23 @@ class PronoteAccount:
             calls += used
             succeeded = True
             coordinator.publish(student.id, snapshot)
+            if (
+                tier is Tier.MARKS
+                and self.connector.capabilities.source is Source.ECOLEDIRECTE
+            ):
+                session = self.connector.session_facts(student.id)
+                self.state.periods = session.periods
+                self.state.current_period = session.current_period
+                self.coordinators[Tier.SESSION].publish(
+                    student.id,
+                    Snapshot(
+                        data=session,
+                        fetched_at=self.now(),
+                        tier=Tier.SESSION,
+                        calls=0,
+                        student_id=student.id,
+                    ),
+                )
             events.extend((student.id, event) for event in detected)
 
         if not succeeded:

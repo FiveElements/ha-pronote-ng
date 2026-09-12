@@ -66,6 +66,14 @@ def test_the_gate_finds_pronote_modules_under_the_package_prefix() -> None:
     assert check_coverage.coverage_for(per_module, "pronote_ng/gateway.py") == 100.0
 
 
+def test_the_three_ecoledirecte_protocol_modules_are_critical() -> None:
+    """An invisible ED admission or decode defect must fail the coverage gate."""
+    required = check_coverage.CRITICAL_MODULES
+    assert required["pronote_ng/connectors/ecoledirecte/ed_limiter.py"] == 100.0
+    assert required["pronote_ng/connectors/ecoledirecte/ed_client.py"] == 100.0
+    assert required["pronote_ng/connectors/ecoledirecte/ed_mapping.py"] == 100.0
+
+
 def test_a_package_relative_cobertura_report_joins_source_to_find_pronote() -> None:
     """CI writes basenames; joining <source> is what makes the suffix exist."""
     root = _report(
