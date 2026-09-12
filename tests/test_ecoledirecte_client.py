@@ -24,6 +24,7 @@ from custom_components.pronote_ng.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
     ConnectorError,
+    ConnectorSessionExpiredError,
     ConnectorTransportError,
     ConnectorUndecodableError,
 )
@@ -434,15 +435,20 @@ async def test_a_non_object_json_body_is_undecodable() -> None:
     ("code", "exception"),
     [
         (517, ConnectorUndecodableError),
-        (520, ConnectorError),
-        (525, ConnectorError),
+        (520, ConnectorSessionExpiredError),
+        (525, ConnectorSessionExpiredError),
         (999, ConnectorUndecodableError),
     ],
 )
 async def test_business_error_codes_keep_their_connector_vocabulary(
     code: int, exception: type[ConnectorError]
 ) -> None:
-    """Version, token, and unknown failures must not become bad passwords."""
+    """Version, token, and unknown failures must not become bad passwords.
+
+    Nor all become the same thing: an expired token has its own class because
+    set-up classifies it differently. It is a session that ended, not a payload
+    nobody can read, and it must not open a repair asking for a bug report.
+    """
     client = EcoleDirecteClient(StaticTransport(FakeResponse({"code": code}, {}, {})))
     client.token = "not-a-real-token"
     with pytest.raises(exception):

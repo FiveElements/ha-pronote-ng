@@ -29,6 +29,7 @@ from .connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
     ConnectorError,
+    ConnectorSessionExpiredError,
     ConnectorTransportError,
     ConnectorUndecodableError,
 )
@@ -142,18 +143,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
         account.async_open_bootstrap_issue()
         await account.async_unload()
         raise ConfigEntryNotReady(str(error)) from error
+    except (
+        LoginRefused,
+        LoginRefusedByLimiter,
+        IntegrationFault,
+        ConnectorSessionExpiredError,
+    ) as error:
+        # Retry, and open nothing. These are ordinary ends of a session rather
+        # than faults to report: the connector has already dropped the tokens
+        # it held, so the retry logs in again. This arm sits *above* the
+        # `ConnectorError` catch-all deliberately -- an expired token that fell
+        # through to it opened a repair asking the user to file a bug report,
+        # for a condition that fixed itself on the next attempt, and no code
+        # path ever closes that card again.
+        await account.async_unload()
+        raise ConfigEntryNotReady(str(error)) from error
     except (AccountUnreadable, ConnectorUndecodableError, ConnectorError) as error:
         # The server answered and the credentials were fine; what came back is
         # outside the declared contract. Retrying is right -- establishments do
         # publish transient nonsense -- but the limiter holds it back, so this
-        # does not become a loop. A vanished EcoleDirecte token raises a bare
-        # `ConnectorError`; an unreadable payload raises
-        # `ConnectorUndecodableError`. Both must name the same repair as
-        # `AccountUnreadable`, never `ConfigEntryAuthFailed`.
+        # does not become a loop. An unreadable payload raises
+        # `ConnectorUndecodableError`; a bare `ConnectorError` is the last
+        # resort, and catching the base class is what stops any connector
+        # error from reaching set-up unclassified. Both must name the same
+        # repair as `AccountUnreadable`, never `ConfigEntryAuthFailed`.
         account.async_open_unreadable_issue()
-        await account.async_unload()
-        raise ConfigEntryNotReady(str(error)) from error
-    except (LoginRefused, LoginRefusedByLimiter, IntegrationFault) as error:
         await account.async_unload()
         raise ConfigEntryNotReady(str(error)) from error
     except PronoteAPIError as error:

@@ -269,8 +269,13 @@ ordre qui n'est pas indifférent.
    `bootstrap_failed` puis `ConfigEntryNotReady` ; `AccountUnreadable`,
    `ConnectorUndecodableError` et un `ConnectorError` nu ouvrent
    `account_unreadable` puis `ConfigEntryNotReady` ; `LoginRefused`,
-   `IntegrationFault`, `PronoteAPIError`, `TimeoutError` et `OSError`
-   deviennent `ConfigEntryNotReady` sans réparation. La distinction compte :
+   `LoginRefusedByLimiter`, `IntegrationFault`, `ConnectorSessionExpiredError`,
+   `PronoteAPIError`, `TimeoutError` et `OSError` deviennent
+   `ConfigEntryNotReady` **sans** réparation. La position de ce dernier bras
+   au-dessus de l'attrape-tout `ConnectorError` n'est pas cosmétique : un jeton
+   de session expiré y ouvrait sinon une carte demandant un rapport de bug —
+   qu'aucun chemin de code ne referme — pour une condition réparée au réessai
+   suivant, le connecteur ayant déjà oublié ses jetons. La distinction compte :
    répondre « identifiants invalides » à un serveur qui répond mal envoie
    l'utilisateur ressaisir un mot de passe correct.
 5. `entry.runtime_data = account`, et *aussi* `hass.data[DOMAIN][entry_id]`.

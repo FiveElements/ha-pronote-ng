@@ -55,6 +55,7 @@ from custom_components.pronote_ng.connectors.errors import (
     ConnectorChildMissingError,
     ConnectorCredentialsError,
     ConnectorError,
+    ConnectorSessionExpiredError,
     ConnectorTransportError,
     ConnectorUndecodableError,
     ConnectorUnsupportedError,
@@ -564,11 +565,20 @@ async def test_an_undecodable_login_asks_for_a_report(
             id="undecodable",
         ),
         pytest.param(
-            ConnectorError("EcoleDirecte session token is no longer valid"),
+            ConnectorError("a connector failure with no class of its own"),
             ConfigEntryState.SETUP_RETRY,
             ISSUE_ACCOUNT_UNREADABLE,
             False,
             id="bare",
+        ),
+        pytest.param(
+            ConnectorSessionExpiredError(
+                "EcoleDirecte session token is no longer valid"
+            ),
+            ConfigEntryState.SETUP_RETRY,
+            None,
+            False,
+            id="session-expired",
         ),
         pytest.param(
             ConnectorChildMissingError("STUDENT-9"),
@@ -605,6 +615,12 @@ async def test_each_seam_error_at_setup_has_a_named_home_assistant_outcome(
     parent to re-enter credentials that are still correct. Transport stays on
     the bootstrap repair. Caller-bug subclasses that leak to set-up still get
     a named issue rather than ``SETUP_ERROR`` with no repair.
+
+    An expired session is the exception that proves the scale is about what
+    the user should *do*: it retries and opens **nothing**. The connector has
+    already dropped its tokens, so the next attempt logs in again -- and a
+    repair card asking for a bug report, which nothing ever closes, would
+    outlive the condition by weeks.
     """
     del school_day, no_spacing
     with patch.object(PronoteAccount, "async_setup", side_effect=error):
