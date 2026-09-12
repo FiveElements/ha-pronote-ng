@@ -333,6 +333,7 @@ class EdRateLimiter:
         *,
         cost: int = ED_LOGIN_COST,
     ) -> T:
+        self._roll_day()
         if self._logins_today >= self.config.max_logins_per_day:
             raise LoginRefusedByLimiter(
                 DeferReason.LOGIN_CAP, self._seconds_to_midnight()

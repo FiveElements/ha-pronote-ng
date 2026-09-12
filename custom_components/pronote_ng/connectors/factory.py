@@ -10,7 +10,7 @@ from .protocol import SchoolConnector, Source
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from custom_components.pronote_ng import PronoteConfigEntry
+    from .. import PronoteConfigEntry  # noqa: TID252
 
 
 def source_from_entry_data(data: dict[str, Any]) -> Source:

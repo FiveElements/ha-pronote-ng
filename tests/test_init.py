@@ -21,6 +21,7 @@ credentials that are correct is worse than saying nothing.
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -37,6 +38,12 @@ from custom_components.pronote_ng import async_remove_config_entry_device
 from custom_components.pronote_ng.account import (
     PronoteAccount,
     _establishment_timezone,
+)
+from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
+    EcoledirecteConnector,
+)
+from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
+    EdRateLimiter,
 )
 from custom_components.pronote_ng.connectors.protocol import Source
 from custom_components.pronote_ng.const import (
@@ -58,6 +65,7 @@ from custom_components.pronote_ng.hardened_client import BootstrapUnavailable
 from custom_components.pronote_ng.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
+    RateLimitConfig,
 )
 from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
 from custom_components.pronote_ng.tiers import (
@@ -718,6 +726,45 @@ async def test_a_batch_with_nothing_due_is_still_counted(
     await account._async_tick()
 
     assert account.completed_ticks == before + 1
+
+
+async def test_an_ed_batch_and_diagnostics_never_touch_session_manager() -> None:
+    """ED owns an asyncio lock, so a SessionManager access crashes its first tick."""
+    limiter = EdRateLimiter(
+        RateLimitConfig(min_request_interval=0, quiet_hours_enabled=False)
+    )
+    connector = SimpleNamespace(
+        capabilities=EcoledirecteConnector.CAPABILITIES,
+        limiter=limiter,
+        diagnostics=lambda: {
+            "limiter": limiter.snapshot_counters(),
+            "session": {"authenticated": True},
+        },
+    )
+    account = object.__new__(PronoteAccount)
+    account.connector = connector  # type: ignore[assignment]
+    account.scheduler = SimpleNamespace(  # type: ignore[assignment]
+        due=lambda: (Tier.TIMETABLE,),
+        diagnostics=dict,
+    )
+    account._shutting_down = False
+    account._completed_ticks = 0
+    account.state = SimpleNamespace(students=(), periods=())
+    account.stale_after = 3
+    account.entry = SimpleNamespace(options={})  # type: ignore[assignment]
+
+    collected: list[Tier] = []
+
+    async def collect(tier: Tier) -> None:
+        collected.append(tier)
+
+    account._async_collect = collect  # type: ignore[method-assign]
+    account._async_sync_issues = lambda: None  # type: ignore[method-assign]
+
+    await account._async_run_batch()
+
+    assert collected == [Tier.TIMETABLE]
+    assert account.diagnostics()["session"] == {"authenticated": True}
 
 
 async def test_a_stale_child_device_can_be_deleted(

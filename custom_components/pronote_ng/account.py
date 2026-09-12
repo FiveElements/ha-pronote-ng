@@ -952,7 +952,8 @@ class PronoteAccount:
         # `(child, tier)` -- 36 logins in a single tick for a two-child
         # account with three closed periods, against a cap of 24.
         self.limiter.begin_batch()
-        self.session.begin_batch()
+        if self.connector.capabilities.source is Source.PRONOTE:
+            self.session.begin_batch()
         try:
             for tier in due:
                 if self._stopping():
@@ -1316,9 +1317,10 @@ class PronoteAccount:
         construction: none of them is ever stored in a snapshot, so there is
         nothing here to redact (§8.2, §8.4).
         """
+        connector_diagnostics = self.connector.diagnostics()
         return {
             "limiter": self.limiter.snapshot_counters(),
-            "session": self.session.diagnostics(),
+            "session": connector_diagnostics["session"],
             "scheduler": self.scheduler.diagnostics(),
             # Batches finished since start-up. Reported because a tier with no
             # data is two different faults depending on this number: zero means

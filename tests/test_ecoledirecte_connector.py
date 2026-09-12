@@ -24,6 +24,7 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
 from custom_components.pronote_ng.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
+    ConnectorTransportError,
     ConnectorUnsupportedError,
 )
 from custom_components.pronote_ng.connectors.protocol import Source
@@ -377,6 +378,62 @@ async def test_switching_a_parent_child_charges_renewtoken_to_login() -> None:
     assert counters["homework"] == 1
 
 
+@pytest.mark.asyncio
+async def test_a_renewtoken_transport_failure_enters_ed_backoff() -> None:
+    """Child selection is a real POST and must not bypass transport punishment."""
+    login = {
+        "code": 200,
+        "data": {
+            "accounts": [
+                {
+                    "typeCompte": "P",
+                    "profile": {
+                        "eleves": [
+                            {
+                                "id": 1,
+                                "idLogin": 101,
+                                "prenom": "Enfant",
+                                "nom": "Un",
+                            },
+                            {
+                                "id": 2,
+                                "idLogin": 102,
+                                "prenom": "Enfant",
+                                "nom": "Deux",
+                            },
+                        ]
+                    },
+                }
+            ]
+        },
+    }
+
+    class RenewFailureTransport(RecordingTransport):
+        async def request(self, method: str, url: str, **kwargs: object) -> object:
+            if "renewtoken.awp" in url:
+                raise OSError("scripted renewtoken failure")
+            return await super().request(method, url, **kwargs)
+
+    connector = EcoledirecteConnector(
+        client=EcoleDirecteClient(
+            RenewFailureTransport.scripted(
+                [
+                    ("GET", "login.awp", {"gtk": "gtk-demo"}),
+                    ("POST", "login.awp", login),
+                ]
+            )
+        ),
+        zone="Europe/Paris",
+    )
+    await connector.async_open()
+
+    with pytest.raises(ConnectorTransportError):
+        await connector.async_collect(Tier.HOMEWORK, "1", priority=Priority.HIGH)
+
+    assert connector.limiter.consecutive_failures == 1
+    assert connector.limiter.state is LimiterState.BACKOFF
+
+
 def test_ecoledirecte_capabilities_are_the_four_read_only_tiers() -> None:
     """An ED entry must not advertise unsupported pages or writes."""
     assert EcoledirecteConnector.CAPABILITIES.source is Source.ECOLEDIRECTE
@@ -521,6 +578,24 @@ async def test_login_cap_refuses_before_the_operation_runs() -> None:
     with pytest.raises(LoginRefusedByLimiter) as refused:
         await limiter.login(lambda: asyncio.sleep(0), cost=2)
     assert refused.value.reason is DeferReason.LOGIN_CAP
+
+
+@pytest.mark.asyncio
+async def test_login_cap_resets_before_refusal_on_the_next_day() -> None:
+    """Yesterday's exhausted login cap must not block the first login after midnight."""
+    clock = ManualClock(wall=datetime(2026, 9, 11, 23, 59, tzinfo=UTC))
+    limiter = EdRateLimiter(
+        _config(max_logins_per_day=1),
+        clock=clock.monotonic,
+        now=clock.now,
+        sleep=clock.sleep,
+    )
+    await limiter.login(lambda: asyncio.sleep(0))
+    clock.elapsed = 120
+
+    await limiter.login(lambda: asyncio.sleep(0))
+
+    assert limiter.logins_today == 1
 
 
 def test_state_round_trip_keeps_only_same_day_budget_and_live_holds() -> None:

@@ -180,15 +180,19 @@ class EcoledirecteConnector:
         login_id = self._login_ids[student_id]
         if login_id == self._current_login_id:
             return
-        await self.limiter.call(
-            "login",
-            Priority.CRITICAL,
-            lambda: self.client.request(
-                "/renewtoken.awp",
-                verbe="post",
-                data={"idUser": login_id},
-            ),
-        )
+        try:
+            await self.limiter.call(
+                "login",
+                Priority.CRITICAL,
+                lambda: self.client.request(
+                    "/renewtoken.awp",
+                    verbe="post",
+                    data={"idUser": login_id},
+                ),
+            )
+        except ConnectorTransportError:
+            self.limiter.note_transport_failure()
+            raise
         self._current_login_id = login_id
 
     @staticmethod
