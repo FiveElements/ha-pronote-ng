@@ -343,7 +343,7 @@ seul, et les connexions tombent à **une à trois par jour**.
 
 | Palier | Intervalle | Lots / jour | Requêtes par lot | Total |
 | --- | --- | --- | --- | --- |
-| `timetable` | 15 min | 64 | 1,14 (semaine suivante au franchissement) | 73 |
+| `timetable` | 15 min | 64 | 2 (semaine courante + suivante, cf. §5.2 de la spéc.) | 128 |
 | `homework` | 30 min | 32 | 1 (l'année entière, cf. §5.2 de la spéc.) | 32 |
 | `news` | 1 h | 16 | 1 | 16 |
 | `discussions` | 1 h | 16 | 2 (liste + une expansion moyenne, cf. note) | 32 |
@@ -353,13 +353,23 @@ seul, et les connexions tombent à **une à trois par jour**.
 | `menus` | 24 h | 1 | 1,14 | 1 |
 | `static` | 24 h | 1 | 1 (équipe pédagogique seule) | 1 |
 | `history` | 24 h | 1 | 8 (2 périodes closes × 198/13/19/**201**) | 8 |
-| | | | **Données** | **180** |
+| | | | **Données** | **235** |
 | Connexions | paresseuses | 1 à 3 | 5 à 7 | **5 à 21** |
-| | | | **Total** | **≈ 198** |
+| | | | **Total** | **≈ 253** |
 
 Contre ≈ 423 annoncés en v1 — et ≈ 487 réels avec le modèle corrigé. La
-conception v2 coûte donc **deux cinquièmes** de la v1, pour une fraîcheur
-*supérieure* sur la semaine d'emploi du temps.
+conception v2 coûte donc **un peu plus de la moitié** de la v1, pour une
+fraîcheur *supérieure* sur la semaine d'emploi du temps.
+
+`timetable` a coûté 1,14 jusqu'à ce que l'horizon soit corrigé, et les deux
+chiffres méritent d'être comparés parce que l'écart est la mesure du défaut.
+Le 0,14 était le jour sur sept où *demain* tombait dans la semaine suivante :
+autrement dit, la semaine suivante n'était demandée que le dimanche, et l'état
+du lundi restait inconnu du samedi 00:00 jusqu'à la première collecte du lundi.
+Les 55 requêtes par jour que coûte la correction se lisent contre le plafond de
+2 000 et contre les ≈ 253 dépensées, soit un quart de requête par minute de
+plus. Hors année scolaire le palier ne coûte rien du tout, l'été effaçant à lui
+seul plus que ce que la correction ajoute sur l'année.
 
 **Deux lignes de ce tableau ont été corrigées en relisant le code plutôt que
 la prose, et il vaut la peine de dire lesquelles.**

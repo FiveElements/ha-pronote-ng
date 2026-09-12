@@ -651,10 +651,8 @@ class PronoteGateway:
 
     # -- timetable ---------------------------------------------------------
 
-    def timetable(
-        self, client: HardenedClient, *, include_next_week: bool
-    ) -> GatewayResult[TimetableFacts]:
-        """The current week, plus next week only when it is needed.
+    def timetable(self, client: HardenedClient) -> GatewayResult[TimetableFacts]:
+        """The current week and the next one, always, inside the school year.
 
         ``Client.lessons()`` loops ``for week in range(first_week, last_week +
         1)`` and posts ``PageEmploiDuTemps`` once *per week*, then filters
@@ -662,16 +660,31 @@ class PronoteGateway:
         same request as asking for the whole week, which is why the separate
         week tier was folded in here (§5.2).
 
+        The horizon used to be those two days, with next week's request placed
+        only when tomorrow fell in another week -- that is, **on a Sunday and
+        on no other day**. So from Saturday's first collection until Monday's,
+        the timetable held nothing at all about Monday: the card drew an empty
+        day, ``sensor.<eleve>_prochain_cours`` had nothing to point at, and
+        ``binary_sensor.<eleve>_vacances``, which asks a seven-day question,
+        was answering it from two days of data and read ``on`` every weekend --
+        an automation that skips the alarm on holidays skipped it for Monday.
+        Reaching one week ahead instead costs one extra request per collection
+        and makes the fetched window (14 days from Monday, 8 from Sunday) at
+        least as wide as the widest question asked of it.
+
+        The weeks are clamped to ``[first_week, last_week]``: outside the
+        school year nothing is asked for at all. The long holidays are the
+        reason -- from the last day of one year to the first Monday of the
+        next, PRONOTE publishes no timetable, and a week number beyond
+        ``DerniereDate`` is not an empty week but a question the server was
+        never asked before. A tier that fails on it fails every tick, for two
+        months, and takes its entities down with it.
+
         Raw posts rather than ``client.lessons()`` for one reason: the DTO needs
         ``place``, ``duree`` and whether ``end`` was supplied or inferred, and
         none of those survive ``pronotepy.Lesson``.
         """
-        today = self.today()
-        weeks = [client.get_week(today)]
-        if include_next_week:
-            next_week = client.get_week(today + dt.timedelta(days=1))
-            if next_week not in weeks:
-                weeks.append(next_week)
+        weeks = self._timetable_weeks(client)
 
         lessons: list[Lesson] = []
         calls = 0
@@ -704,6 +717,33 @@ class PronoteGateway:
             ),
             calls=calls,
         )
+
+    def _timetable_weeks(self, client: HardenedClient) -> tuple[int, ...]:
+        """This week and the next, minus any that falls outside the year.
+
+        Both bounds are pure arithmetic on values read once at login
+        (``PremierLundi``, ``DerniereDate``), so the clamp costs no request --
+        see :meth:`_first_week` and :meth:`_last_week`, which the homework span
+        already uses. Two dates can land in the same week (the days before the
+        first Monday all do), hence the set.
+        """
+        today = self.today()
+        first = self._first_week(client)
+        last = self._last_week(client)
+        wanted = {
+            int(client.get_week(today)),
+            int(client.get_week(today + dt.timedelta(days=7))),
+        }
+        weeks = tuple(sorted(week for week in wanted if first <= week <= last))
+        if not weeks:
+            _LOGGER.debug(
+                "no timetable week to ask for: %s is outside the school year "
+                "[%d..%d], which is the ordinary state of the summer holidays",
+                today.isoformat(),
+                first,
+                last,
+            )
+        return weeks
 
     def _fetch_week(
         self, client: HardenedClient, week: int

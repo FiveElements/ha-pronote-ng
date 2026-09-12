@@ -725,7 +725,7 @@ flowchart LR
   end
 
   subgraph HIGH["HIGH · sacrifie a 100 pct du plafond"]
-    TT["timetable · 15 min · 1.14 req"]
+    TT["timetable · 15 min · 2 req"]
     HW["homework · 30 min · 1 req"]
   end
 
@@ -755,7 +755,7 @@ Le détail des coûts, tel que le code les déclare et les dépense :
 | Palier | Intervalle | Priorité | Coût déclaré | Coût réel possible | Requête protocolaire |
 | --- | --- | --- | --- | --- | --- |
 | `session` | — | `CRITICAL` | 0 | 0 | aucune, lu en mémoire |
-| `timetable` | 15 min | `HIGH` | 1, ou 2 au franchissement de semaine | idem | `PageEmploiDuTemps` 16, une par semaine |
+| `timetable` | 15 min | `HIGH` | 2 | 2, ou moins en bordure d'année scolaire | `PageEmploiDuTemps` 16, une par semaine |
 | `homework` | 30 min | `HIGH` | 1 | 1 | `PageCahierDeTexte` 88, l'année entière |
 | `news` | 60 min | `NORMAL` | 1 | 1 | `PageActualites` 8 |
 | `discussions` | 60 min | `LOW` | 1 | 1 à 4 | `ListeMessagerie` 131, plus `ListeMessages` par fil développé |
@@ -769,13 +769,17 @@ Le détail des coûts, tel que le code les déclare et les dépense :
 Plusieurs de ces chiffres sont le résultat d'un comptage sur le code amont, et
 non d'une déduction :
 
-* **`timetable` à 1,14.** `Client.lessons()` boucle `for week in range(...)` et
+* **`timetable` à 2.** `Client.lessons()` boucle `for week in range(...)` et
   poste `PageEmploiDuTemps` une fois **par semaine**, puis filtre côté client.
   Demander « aujourd'hui et demain » coûte donc exactement la même requête que
   demander la semaine entière — ce qui a fait replier le palier « semaine »
-  dans celui-ci. Le 0,14 est le jour sur sept où demain tombe dans la semaine
-  suivante ; la décision est prise dans `tiers.py`, parce que c'est une
-  question d'ordonnancement et pas de décodage.
+  dans celui-ci. Le palier a longtemps coûté 1,14 : une semaine, plus la
+  suivante le seul jour où *demain* la franchissait, c'est-à-dire le dimanche.
+  Le lundi restait donc inconnu pendant tout le week-end. L'horizon est
+  maintenant les deux semaines à chaque collecte, et le coût déclaré est
+  l'ordre de grandeur haut : la passerelle écarte une semaine hors année
+  scolaire (`gateway.PronoteGateway._timetable_weeks`) et dépense alors moins
+  que déclaré, ce que le limiteur ne rembourse pas — délibérément.
 * **`marks` à 2, avec quatre jeux de données pour une requête.** En amont,
   `Period.grades`, `.averages`, `.overall_average` et `.class_overall_average`
   re-postent chacun `DernieresNotes` avec le même corps. La passerelle poste

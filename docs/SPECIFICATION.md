@@ -750,7 +750,7 @@ raisonnaient en *jours* là où le protocole facture en *semaines*.
 | Palier | Contenu | Appel | Intervalle par défaut | Priorité |
 | --- | --- | --- | --- | --- |
 | `session` | connexion, expiration | — | à la demande | critique |
-| `timetable` | semaine courante, plus la suivante au franchissement | `PageEmploiDuTemps` 16 | 15 min | haute |
+| `timetable` | semaine courante **et** semaine suivante, bornées à l'année scolaire | `PageEmploiDuTemps` 16 | 15 min | haute |
 | `homework` | devoirs jusqu'à la fin de l'année | `PageCahierDeTexte` 88 | 30 min | haute |
 | `news` | actualités et sondages | `PageActualites` 8 | 1 h | normale |
 | `discussions` | messagerie | `ListeMessagerie` 131 | 1 h | basse |
@@ -770,6 +770,26 @@ Les trois fusions, avec leur raison :
   n'achetait rien ; sa suppression fait passer la vue semaine et
   `binary_sensor.vacances` de six heures de retard à quinze minutes, et
   économise trois appels par jour.
+
+  **Exigence.** L'horizon est la semaine courante **et** la semaine suivante,
+  à chaque collecte. Cette section a longtemps dit « plus la suivante au
+  franchissement », ce qui se traduit par : la semaine suivante est demandée le
+  dimanche, et seulement le dimanche. Les deux affirmations de cette même
+  section étaient donc incompatibles — on ne peut pas justifier la fusion par
+  `binary_sensor.vacances`, qui pose une question à **sept** jours, et ne
+  garnir que deux jours de données. Effet mesuré sur une instance : du samedi
+  00:00 au lundi de la première collecte, aucun cours du lundi n'était connu,
+  la carte affichait un lundi vide, `sensor.prochain_cours` n'avait rien à
+  désigner et `binary_sensor.vacances` passait à `on` tous les week-ends. Le
+  coût passe de 1,14 à 2 appels par lot (annexe B §5.3).
+
+  **Exigence.** Les semaines demandées sont bornées à `[PremierLundi,
+  DerniereDate]`. Hors année scolaire — les deux mois de l'été, où aucun emploi
+  du temps n'est publié avant la semaine de rentrée — le palier ne place
+  **aucune** requête et publie un instantané vide : une semaine au-delà de
+  `DerniereDate` n'est pas une semaine creuse, c'est une question que le
+  serveur n'a jamais eu à traiter, et un palier qui échoue dessus échoue à
+  chaque battement pendant deux mois.
 - **`reports` disparaît dans `marks` et `history`.** Le bulletin de la période
   courante voyage avec les notes ; ceux des périodes closes avec l'historique,
   qui parcourait déjà les mêmes périodes une fois par jour.

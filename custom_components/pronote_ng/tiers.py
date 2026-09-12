@@ -129,11 +129,15 @@ def _snapshot(
 async def _timetable(
     account: PronoteAccount, student_id: str, priority: Priority
 ) -> tuple[Snapshot[Any], int, list[DeltaEvent]]:
-    """The current week, plus next week's request only at a boundary crossing.
+    """The current week and the next: two requests, every collection.
 
-    ``include_next_week`` is decided here rather than in the gateway because it
-    is a scheduling question: tomorrow is only in another week on one day in
-    seven, and that is exactly the 1.14 requests per batch annexe B budgets.
+    The horizon was "today and tomorrow" until next week was only asked for
+    when tomorrow crossed a week boundary -- one day in seven, Sunday. Which
+    meant that from Saturday's first collection the timetable knew nothing
+    about Monday for some forty-eight hours: an empty day in the card, no next
+    lesson, and ``binary_sensor.<eleve>_vacances`` reading ``on`` every
+    weekend. Two requests per batch instead of the 1.14 annexe B used to
+    budget, against a daily cap of 2000 and a measured 286.
     """
     result = await account.connector.async_collect(
         Tier.TIMETABLE, student_id, priority=priority
