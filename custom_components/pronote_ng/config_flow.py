@@ -1393,9 +1393,15 @@ def _measured_lifetime(entry: ConfigEntry) -> float | None:
     if source_from_entry_data(dict(entry.data)) is Source.ECOLEDIRECTE:
         return None
     account = getattr(entry, "runtime_data", None)
-    if account is None or not hasattr(account.connector, "session"):
+    if account is None:
         return None
-    lifetime = account.session.lifetime.observed_minutes
+    connector = getattr(account, "connector", None)
+    if connector is not None and not hasattr(connector, "session"):
+        return None
+    session = getattr(account, "session", None)
+    if session is None:
+        return None
+    lifetime = session.lifetime.observed_minutes
     return float(lifetime) if lifetime is not None else None
 
 
