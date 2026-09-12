@@ -154,6 +154,7 @@ CONF_QR_PAYLOAD: Final = "qr_payload"
 CONF_QR_PIN: Final = "qr_pin"
 CONF_CHILDREN: Final = "children"
 CONF_ACCOUNT_KIND: Final = "account_kind"
+CONF_SOURCE: Final = "source"
 
 #: The child key table: one record per child ever seen on this account, each
 #: ``{"key", "resource_id", "name"}``. **This table is the durable artefact,
@@ -470,6 +471,9 @@ SERVICE_MARK_INFORMATION_READ: Final = "mark_information_read"
 SERVICE_SEND_MESSAGE: Final = "send_message"
 SERVICE_GENERATE_TIMETABLE_PDF: Final = "generate_timetable_pdf"
 SERVICE_GET_RATE_LIMIT_STATUS: Final = "get_rate_limit_status"
+
+#: Services every source implements: they never touch a school backend.
+AGNOSTIC_SERVICES: Final = frozenset({SERVICE_REFRESH, SERVICE_GET_RATE_LIMIT_STATUS})
 
 #: Attributes never written to the recorder: PRONOTE lists blow past the 16 KiB
 #: attribute limit, and the useful history is the count, not the payload (§9).

@@ -25,6 +25,9 @@ GLOBAL_MINIMUM = 80.0
 #
 # Suffixes under the package, not basenames: see the module docstring.
 CRITICAL_MODULES = {
+    "pronote_ng/connectors/ecoledirecte/ed_client.py": 100.0,
+    "pronote_ng/connectors/ecoledirecte/ed_limiter.py": 100.0,
+    "pronote_ng/connectors/ecoledirecte/ed_mapping.py": 100.0,
     "pronote_ng/ratelimit.py": 100.0,
     "pronote_ng/scheduler.py": 100.0,
     "pronote_ng/gateway.py": 100.0,

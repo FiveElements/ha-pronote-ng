@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Final
@@ -35,7 +35,10 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .child_keys import is_minted, pair
+from .connectors.factory import build_connector, source_from_entry_data
+from .connectors.protocol import LimiterView, PronoteExtras, Source, has_pronote_extras
 from .const import (
+    CHILD_RESOURCE_ID,
     CONF_ACCOUNT_PIN,
     CONF_CHILD_KEYS,
     CONF_CHILDREN,
@@ -58,19 +61,18 @@ from .const import (
     ISSUE_MFA_REQUIRED,
     OPT_CONNECT_TIMEOUT,
     OPT_ESTABLISHMENT_TIMEZONE,
+    OPT_HISTORY_PERIODS,
     OPT_MASTER_TICK,
     OPT_READ_TIMEOUT,
     OPT_SESSION_STRATEGY,
     OPT_STALE_AFTER,
     OPT_WRITE_OPERATIONS_ENABLED,
     LoginMode,
-    Priority,
     SessionStrategy,
     Tier,
 )
 from .coordinator import PronoteTierCoordinator
 from .delta import DeltaDetector
-from .gateway import PronoteGateway
 from .login_guard import limiter_state_store
 from .models import Period, SessionFacts, Snapshot, Student
 from .options import (
@@ -79,7 +81,7 @@ from .options import (
     tier_enabled,
     tier_intervals,
 )
-from .ratelimit import RateLimiter, TierDeferred
+from .ratelimit import TierDeferred
 from .scheduler import FetchScheduler, default_plans
 from .session import (
     AccountUnreadable,
@@ -88,9 +90,7 @@ from .session import (
     InvalidCredentials,
     LoginRefused,
     MfaRequired,
-    SerialExecutor,
     SessionCredentials,
-    SessionManager,
 )
 from .urls import public_url
 
@@ -98,6 +98,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from . import PronoteConfigEntry
+    from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
+    from .connectors.protocol import ConnectorCapabilities
     from .coordinator import TierData
     from .delta import DeltaEvent
 
@@ -170,64 +172,87 @@ def _establishment_timezone(hass: HomeAssistant, options: Mapping[str, Any]) -> 
     return name
 
 
+def _selected_children_from_entry(data: Mapping[str, Any]) -> tuple[str, ...]:
+    """Pronote stores `children`; ED stores the selection as `child_keys` only."""
+    stored = data.get(CONF_CHILDREN)
+    if stored:
+        return tuple(stored)
+    if source_from_entry_data(dict(data)) is not Source.ECOLEDIRECTE:
+        return ()
+    return tuple(
+        str(record[CHILD_RESOURCE_ID])
+        for record in (data.get(CONF_CHILD_KEYS) or ())
+        if isinstance(record, dict) and record.get(CHILD_RESOURCE_ID)
+    )
+
+
+def scheduled_tiers(
+    capabilities: ConnectorCapabilities, enabled: Mapping[Tier, bool] | None
+) -> frozenset[Tier]:
+    """The tiers both configured on and actually supported by the connector."""
+    announced = frozenset(capabilities.tiers)
+    if enabled is None:
+        return announced
+    return frozenset(tier for tier in announced if enabled.get(tier, True))
+
+
 class PronoteAccount:
     """Orchestrates one PRONOTE account: session, budget, cadence, snapshots."""
 
-    def __init__(self, hass: HomeAssistant, entry: PronoteConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: PronoteConfigEntry,
+        *,
+        connector_client: EcoleDirecteClient | None = None,
+    ) -> None:
         self.hass = hass
         self.entry = entry
         self.state = AccountState()
 
         options = entry.options
-        self.gateway = PronoteGateway(_establishment_timezone(hass, options))
-
         # Clamped, like everything else read out of the options mapping. A
         # stored read timeout of 0 makes every request time out before it is
         # sent, which presents as a total outage with a healthy server, and
         # the options page -- the only place that bounds these fields -- is
         # not on the path a restored or hand-edited entry takes.
-        self._read_timeout = bounded_option(
-            options, OPT_READ_TIMEOUT, DEFAULT_READ_TIMEOUT
-        )
-        self._connect_timeout = float(
+        read_timeout = bounded_option(options, OPT_READ_TIMEOUT, DEFAULT_READ_TIMEOUT)
+        connect_timeout = float(
             bounded_option(options, OPT_CONNECT_TIMEOUT, DEFAULT_CONNECT_TIMEOUT)
         )
         self.stale_after = int(
             bounded_option(options, OPT_STALE_AFTER, DEFAULT_STALE_AFTER)
         )
 
-        self.limiter = RateLimiter(
-            build_rate_limit_config(options),
-            clock=time.monotonic,
-            now=self.gateway.now,
-        )
-        # A hold outlives the object that opened it. `async_setup_entry` is
-        # retried by Home Assistant with a backoff capped at eighty seconds,
-        # and each attempt built a limiter that had never heard of the
-        # hour-long bootstrap hold the previous attempt had just opened -- so a
-        # school down for a weekend was asked for a fresh login every eighty
-        # seconds for sixty-one hours, against a configured ceiling of
-        # twenty-four a day, while `calls_today` reported five (§B2).
-        self.limiter.import_state(limiter_state_store(hass).get(entry.entry_id, {}))
-        self.scheduler = FetchScheduler(
-            default_plans(tier_intervals(options), tier_enabled(options)),
-            clock=time.monotonic,
-            now=self.gateway.now,
-        )
-        self.executor = SerialExecutor(entry.entry_id, self._read_timeout)
-        self.session = SessionManager(
-            entry_id=entry.entry_id,
-            credentials=_credentials_from_entry(entry),
-            limiter=self.limiter,
-            executor=self.executor,
-            strategy=SessionStrategy(
+        connector_deps: dict[str, Any] = {
+            "entry_id": entry.entry_id,
+            "timezone": _establishment_timezone(hass, options),
+            "credentials": _credentials_from_entry(entry),
+            "rate_limit_config": build_rate_limit_config(options),
+            "limiter_state": limiter_state_store(hass).get(entry.entry_id, {}),
+            "strategy": SessionStrategy(
                 options.get(OPT_SESSION_STRATEGY, DEFAULT_SESSION_STRATEGY)
             ),
-            now=self.gateway.now,
+            "connect_timeout": connect_timeout,
+            "read_timeout": read_timeout,
+            "history_periods": int(options.get(OPT_HISTORY_PERIODS, 0) or 0),
+            "on_credentials_rotated": self._async_persist_credentials,
+        }
+        if connector_client is not None:
+            connector_deps["client"] = connector_client
+            connector_deps["username"] = str(entry.data.get("username", ""))
+            connector_deps["password"] = str(entry.data.get("password", ""))
+            connector_deps["qcm_json"] = entry.data.get("qcm_json") or {}
+        self.connector = build_connector(hass, entry, **connector_deps)
+        enabled = tier_enabled(options)
+        supported = scheduled_tiers(self.connector.capabilities, enabled)
+        self.scheduler = FetchScheduler(
+            default_plans(
+                tier_intervals(options),
+                {tier: tier in supported for tier in enabled},
+            ),
             clock=time.monotonic,
-            connect_timeout=self._connect_timeout,
-            read_timeout=self._read_timeout,
-            on_credentials_rotated=self._async_persist_credentials,
+            now=self.connector.now,
         )
         self.delta = DeltaDetector()
 
@@ -268,9 +293,7 @@ class PronoteAccount:
             }
         )
 
-        self._selected_children: tuple[str, ...] = tuple(
-            entry.data.get(CONF_CHILDREN) or ()
-        )
+        self._selected_children = _selected_children_from_entry(entry.data)
         #: PRONOTE resource identifier -> the key this integration minted for
         #: that child. Filled by `_async_pair_children` during set-up, before
         #: any platform is forwarded, because `entity.py` reads it to build
@@ -289,7 +312,6 @@ class PronoteAccount:
         #: lets something through or blocks a release at random. Counted at the
         #: end and not at the start, so it means finished.
         self._completed_ticks = 0
-        self._unread_by_student: dict[str, dict[str, int]] = {}
         self._shutting_down: bool = False
         #: Registry id of this entry's account device, filled in by
         #: `async_setup_entry` right after it creates that device and before the
@@ -312,6 +334,19 @@ class PronoteAccount:
         return self.state.students
 
     @property
+    def limiter(self) -> LimiterView:
+        """The connector-owned limiter kept for account orchestration."""
+        return self.connector.limiter
+
+    @property
+    def extras(self) -> PronoteExtras | None:
+        """PRONOTE session extras, or None when the source has none."""
+        connector = self.connector
+        if has_pronote_extras(connector):
+            return connector
+        return None
+
+    @property
     def establishment_name(self) -> str:
         """What to call the account device.
 
@@ -332,6 +367,14 @@ class PronoteAccount:
             )
             or "PRONOTE"
         )
+
+    def now(self) -> datetime:
+        """The current instant in the establishment's timezone."""
+        return self.connector.now()
+
+    def today(self) -> date:
+        """Today's date in the establishment's timezone."""
+        return self.connector.today()
 
     # -- setup and teardown ------------------------------------------------
 
@@ -437,7 +480,7 @@ class PronoteAccount:
         limiter_state_store(self.hass)[self.entry.entry_id] = (
             self.limiter.export_state()
         )
-        await self.session.close()
+        await self.connector.async_close()
 
     async def _async_load_session_facts(self) -> None:
         """Read what the login itself supplies -- students, periods, class.
@@ -452,18 +495,15 @@ class PronoteAccount:
         periods: tuple[Period, ...] = ()
         current: Period | None = None
 
-        for student_id in await self._async_student_ids():
-            facts = await self.session.run(
-                str(Tier.SESSION),
-                Priority.CRITICAL,
-                self.gateway.session_facts,
-                student_id=student_id,
-                cost=0,
-            )
-            students.append(facts.facts.student)
-            session_snapshots.append(facts.facts)
-            periods = facts.facts.periods
-            current = facts.facts.current_period
+        await self.connector.async_open()
+        student_ids = self._student_ids()
+        await self.connector.async_load_session_facts(student_ids)
+        for student_id in student_ids:
+            facts = self.connector.session_facts(student_id)
+            students.append(facts.student)
+            session_snapshots.append(facts)
+            periods = facts.periods
+            current = facts.current_period
 
         self.state.students = tuple(students)
         self.state.periods = periods
@@ -479,7 +519,7 @@ class PronoteAccount:
                 student.id,
                 Snapshot(
                     data=facts,
-                    fetched_at=self.gateway.now(),
+                    fetched_at=self.now(),
                     tier=Tier.SESSION,
                     calls=0,
                     student_id=student.id,
@@ -817,22 +857,9 @@ class PronoteAccount:
             return student_id
         return key
 
-    async def _async_student_ids(self) -> tuple[str, ...]:
+    def _student_ids(self) -> tuple[str, ...]:
         """Which children to follow: those the user selected, or all of them."""
-        # Touching the session here is what forces the login, so it is also
-        # where a bad password surfaces during setup.
-        #
-        # The closure returns the identifiers, not the client. Returning the
-        # client handed a live `HardenedClient` back to the event loop, which is
-        # exactly the shape §3.1 forbids: the value was dropped immediately, but
-        # it is the doorway to `Erreur.G = 22`, and `_reconcile` already reads
-        # an attribute off whatever comes back.
-        available: tuple[str, ...] = await self.session.run(
-            str(Tier.SESSION),
-            Priority.CRITICAL,
-            _client_student_ids,
-            cost=0,
-        )
+        available = self.connector.student_ids()
         if not self._selected_children:
             return available
         chosen = tuple(sid for sid in available if sid in self._selected_children)
@@ -937,7 +964,9 @@ class PronoteAccount:
         # `(child, tier)` -- 36 logins in a single tick for a two-child
         # account with three closed periods, against a cap of 24.
         self.limiter.begin_batch()
-        self.session.begin_batch()
+        extras = self.extras
+        if extras is not None:
+            extras.session.begin_batch()
         try:
             for tier in due:
                 if self._stopping():
@@ -1024,6 +1053,23 @@ class PronoteAccount:
             calls += used
             succeeded = True
             coordinator.publish(student.id, snapshot)
+            if (
+                tier is Tier.MARKS
+                and self.connector.capabilities.source is Source.ECOLEDIRECTE
+            ):
+                session = self.connector.session_facts(student.id)
+                self.state.periods = session.periods
+                self.state.current_period = session.current_period
+                self.coordinators[Tier.SESSION].publish(
+                    student.id,
+                    Snapshot(
+                        data=session,
+                        fetched_at=self.now(),
+                        tier=Tier.SESSION,
+                        calls=0,
+                        student_id=student.id,
+                    ),
+                )
             events.extend((student.id, event) for event in detected)
 
         if not succeeded:
@@ -1043,7 +1089,7 @@ class PronoteAccount:
 
         self.scheduler.mark_collected(tier)
         record.consecutive_failures = 0
-        record.last_success = self.gateway.now()
+        record.last_success = self.now()
         record.last_duration_ms = int((time.monotonic() - started) * 1000)
         record.last_calls = calls
         self.state.last_collection_tier = tier
@@ -1111,19 +1157,11 @@ class PronoteAccount:
         collected_at = self.scheduler.last_collected_at(tier)
         if collected_at is None:
             return 0.0
-        return self.limiter.quiet_seconds_between(collected_at, self.gateway.now())
+        return self.limiter.quiet_seconds_between(collected_at, self.now())
 
     def has_data(self, tier: Tier, student_id: str) -> bool:
         """Whether a (tier, student) pair ever produced a snapshot."""
         return self.snapshot(tier, student_id) is not None
-
-    def remember_unread(self, student_id: str, unread: Mapping[str, int]) -> None:
-        """Store the per-thread unread counts the next cycle compares against."""
-        self._unread_by_student[student_id] = dict(unread)
-
-    def previous_unread(self, student_id: str) -> dict[str, int]:
-        """The unread counts from the previous discussions collection."""
-        return dict(self._unread_by_student.get(student_id, {}))
 
     def periods_for(self, tier: Tier) -> tuple[Period, ...]:
         """Which periods a period-scoped tier should read.
@@ -1132,7 +1170,7 @@ class PronoteAccount:
         period cannot change, so re-reading it every three hours spends calls on
         a constant result (§5.2).
         """
-        now = self.gateway.now()
+        now = self.now()
         if tier is Tier.HISTORY:
             return tuple(
                 period
@@ -1292,9 +1330,10 @@ class PronoteAccount:
         construction: none of them is ever stored in a snapshot, so there is
         nothing here to redact (§8.2, §8.4).
         """
+        connector_diagnostics = self.connector.diagnostics()
         return {
             "limiter": self.limiter.snapshot_counters(),
-            "session": self.session.diagnostics(),
+            "session": connector_diagnostics["session"],
             "scheduler": self.scheduler.diagnostics(),
             # Batches finished since start-up. Reported because a tier with no
             # data is two different faults depending on this number: zero means
@@ -1322,20 +1361,6 @@ class PronoteAccount:
             "stale_after": self.stale_after,
             "write_enabled": self.write_enabled,
         }
-
-
-def _client_student_ids(client: Any) -> tuple[str, ...]:
-    """The children's identifiers, or -- on a student account -- the student's.
-
-    A module-level function rather than a lambda inside the call, because the
-    thing it must *not* do is return the client itself: that hands a live
-    `HardenedClient` back to the event loop, which is the shape §3.1 forbids
-    and the doorway to `Erreur.G = 22`. Named, it is a seam a reader can check.
-    """
-    children: tuple[str, ...] = tuple(str(child.id) for child in client.children)
-    if children:
-        return children
-    return (str(client.info.id),)
 
 
 def _saved_schedule(hass: HomeAssistant) -> dict[str, dict[str, float]]:

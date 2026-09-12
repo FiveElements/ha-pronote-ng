@@ -33,6 +33,7 @@ from homeassistant.core import callback
 
 from .account import PronoteAccount
 from .attachment import fingerprint, signed_path
+from .connectors.protocol import Source, has_pronote_extras
 from .const import (
     DEFAULT_HOMEWORK_HORIZON,
     DEFAULT_WAKE_MARGIN,
@@ -139,7 +140,7 @@ def _next_lesson(facts: TimetableFacts, now: datetime) -> Lesson | None:
 
 def _next_lesson_start(facts: TimetableFacts, account: PronoteAccount) -> StateValue:
     """Start of the next lesson."""
-    lesson = _next_lesson(facts, account.gateway.now())
+    lesson = _next_lesson(facts, account.now())
     return lesson.start if lesson else None
 
 
@@ -147,7 +148,7 @@ def _next_lesson_attributes(
     facts: TimetableFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Context of the next lesson."""
-    lesson = _next_lesson(facts, account.gateway.now())
+    lesson = _next_lesson(facts, account.now())
     if lesson is None:
         return {}
     return {
@@ -165,7 +166,7 @@ def _next_lesson_attributes(
 
 def _end_of_day(facts: TimetableFacts, account: PronoteAccount) -> StateValue:
     """End of the last lesson of today."""
-    today = _teaching_lessons(_lessons_on(facts, account.gateway.today()))
+    today = _teaching_lessons(_lessons_on(facts, account.today()))
     return max((lesson.end for lesson in today), default=None)
 
 
@@ -195,7 +196,7 @@ def _end_of_day_attributes(
     afternoon lessons and one are different days, and a count still answers
     the boolean question.
     """
-    scheduled = _lessons_on(facts, account.gateway.today())
+    scheduled = _lessons_on(facts, account.today())
     if not scheduled:
         return {}
     attended = _teaching_lessons(scheduled)
@@ -244,7 +245,7 @@ def _pending_cancellations(
     out is exactly the one a parent wants notice of, and clipping it to today
     would make the entity go blank every evening.
     """
-    now = account.gateway.now()
+    now = account.now()
     return sorted(
         (lesson for lesson in facts.lessons if lesson.canceled and lesson.end > now),
         key=lambda lesson: lesson.start,
@@ -308,7 +309,7 @@ def _midday_break(
     pairwise scan would invent a negative gap between them.
     """
     lessons = sorted(
-        _teaching_lessons(_lessons_on(facts, account.gateway.today())),
+        _teaching_lessons(_lessons_on(facts, account.today())),
         key=lambda lesson: lesson.start,
     )
     if len(lessons) < 2:
@@ -368,7 +369,7 @@ def _wake_target(
     are ignored, the sensor does not move on to tomorrow before today's lessons
     have finished, and the arithmetic happens in the establishment's timezone.
     """
-    now = account.gateway.now()
+    now = account.now()
     margin = timedelta(
         minutes=int(
             bounded_option(account.entry.options, OPT_WAKE_MARGIN, DEFAULT_WAKE_MARGIN)
@@ -422,7 +423,7 @@ def _next_test(facts: TimetableFacts, account: PronoteAccount) -> Lesson | None:
     upcoming = [
         lesson
         for lesson in _teaching_lessons(facts.lessons)
-        if lesson.test and lesson.start > account.gateway.now()
+        if lesson.test and lesson.start > account.now()
     ]
     return min(upcoming, key=lambda lesson: lesson.start) if upcoming else None
 
@@ -456,14 +457,14 @@ def _lessons_today_count(facts: TimetableFacts, account: PronoteAccount) -> Stat
     this overcounts every day a lesson was changed, since PRONOTE returns the
     original *and* its replacement (§2.2.1).
     """
-    return len(_lessons_on(facts, account.gateway.today()))
+    return len(_lessons_on(facts, account.today()))
 
 
 def _lessons_today_attributes(
     facts: TimetableFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Today's lessons, with the day's boundaries."""
-    today = _lessons_on(facts, account.gateway.today())
+    today = _lessons_on(facts, account.today())
     return {
         "lessons": [_lesson_dict(lesson) for lesson in today],
         "first_start": min((item.start for item in today), default=None),
@@ -513,14 +514,14 @@ def _lessons_tomorrow_count(
     facts: TimetableFacts, account: PronoteAccount
 ) -> StateValue:
     """How many lessons tomorrow."""
-    return len(_lessons_on(facts, account.gateway.today() + timedelta(days=1)))
+    return len(_lessons_on(facts, account.today() + timedelta(days=1)))
 
 
 def _lessons_tomorrow_attributes(
     facts: TimetableFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Tomorrow's lessons."""
-    day = account.gateway.today() + timedelta(days=1)
+    day = account.today() + timedelta(days=1)
     return {"lessons": [_lesson_dict(lesson) for lesson in _lessons_on(facts, day)]}
 
 
@@ -561,7 +562,7 @@ def _horizon(account: PronoteAccount) -> date:
             account.entry.options, OPT_HOMEWORK_HORIZON, DEFAULT_HOMEWORK_HORIZON
         )
     )
-    return account.gateway.today() + timedelta(days=days)
+    return account.today() + timedelta(days=days)
 
 
 def _visible_homework(facts: HomeworkFacts, account: PronoteAccount) -> list[Homework]:
@@ -656,7 +657,7 @@ def _homework_tomorrow_count(
     facts: HomeworkFacts, account: PronoteAccount
 ) -> StateValue:
     """How many homework items are due tomorrow."""
-    tomorrow = account.gateway.today() + timedelta(days=1)
+    tomorrow = account.today() + timedelta(days=1)
     return sum(1 for item in facts.homework if item.due == tomorrow)
 
 
@@ -664,7 +665,7 @@ def _homework_tomorrow_attributes(
     facts: HomeworkFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Homework due tomorrow."""
-    tomorrow = account.gateway.today() + timedelta(days=1)
+    tomorrow = account.today() + timedelta(days=1)
     return {
         "items": [
             _homework_dict(account, item)
@@ -941,7 +942,7 @@ def _next_punishment_slot(
     Somebody has to get the child there, which is precisely why this is a
     timestamp and not a flag.
     """
-    now = account.gateway.now()
+    now = account.now()
     slots = [
         slot
         for punishment in facts.punishments
@@ -955,7 +956,7 @@ def _next_punishment_attributes(
     facts: AttendanceFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Nature and duration of the next detention."""
-    now = account.gateway.now()
+    now = account.now()
     candidates = [
         (slot, punishment)
         for punishment in facts.punishments
@@ -1079,7 +1080,7 @@ def _menu_for(facts: MenusFacts, day: date) -> Any | None:
 
 def _menu_today_count(facts: MenusFacts, account: PronoteAccount) -> StateValue:
     """How many dishes on today's menu."""
-    menu = _menu_for(facts, account.gateway.today())
+    menu = _menu_for(facts, account.today())
     return menu.dish_count if menu else None
 
 
@@ -1123,12 +1124,12 @@ def _menu_today_attributes(
     facts: MenusFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Today's menu."""
-    return _menu_attributes_for(_menu_for(facts, account.gateway.today()))
+    return _menu_attributes_for(_menu_for(facts, account.today()))
 
 
 def _menu_tomorrow_count(facts: MenusFacts, account: PronoteAccount) -> StateValue:
     """How many dishes on tomorrow's menu."""
-    menu = _menu_for(facts, account.gateway.today() + timedelta(days=1))
+    menu = _menu_for(facts, account.today() + timedelta(days=1))
     return menu.dish_count if menu else None
 
 
@@ -1136,9 +1137,7 @@ def _menu_tomorrow_attributes(
     facts: MenusFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Tomorrow's menu."""
-    return _menu_attributes_for(
-        _menu_for(facts, account.gateway.today() + timedelta(days=1))
-    )
+    return _menu_attributes_for(_menu_for(facts, account.today() + timedelta(days=1)))
 
 
 def _staff_count(facts: StaticFacts, _a: PronoteAccount) -> StateValue:
@@ -1522,10 +1521,21 @@ async def async_setup_entry(
 ) -> None:
     """Create every sensor for every child, plus the account diagnostics."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[SensorEntity] = []
 
     for student in account.students:
         for description in (*PRIMITIVE_SENSORS, *LIST_SENSORS):
+            if (
+                description.tier is not Tier.SESSION
+                and description.tier not in supported
+            ):
+                continue
+            if (
+                account.connector.capabilities.source is Source.ECOLEDIRECTE
+                and description.key == "next_test"
+            ):
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
@@ -1550,6 +1560,8 @@ def _history_sensors(account: PronoteAccount, student: Student) -> list[SensorEn
     (§2.4). The *displayed* name carries the label through a placeholder, so it
     stays readable.
     """
+    if Tier.HISTORY not in account.connector.capabilities.tiers:
+        return []
     coordinator = account.coordinators.get(Tier.HISTORY)
     if coordinator is None:
         return []
@@ -1784,7 +1796,7 @@ class PronoteClockSensor(ClockDrivenMixin, PronoteSensor):
         if not isinstance(value, datetime):
             self._cancel_transition()
             return
-        now = self.account.gateway.now()
+        now = self.account.now()
         if value <= now:
             self._cancel_transition()
             return
@@ -1858,19 +1870,17 @@ def _diagnostic_sensors(account: PronoteAccount) -> list[SensorEntity]:
     A setting nobody can observe does not get tuned; it gets endured (§6.6).
     """
     coordinator = account.coordinators[Tier.SESSION]
-    return [
-        PronoteLimiterSensor(account, coordinator, key)
-        for key in (
-            "calls_today",
-            "remaining_budget",
-            "last_collection",
-            "next_collection",
-            "session_age",
-            "session_lifetime",
-            "logins_today",
-            "limiter_state",
-        )
+    keys = [
+        "calls_today",
+        "remaining_budget",
+        "last_collection",
+        "next_collection",
+        "logins_today",
+        "limiter_state",
     ]
+    if has_pronote_extras(account.connector):
+        keys[4:4] = ["session_age", "session_lifetime"]
+    return [PronoteLimiterSensor(account, coordinator, key) for key in keys]
 
 
 class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntity):
@@ -1919,12 +1929,18 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                 remaining = self.account.scheduler.next_due_in()
                 if remaining is None:
                     return None
-                return self.account.gateway.now() + timedelta(seconds=remaining)
+                return self.account.now() + timedelta(seconds=remaining)
             case "session_age":
-                age = self.account.session.session_age
+                extras = self.account.extras
+                if extras is None:
+                    return None
+                age = extras.session.session_age
                 return int(age) if age is not None else None
             case "session_lifetime":
-                measured = self.account.session.lifetime.observed_minutes
+                extras = self.account.extras
+                if extras is None:
+                    return None
+                measured = extras.session.lifetime.observed_minutes
                 return round(measured, 1) if measured is not None else None
             case "logins_today":
                 return limiter.logins_today
@@ -1937,7 +1953,6 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
     def extra_state_attributes(self) -> dict[str, Any]:  # noqa: PLR0911
         """Context for the reading."""
         limiter = self.account.limiter
-        session = self.account.session
         match self._key:
             case "calls_today":
                 return {
@@ -2020,6 +2035,10 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                 # The measured value, and how it is being acted on. This is what
                 # turns the session strategy from a bet into an observation
                 # (§6.5).
+                extras = self.account.extras
+                if extras is None:
+                    return {}
+                session = extras.session
                 return {
                     "samples": len(session.lifetime.samples),
                     "last_expiry": (

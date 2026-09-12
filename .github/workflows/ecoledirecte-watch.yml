@@ -1,0 +1,238 @@
+name: Ecoledirecte watch
+
+# Why this workflow exists.
+#
+# A 517 from api.ecoledirecte.com means the `v=` this integration sends is
+# no longer accepted. The handshake is ours -- the `ecoledirecte` PyPI
+# package is not a dependency, because its backoff would re-login outside
+# the limiter and its DEBUG logger leaks the token -- but the number we
+# send is copied from that package's `APIVERSION`. Nothing watching that
+# constant is a 517 in production that looks like a transient error.
+#
+# What this job does about it is fail (red) *and* open a pull request that
+# rewrites `ECOLEDIRECTE_API_VERSION` in `ed_client.py`. An issue announcing
+# a new number, or a log warning, is not enough: the red run is what stops
+# the delay being ignored, and the pull request is what lets `Validate` say
+# whether the new constant still logs in. Spec connecteurs §7.1.
+#
+# What it deliberately does not do is merge, and it does not go red on a
+# PyPI outage. A weekly job that fails when a third party hiccups is a
+# weekly job people stop reading.
+
+on:
+  schedule:
+    # Weekly, a different slot from pronotepy-watch so the two reports
+    # do not land in the same notification pile.
+    - cron: "41 6 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two runs racing to open the same pull request. Not
+  # `cancel-in-progress`: a run already pushing a branch should finish.
+  group: ecoledirecte-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Has upstream APIVERSION moved?
+    runs-on: ubuntu-latest
+    # Wider than every other workflow in this repository, which are all
+    # `contents: read`, and the reason is stated so the next reader does not
+    # have to guess:
+    #
+    # * `contents: write` -- the bump is pushed as a branch. Only ever to
+    #   `chore/ecoledirecte-<version>`, never to the default branch;
+    # * `pull-requests: write` -- to open and refresh that proposal;
+    # * `issues: write` -- for the fallback below. A repository can forbid
+    #   Actions from creating pull requests, and losing the report on that day
+    #   would reproduce the exact failure this job exists to prevent;
+    # * `actions: write` -- to dispatch `Validate` on the branch. GitHub does
+    #   not start workflows from events produced by `GITHUB_TOKEN`, so a pull
+    #   request opened here gets no checks unless they are asked for
+    #   explicitly, and unchecked is the one thing this proposal must not be.
+    #
+    # Declared on this job alone. No repository secret is involved.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          # `scripts/ecoledirecte_api_version.py` is standard library only
+          # and installs nothing -- in particular not the `ecoledirecte`
+          # PyPI package. Kept in step with the other workflows all the same.
+          python-version: "3.14"
+
+      - name: Compare the constant against upstream APIVERSION
+        id: compare
+        # The helper exits 1 when the strings differ. Later steps use
+        # `always() && outcome == outdated` so the proposal still opens
+        # after that non-zero exit; a crash with no outputs stays red
+        # and opens nothing.
+        env:
+          # Only used to authenticate the GitHub fallback, where an
+          # unauthenticated runner shares its rate limit with every other
+          # job on the same egress address.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The constant is *read* from ed_client.py and never restated here:
+        # a second copy of 4.101.3 would be a second thing to forget on the
+        # day the number moves. A PyPI/GitHub outage reports
+        # `outcome=unavailable` and exits 0.
+        run: |
+          python scripts/ecoledirecte_api_version.py --check-upstream \
+            --reports "$RUNNER_TEMP/ecoledirecte"
+
+      - name: Propose the bump as a pull request
+        id: propose
+        if: always() && steps.compare.outputs.outcome == 'outdated'
+        # Everything that can be refused by repository policy is inside this
+        # one step, so any refusal routes to the fallback below instead of
+        # turning *this* step red. The job still goes red: the compare step
+        # already exited 1, and the terminal step says so if compare were
+        # ever changed to exit 0.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.compare.outputs.branch }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          PR_TITLE: ${{ steps.compare.outputs.pr_title }}
+          PR_BODY: ${{ steps.compare.outputs.pr_body_path }}
+          COMMIT_MESSAGE: ${{ steps.compare.outputs.commit_message_path }}
+        run: |
+          set -euo pipefail
+
+          # One branch per upstream APIVERSION. If it is already there, the
+          # proposal exists and is not rewritten: a maintainer may have
+          # pushed a handshake fixup onto it, and force-pushing over that
+          # would destroy exactly the work this pull request is asking for.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "$BRANCH already exists upstream; leaving its commits alone."
+          else
+            python scripts/ecoledirecte_api_version.py --bump "$LATEST"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$BRANCH"
+            git add custom_components/pronote_ng/connectors/ecoledirecte/ed_client.py
+            git commit --file "$COMMIT_MESSAGE"
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+          # Refresh rather than duplicate. A second run for the same version
+          # finds the pull request and updates its body; a newer version is a
+          # different branch, so the proposal a maintainer is reading is never
+          # overwritten by the next one.
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --repo "$GITHUB_REPOSITORY" \
+              --title "$PR_TITLE" --body-file "$PR_BODY"
+            echo "number=$number" >> "$GITHUB_OUTPUT"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" \
+              --base "$GITHUB_REF_NAME" \
+              --head "$BRANCH" \
+              --title "$PR_TITLE" \
+              --body-file "$PR_BODY"
+            echo "number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+              --state open --json number --jq '.[0].number // empty')" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Never auto-merge, and nothing here enables it.
+
+      - name: Ask Validate to run on the branch
+        if: always() && steps.compare.outputs.outcome == 'outdated' && steps.propose.outcome == 'success'
+        # Best effort, and never fatal. GitHub does not trigger workflows from
+        # events created with `GITHUB_TOKEN`, so the pull request above starts
+        # with no checks; `workflow_dispatch` is the documented exception.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.compare.outputs.branch }}
+        run: gh workflow run validate.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+
+      - name: Fall back to an issue when the pull request was refused
+        if: always() && steps.compare.outputs.outcome == 'outdated' && steps.propose.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ steps.compare.outputs.issue_title }}
+          ISSUE_BODY: ${{ steps.compare.outputs.issue_body_path }}
+        # A repository can forbid Actions from opening pull requests, and a
+        # branch push can be refused. The report must still arrive: silence is
+        # the failure being corrected here. Found by a stable title prefix
+        # rather than by a label.
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+            --search 'in:title ecoledirecte-upstream' \
+            --json number,title \
+            --jq '[.[] | select(.title | startswith("[ecoledirecte-upstream]"))][0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" --body-file "$ISSUE_BODY"
+          else
+            gh label create ecoledirecte-upstream --repo "$GITHUB_REPOSITORY" \
+              --color 1D76DB \
+              --description "APIVERSION amont differente de la constante ED" \
+              || true
+            label_args=()
+            if gh label list --repo "$GITHUB_REPOSITORY" --limit 200 --json name \
+                 --jq '.[].name' | grep -qxF 'ecoledirecte-upstream'; then
+              label_args=(--label ecoledirecte-upstream)
+            fi
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" --body-file "$ISSUE_BODY" "${label_args[@]}"
+          fi
+
+      - name: Retire a proposal the constant has caught up with
+        if: steps.compare.outputs.outcome != 'outdated' && steps.compare.outputs.outcome != 'unavailable'
+        # Best effort: tidying is not worth a red run.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+        run: |
+          set -euo pipefail
+          branch="chore/ecoledirecte-$PINNED"
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr close "$number" --repo "$GITHUB_REPOSITORY" --delete-branch \
+              --comment "La constante est passée à $PINNED par ailleurs ; cette proposition n'a plus d'objet."
+          fi
+
+      - name: Fail the weekly run when APIVERSION moved
+        if: always() && steps.compare.outputs.outcome == 'outdated'
+        # This is the red tick the spec asks for. The proposal (or the
+        # fallback issue) has already been opened above. A log warning is
+        # not a substitute, and an outage never reaches this step.
+        env:
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+        run: |
+          echo "::error::APIVERSION amont (${LATEST}) ≠ constante (${PINNED}). Proposition ouverte ; ce job échoue volontairement."
+          exit 1
+
+      - name: Say what happened in the run summary
+        if: always()
+        env:
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          OUTCOME: ${{ steps.compare.outputs.outcome }}
+          PROPOSAL: ${{ steps.propose.outcome }}
+          NUMBER: ${{ steps.propose.outputs.number }}
+        run: |
+          {
+            echo "### ecoledirecte APIVERSION"
+            echo
+            echo "- constante : \`${PINNED:-?}\`"
+            echo "- amont : \`${LATEST:-?}\`"
+            echo "- verdict : \`${OUTCOME:-?}\`"
+            echo "- proposition : \`${PROPOSAL:-aucune}\`${NUMBER:+ (#$NUMBER)}"
+          } >> "$GITHUB_STEP_SUMMARY"

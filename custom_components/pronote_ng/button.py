@@ -65,9 +65,12 @@ async def async_setup_entry(
 ) -> None:
     """Create the refresh buttons for every child."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[ButtonEntity] = []
     for student in account.students:
         for description in BUTTONS:
+            if description.tier not in supported:
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
@@ -106,9 +109,20 @@ class PronoteRefreshButton(PronoteEntity, ButtonEntity):
         """Boost the requested tiers and wake the heartbeat."""
         requested = self.entity_description.requests
         tiers = (
-            list(requested)
+            [
+                tier
+                for tier in requested
+                if tier in self.account.connector.capabilities.tiers
+            ]
             if requested is not None
-            else [tier for tier in Tier if tier is not Tier.SESSION]
+            else [
+                tier
+                for tier in Tier
+                if tier is not Tier.SESSION
+                and tier in self.account.connector.capabilities.tiers
+            ]
         )
+        if not tiers:
+            return
         self.account.scheduler.request(tiers)
         await self.account.async_request_tick()

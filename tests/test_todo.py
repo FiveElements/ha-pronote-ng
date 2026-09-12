@@ -519,7 +519,7 @@ async def test_a_tick_is_billed_to_the_right_child_at_high_priority(
     *sibling's* homework and raise nothing at all.
     """
     recorded: list[dict[str, Any]] = []
-    real_run = account.session.run
+    real_run = account.extras.session.run
 
     async def _recording_run(
         tier: str,
@@ -540,7 +540,7 @@ async def test_a_tick_is_billed_to_the_right_child_at_high_priority(
         return await real_run(tier, priority, fn, student_id=student_id, cost=cost)
 
     mark = len(parent_client.journal)
-    with patch.object(account.session, "run", _recording_run):
+    with patch.object(account.extras.session, "run", _recording_run):
         await hass.services.async_call(
             "todo",
             "update_item",
@@ -615,7 +615,7 @@ async def test_a_tick_that_was_deferred_fails_visibly(
         raise TierDeferred(DeferReason.DAILY_CAP, 42.7)
 
     with (
-        patch.object(account.session, "run", _deferred),
+        patch.object(account.extras.session, "run", _deferred),
         pytest.raises(ServiceValidationError) as raised,
     ):
         await hass.services.async_call(

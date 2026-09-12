@@ -128,9 +128,12 @@ async def async_setup_entry(
 ) -> None:
     """Create the event entities for every child."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[EventEntity] = []
     for student in account.students:
         for description in EVENTS:
+            if description.tier not in supported:
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue

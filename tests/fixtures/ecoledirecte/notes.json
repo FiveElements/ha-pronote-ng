@@ -1,0 +1,50 @@
+{
+  "periodes": [
+    {
+      "idPeriode": "A001",
+      "periode": "Trimestre 1",
+      "dateDebut": "2026-09-01",
+      "dateFin": "2026-12-18",
+      "cloture": false,
+      "ensembleMatieres": {
+        "moyenneGenerale": "14,25",
+        "moyenneClasse": "13.80",
+        "disciplines": [
+          {
+            "discipline": "Mathématiques",
+            "codeMatiere": "MATH",
+            "moyenne": "14,50",
+            "moyenneClasse": "13.25",
+            "moyenneMin": "8,00",
+            "moyenneMax": "18,50",
+            "groupeMatiere": false,
+            "codeSousMatiere": ""
+          }
+        ]
+      }
+    },
+    {
+      "idPeriode": "A999Z",
+      "periode": "Année",
+      "dateDebut": "2026-09-01",
+      "dateFin": "2027-07-01",
+      "cloture": false
+    }
+  ],
+  "notes": [
+    {
+      "id": 301,
+      "libelleMatiere": "Mathématiques",
+      "codeMatiere": "MATH",
+      "valeur": "14,5",
+      "noteSur": "20",
+      "date": "2026-09-10",
+      "coef": "2",
+      "moyenneClasse": "13.25",
+      "maxClasse": "19",
+      "minClasse": "7,5",
+      "commentaire": "Travail régulier",
+      "nonSignificatif": false
+    }
+  ]
+}

@@ -190,6 +190,7 @@ CONFIG_EN: dict[str, Any] = {
                 "qr_code": "QR code from the mobile app (recommended)",
                 "credentials": "Username and password",
                 "ent": "Federated login (ENT)",
+                "ecoledirecte": "EcoleDirecte",
             },
         },
         "qr_code": {
@@ -258,6 +259,27 @@ CONFIG_EN: dict[str, Any] = {
                 "password": "Password",
                 "ent": "Portal",
             },
+        },
+        "ecoledirecte": {
+            "title": "Connect to EcoleDirecte",
+            "description": (
+                "Enter the credentials used to sign in to EcoleDirecte. The "
+                "password is stored because EcoleDirecte does not issue a "
+                "durable device token."
+            ),
+            "data": {
+                "username": "Username",
+                "password": "Password",
+            },
+        },
+        "ecoledirecte_qcm": {
+            "title": "EcoleDirecte security question",
+            "description": (
+                "EcoleDirecte asks: {question}\n\n"
+                "Select the remembered answer. No account is created until "
+                "the login succeeds."
+            ),
+            "data": {"choice": "Answer"},
         },
         "children": {
             "title": "Which children to follow",
@@ -355,11 +377,15 @@ CONFIG_EN: dict[str, Any] = {
             "to anything sensible, it sends this portal's username and "
             "password to the PRONOTE server instead."
         ),
+        "invalid_qcm": "Select one of the proposed answers.",
         "cannot_connect": "Could not reach the server.",
+        "ed_invalid_auth": (
+            "EcoleDirecte refused these credentials. Check them before trying again."
+        ),
         "rate_limited": (
             "Too many login attempts in the last hour, so this one was not "
             "sent. Wait a little before trying again: repeatedly retrying a "
-            "login is what gets an address blocked by PRONOTE."
+            "login is what gets an address blocked."
         ),
         "unknown": "Unexpected error. Check the Home Assistant log.",
     },
@@ -391,6 +417,7 @@ CONFIG_FR: dict[str, Any] = {
                 "qr_code": "QR code de l'application mobile (recommandé)",
                 "credentials": "Identifiant et mot de passe",
                 "ent": "Connexion par l'ENT",
+                "ecoledirecte": "EcoleDirecte",
             },
         },
         "qr_code": {
@@ -465,6 +492,27 @@ CONFIG_FR: dict[str, Any] = {
                 "password": "Mot de passe",
                 "ent": "Portail",
             },
+        },
+        "ecoledirecte": {
+            "title": "Se connecter à EcoleDirecte",
+            "description": (
+                "Saisissez les identifiants utilisés pour EcoleDirecte. Le mot "
+                "de passe est conservé, car EcoleDirecte ne fournit pas de "
+                "jeton d'appareil durable."
+            ),
+            "data": {
+                "username": "Identifiant",
+                "password": "Mot de passe",
+            },
+        },
+        "ecoledirecte_qcm": {
+            "title": "Question de sécurité EcoleDirecte",
+            "description": (
+                "EcoleDirecte demande : {question}\n\n"
+                "Choisissez la réponse mémorisée. Aucun compte n'est créé "
+                "avant la réussite de la connexion."
+            ),
+            "data": {"choice": "Réponse"},
         },
         "children": {
             "title": "Enfants à suivre",
@@ -569,12 +617,16 @@ CONFIG_FR: dict[str, Any] = {
             "l'identifiant et le mot de passe de ce portail au serveur "
             "PRONOTE."
         ),
+        "invalid_qcm": "Choisissez l'une des réponses proposées.",
         "cannot_connect": "Impossible de joindre le serveur.",
+        "ed_invalid_auth": (
+            "EcoleDirecte a refusé ces identifiants. Vérifiez-les avant de recommencer."
+        ),
         "rate_limited": (
             "Trop de tentatives de connexion dans la dernière heure : celle-ci "
             "n'a pas été envoyée. Attendez un peu avant de réessayer, car "
             "réessayer une connexion en boucle est précisément ce qui fait "
-            "bloquer une adresse par PRONOTE."
+            "bloquer une adresse."
         ),
         "unknown": "Erreur inattendue. Consultez le journal de Home Assistant.",
     },

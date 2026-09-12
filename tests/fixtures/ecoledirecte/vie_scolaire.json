@@ -1,0 +1,36 @@
+{
+  "absencesRetards": [
+    {
+      "id": 401,
+      "typeElement": "Absence",
+      "date": "2026-09-08",
+      "justifie": true,
+      "libelle": "2h00",
+      "motif": "Rendez-vous fictif"
+    },
+    {
+      "id": 402,
+      "typeElement": "Retard",
+      "date": "2026-09-09",
+      "justifie": false,
+      "commentaire": "Justificatif attendu",
+      "motif": "Transport fictif"
+    }
+  ],
+  "sanctionsEncouragements": [
+    {
+      "id": 403,
+      "typeElement": "Punition",
+      "libelle": "Travail supplémentaire",
+      "motif": "Matériel oublié",
+      "par": "Professeur Démo",
+      "date": "2026-09-09",
+      "aFaire": "Exercice fictif"
+    },
+    {
+      "id": 404,
+      "typeElement": "Encouragement",
+      "libelle": "Efforts"
+    }
+  ]
+}

@@ -634,13 +634,13 @@ class TestHowARefusalIsAnswered:
 
         _print, document = self._document(account)
         seen: list[Priority] = []
-        original = account.session.run
+        original = account.extras.session.run
 
         async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
             seen.append(priority)
             return await original(name, priority, fn, **kwargs)
 
-        with patch.object(account.session, "run", spy):
+        with patch.object(account.extras.session, "run", spy):
             await _fetch(account, document, CHILDREN[0][0])
 
         assert seen == [Priority.HIGH]

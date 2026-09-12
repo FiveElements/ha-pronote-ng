@@ -1,0 +1,17 @@
+{
+  "2026-09-16": [
+    {
+      "idDevoir": 201,
+      "matiere": "Français",
+      "effectue": false,
+      "interrogation": true
+    }
+  ],
+  "2026-09-17": [
+    {
+      "idDevoir": 202,
+      "matiere": "Histoire",
+      "effectue": true
+    }
+  ]
+}

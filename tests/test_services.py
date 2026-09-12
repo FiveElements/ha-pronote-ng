@@ -323,7 +323,7 @@ async def test_a_service_that_was_deferred_fails_visibly(
         raise TierDeferred(DeferReason.DAILY_CAP, 42.7)
 
     with (
-        patch.object(account.session, "run", _deferred),
+        patch.object(account.extras.session, "run", _deferred),
         pytest.raises(HomeAssistantError) as raised,
     ):
         await hass.services.async_call(
@@ -361,7 +361,7 @@ async def test_a_deferred_service_is_not_a_validation_error(
         raise TierDeferred(DeferReason.QUIET_HOURS, 900.0)
 
     with (
-        patch.object(account.session, "run", _deferred),
+        patch.object(account.extras.session, "run", _deferred),
         pytest.raises(HomeAssistantError) as raised,
     ):
         await hass.services.async_call(

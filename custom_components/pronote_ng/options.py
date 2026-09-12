@@ -355,3 +355,33 @@ def _estimate_logins(
         # the pessimistic side of the line.
         return batches_per_day
     return 3.0
+
+
+_ED_ESTIMATOR_TIERS: Final = frozenset(
+    {Tier.TIMETABLE, Tier.HOMEWORK, Tier.MARKS, Tier.ATTENDANCE}
+)
+
+
+def estimate_ecoledirecte_daily_requests(
+    options: Mapping[str, Any],
+    *,
+    students: int = 1,
+    include_qcm: bool = False,
+    multi_establishment: bool = False,
+) -> int:
+    """Estimate one ED run: login 2, optional QCM 4, one POST per capable tier.
+
+    This is not the annexe B Pronote estimator. A login is two requests, a
+    remembered QCM adds four once, each capable enabled tier posts once per
+    child, and a parent spanning establishments adds one ``renewtoken``.
+    """
+    enabled = tier_enabled(options)
+    posts = sum(1 for tier in _ED_ESTIMATOR_TIERS if enabled.get(tier, True)) * max(
+        1, students
+    )
+    total = 2 + posts
+    if include_qcm:
+        total += 4
+    if multi_establishment:
+        total += 1
+    return total

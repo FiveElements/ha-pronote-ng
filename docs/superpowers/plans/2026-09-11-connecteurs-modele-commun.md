@@ -925,7 +925,7 @@ git commit -m "docs: la voie réseau est un connecteur, pas le gateway Pronote"
 | §7.5 session, couches, auth, flow ED ≠ `login_guard` Pronote | 9, 10 |
 | §7.6–7.9 mapping (permanence, `typeCours` inconnu → `status is None`, `minutes`/`days` `None`, `duration=0`) | 1b, 8 |
 | §7.10–7.11 enfants, secrets, republie `SESSION` | 9, 10 |
-| §8.1 `tiers.py` sans `session.run` | 4 |
+| §8.1 plus d'appel réseau depuis les paliers | 4 |
 | §8.2 cadences Pronote + estimateur ED | 5, 9 |
 | §8.3 plateformes + `translation_key` + pas de `select` stratégie ED | 5 |
 | §8.4 flow | 10 |

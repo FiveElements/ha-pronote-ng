@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 import uuid as uuid_module
 
 from homeassistant.config_entries import (
@@ -35,7 +35,8 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -53,9 +54,22 @@ from homeassistant.helpers.selector import (
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .child_keys import pair
+from .connectors.ecoledirecte.connector import EcoledirecteConnector
+from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
+from .connectors.ecoledirecte.ed_limiter import EdRateLimiter
+from .connectors.ecoledirecte.ed_mapping import students_from_accounts
+from .connectors.errors import (
+    ConnectorChallengeRequired,
+    ConnectorCredentialsError,
+    ConnectorTransportError,
+)
+from .connectors.factory import source_from_entry_data
+from .connectors.protocol import Source
 from .const import (
     BRAND_LOGO_URL,
     CONF_ACCOUNT_PIN,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_DEVICE_NAME,
     CONF_ENT,
@@ -63,6 +77,7 @@ from .const import (
     CONF_PRONOTE_URL,
     CONF_QR_PAYLOAD,
     CONF_QR_PIN,
+    CONF_SOURCE,
     CONF_UUID,
     DEFAULT_HOMEWORK_HORIZON,
     DEFAULT_MASTER_TICK,
@@ -102,13 +117,21 @@ from .const import (
     LoginMode,
     SessionStrategy,
 )
-from .login_guard import clear_login_penalties, login_guard
-from .options import estimate_daily_requests, tier_enabled, tier_intervals
+from .login_guard import clear_login_penalties, limiter_state_store, login_guard
+from .options import (
+    build_rate_limit_config,
+    estimate_daily_requests,
+    estimate_ecoledirecte_daily_requests,
+    tier_enabled,
+    tier_intervals,
+)
 from .ratelimit import REQUESTS_PER_LOGIN, LoginOutcome, LoginRefusedByLimiter
 from .urls import public_url
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from .connectors.ecoledirecte.ed_client import Transport
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -116,6 +139,8 @@ STEP_USER: Final = "user"
 STEP_QR_CODE: Final = "qr_code"
 STEP_CREDENTIALS: Final = "credentials"
 STEP_ENT: Final = "ent"
+STEP_ECOLEDIRECTE: Final = "ecoledirecte"
+STEP_ECOLEDIRECTE_QCM: Final = "ecoledirecte_qcm"
 STEP_CHILDREN: Final = "children"
 STEP_REAUTH_CONFIRM: Final = "reauth_confirm"
 STEP_REAUTH_QR: Final = "reauth_qr"
@@ -165,6 +190,27 @@ CREDENTIALS_SCHEMA: Final = vol.Schema(
     }
 )
 
+ECOLEDIRECTE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required("username"): _TEXT,
+        vol.Required("password"): _PASSWORD,
+    }
+)
+
+
+def _ecoledirecte_qcm_schema(propositions: tuple[str, ...]) -> vol.Schema:
+    """One choice among the decoded propositions, not a JSON object to type."""
+    return vol.Schema(
+        {
+            vol.Required("choice"): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(propositions),
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+        }
+    )
+
 
 def _ent_schema() -> vol.Schema:
     """The ENT form, built at call time so the provider list is current."""
@@ -207,6 +253,9 @@ REAUTH_SCHEMA: Final = vol.Schema(
 #: just promised not to keep.
 _NEVER_PERSISTED: Final = frozenset(
     {CONF_QR_PAYLOAD, CONF_QR_PIN, CONF_ACCOUNT_PIN, "account_id"}
+)
+_ED_PERSISTED: Final = frozenset(
+    {CONF_SOURCE, "username", "password", "qcm_json", CONF_CHILD_KEYS}
 )
 
 
@@ -267,6 +316,19 @@ def _log_refusal(error: BaseException) -> None:
     )
 
 
+def _reset_ed_entry_penalties(hass: HomeAssistant, entry_id: str | None) -> None:
+    """Clear this ED entry's hold so a human reauth can submit immediately."""
+    if entry_id is not None:
+        limiter_state_store(hass).pop(entry_id, None)
+        account = hass.data.get(DOMAIN, {}).get(entry_id)
+        limiter = getattr(account, "limiter", None)
+        if limiter is not None:
+            limiter.reset_after_reauth()
+    flow_limiter = hass.data.get(f"{DOMAIN}_ecoledirecte_flow_limiter")
+    if isinstance(flow_limiter, EdRateLimiter):
+        flow_limiter.reset_after_reauth()
+
+
 def _account_identity(account_id: str | None) -> tuple[str, str]:
     """The parts of an account id that identify it *stably*.
 
@@ -311,6 +373,56 @@ def _probe(data: dict[str, Any]) -> dict[str, Any]:
     return probe_account(data)
 
 
+async def _probe_ecoledirecte(
+    hass: HomeAssistant,
+    username: str,
+    password: str,
+    qcm_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Authenticate against EcoleDirecte with its own limiter and HTTP session."""
+    answers = qcm_json if qcm_json is not None else {}
+    limiter = _ecoledirecte_flow_limiter(hass)
+    client = EcoleDirecteClient(
+        cast("Transport", async_create_clientsession(hass)),
+    )
+    try:
+        payload = await limiter.login(
+            lambda: client.login(
+                username,
+                password,
+                answers,
+                charge_qcm=limiter.charge_qcm,
+            ),
+            cost=2,
+        )
+    except ConnectorCredentialsError:
+        limiter.note_bad_credentials()
+        raise
+    except ConnectorChallengeRequired:
+        limiter.note_qcm()
+        raise
+    except ConnectorTransportError:
+        limiter.note_transport_failure(bootstrap=True)
+        raise
+    limiter.note_success()
+    return {
+        "students": tuple(
+            (student.id, student.name) for student in students_from_accounts(payload)
+        )
+    }
+
+
+def _ecoledirecte_flow_limiter(hass: HomeAssistant) -> EdRateLimiter:
+    """Return the instance-wide enrolment guard dedicated to EcoleDirecte."""
+    key = f"{DOMAIN}_ecoledirecte_flow_limiter"
+    limiter = hass.data.get(key)
+    if isinstance(limiter, EdRateLimiter):
+        return limiter
+    limiter = EdRateLimiter(build_rate_limit_config({}))
+    hass.data[key] = limiter
+    return limiter
+
+
 class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
     """Walk the user through one PRONOTE account."""
 
@@ -321,6 +433,9 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._children: list[tuple[str, str]] = []
         self._reauth_entry: ConfigEntry | None = None
+        self._ecoledirecte_qcm: dict[str, Any] = {}
+        self._ecoledirecte_question: str = ""
+        self._ecoledirecte_propositions: tuple[str, ...] = ()
 
     @staticmethod
     @callback
@@ -339,7 +454,12 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask which of the three login methods to use."""
         return self.async_show_menu(
             step_id=STEP_USER,
-            menu_options=[STEP_QR_CODE, STEP_CREDENTIALS, STEP_ENT],
+            menu_options=[
+                STEP_QR_CODE,
+                STEP_CREDENTIALS,
+                STEP_ENT,
+                STEP_ECOLEDIRECTE,
+            ],
             # See BRAND_LOGO_URL for why this is a URL and for the version gate
             # that keeps it: the mark reaches this screen as a markdown image
             # because hassfest refuses a URL written into the translation
@@ -434,6 +554,92 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id=STEP_ENT, data_schema=_ent_schema(), errors=errors
         )
 
+    # -- EcoleDirecte ------------------------------------------------------
+
+    async def async_step_ecoledirecte(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Log in to EcoleDirecte with an identifier and password."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._data = {
+                CONF_SOURCE: Source.ECOLEDIRECTE.value,
+                "username": user_input["username"],
+                "password": user_input["password"],
+                "qcm_json": self._ecoledirecte_qcm,
+                "title": "EcoleDirecte",
+            }
+            return await self._async_try_ecoledirecte(errors)
+        return self.async_show_form(
+            step_id=STEP_ECOLEDIRECTE,
+            data_schema=ECOLEDIRECTE_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_ecoledirecte_qcm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect remembered QCM answers without creating a half-born entry."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            choice = str(user_input["choice"])
+            if choice not in self._ecoledirecte_propositions:
+                errors["choice"] = "invalid_qcm"
+            else:
+                answers = {self._ecoledirecte_question: choice}
+                self._ecoledirecte_qcm = answers
+                self._data["qcm_json"] = answers
+                return await self._async_try_ecoledirecte(errors)
+        return self.async_show_form(
+            step_id=STEP_ECOLEDIRECTE_QCM,
+            data_schema=_ecoledirecte_qcm_schema(self._ecoledirecte_propositions),
+            errors=errors,
+            description_placeholders={
+                "question": self._ecoledirecte_question,
+                "propositions": ", ".join(self._ecoledirecte_propositions),
+            },
+        )
+
+    async def _async_try_ecoledirecte(self, errors: dict[str, str]) -> ConfigFlowResult:
+        try:
+            outcome = await _probe_ecoledirecte(
+                self.hass,
+                str(self._data["username"]),
+                str(self._data["password"]),
+                self._ecoledirecte_qcm,
+            )
+        except ConnectorChallengeRequired as challenge:
+            self._ecoledirecte_question = challenge.question or ""
+            self._ecoledirecte_propositions = challenge.propositions
+            return await self.async_step_ecoledirecte_qcm()
+        except LoginRefusedByLimiter:
+            errors["base"] = "rate_limited"
+        except ConnectorCredentialsError:
+            errors["base"] = "ed_invalid_auth"
+        except ConnectorTransportError:
+            errors["base"] = "cannot_connect"
+        except Exception:
+            _LOGGER.exception("unexpected failure while validating EcoleDirecte")
+            errors["base"] = "unknown"
+        else:
+            students = list(outcome["students"])
+            if self._reauth_entry is not None:
+                return self._async_finish_ed_reauth(self._reauth_entry)
+            await self.async_set_unique_id(
+                f"{Source.ECOLEDIRECTE.value}:{self._data['username']}"
+            )
+            self._abort_if_unique_id_configured()
+            self._children = students
+            self._data[CONF_CHILD_KEYS] = pair([], students)[1]
+            if len(students) > 1:
+                return await self.async_step_children()
+            return self._async_create()
+        return self.async_show_form(
+            step_id=STEP_ECOLEDIRECTE,
+            data_schema=ECOLEDIRECTE_SCHEMA,
+            errors=errors,
+        )
+
     # -- child selection ---------------------------------------------------
 
     async def async_step_children(
@@ -446,7 +652,16 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         should not pay for four (annexe B §5.3).
         """
         if user_input is not None:
-            self._data[CONF_CHILDREN] = user_input[CONF_CHILDREN]
+            selected = set(user_input[CONF_CHILDREN])
+            if self._data.get(CONF_SOURCE) == Source.ECOLEDIRECTE.value:
+                chosen = [
+                    (student_id, name)
+                    for student_id, name in self._children
+                    if student_id in selected
+                ]
+                self._data[CONF_CHILD_KEYS] = pair([], chosen)[1]
+            else:
+                self._data[CONF_CHILDREN] = user_input[CONF_CHILDREN]
             return self._async_create()
 
         return self.async_show_form(
@@ -480,6 +695,12 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             self.context["entry_id"]
         )
         self._data = dict(entry_data)
+        if source_from_entry_data(self._data) is Source.ECOLEDIRECTE:
+            _reset_ed_entry_penalties(
+                self.hass,
+                None if self._reauth_entry is None else self._reauth_entry.entry_id,
+            )
+            return await self.async_step_ecoledirecte()
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
@@ -626,6 +847,22 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         # a reload", breaks_in_ha_version="2026.12.0")`. The listener does the
         # reload, so asking for one here as well is either redundant or a second
         # reload.
+        return self.async_update_reload_and_abort(
+            entry,
+            data=persisted,
+            reason="reauth_successful",
+            reload_even_if_entry_is_unchanged=False,
+        )
+
+    def _async_finish_ed_reauth(self, entry: ConfigEntry) -> ConfigFlowResult:
+        """Persist ED credentials without importing a Pronote probe payload."""
+        merged = {
+            **dict(entry.data),
+            "username": self._data["username"],
+            "password": self._data["password"],
+            "qcm_json": self._data.get("qcm_json") or {},
+        }
+        persisted = {key: merged[key] for key in _ED_PERSISTED if key in merged}
         return self.async_update_reload_and_abort(
             entry,
             data=persisted,
@@ -821,6 +1058,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             for key, value in self._data.items()
             if key not in _NEVER_PERSISTED and value is not None
         }
+        if data.get(CONF_SOURCE) == Source.ECOLEDIRECTE.value:
+            data = {key: data[key] for key in _ED_PERSISTED if key in data}
         return self.async_create_entry(title=str(self._data["title"]), data=data)
 
 
@@ -908,34 +1147,42 @@ class PronoteOptionsFlow(OptionsFlow):
                 # an omission, it is how the value "follow Home Assistant" is
                 # shown -- and the only way back once a pin exists.
                 _optional_text(OPT_ESTABLISHMENT_TIMEZONE, shown): _TEXT,
-                # Both strategies are offered because the server's inactivity
-                # timeout is not published and cannot be assumed. `lazy` starts
-                # pessimistic and degrades to `per_batch` on measured evidence,
-                # so the default is never worse than the alternative (§6.5).
-                vol.Required(
-                    OPT_SESSION_STRATEGY,
-                    default=options.get(
-                        OPT_SESSION_STRATEGY, DEFAULT_SESSION_STRATEGY.value
-                    ),
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=[
-                            SelectOptionDict(value=strategy.value, label=strategy.value)
-                            for strategy in SessionStrategy
-                        ],
-                        mode=SelectSelectorMode.DROPDOWN,
-                        translation_key="session_strategy",
-                    )
-                ),
-                vol.Required(
-                    OPT_WRITE_OPERATIONS_ENABLED,
-                    default=options.get(
-                        OPT_WRITE_OPERATIONS_ENABLED,
-                        DEFAULT_WRITE_OPERATIONS_ENABLED,
-                    ),
-                ): BooleanSelector(),
             }
         )
+        source = source_from_entry_data(dict(self.config_entry.data))
+        if source is not Source.ECOLEDIRECTE:
+            # Both strategies are offered because the server's inactivity
+            # timeout is not published and cannot be assumed. `lazy` starts
+            # pessimistic and degrades to `per_batch` on measured evidence,
+            # so the default is never worse than the alternative (§6.5).
+            schema = schema.extend(
+                {
+                    vol.Required(
+                        OPT_SESSION_STRATEGY,
+                        default=options.get(
+                            OPT_SESSION_STRATEGY, DEFAULT_SESSION_STRATEGY.value
+                        ),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                SelectOptionDict(
+                                    value=strategy.value, label=strategy.value
+                                )
+                                for strategy in SessionStrategy
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
+                            translation_key="session_strategy",
+                        )
+                    ),
+                    vol.Required(
+                        OPT_WRITE_OPERATIONS_ENABLED,
+                        default=options.get(
+                            OPT_WRITE_OPERATIONS_ENABLED,
+                            DEFAULT_WRITE_OPERATIONS_ENABLED,
+                        ),
+                    ): BooleanSelector(),
+                }
+            )
         return self.async_show_form(
             step_id="general",
             data_schema=schema,
@@ -953,9 +1200,12 @@ class PronoteOptionsFlow(OptionsFlow):
         options = self.config_entry.options
         intervals = tier_intervals(options)
         enabled = tier_enabled(options)
+        capable = _capable_tiers(self.config_entry)
 
         fields: dict[Any, Any] = {}
         for tier, default in DEFAULT_TIER_INTERVALS.items():
+            if tier not in capable:
+                continue
             fields[
                 vol.Required(
                     OPT_TIER_INTERVAL.format(tier=tier.value),
@@ -1099,15 +1349,25 @@ class PronoteOptionsFlow(OptionsFlow):
         assumption when it does not -- an estimate a user can be disappointed by
         is worse than no estimate (§6.5).
         """
-        students = len(options.get(CONF_CHILDREN) or ()) or _entry_children(
-            self.config_entry
-        )
-        measured = _measured_lifetime(self.config_entry)
-        estimate = estimate_daily_requests(
-            options,
-            students=max(1, students),
-            session_lifetime_minutes=measured,
-        )
+        students = _entry_children(self.config_entry)
+        if source_from_entry_data(dict(self.config_entry.data)) is Source.ECOLEDIRECTE:
+            account = getattr(self.config_entry, "runtime_data", None)
+            login_ids = getattr(getattr(account, "connector", None), "_login_ids", {})
+            estimate = estimate_ecoledirecte_daily_requests(
+                options,
+                students=max(1, students),
+                include_qcm=bool(self.config_entry.data.get("qcm_json")),
+                multi_establishment=len(set(login_ids.values())) > 1,
+            )
+            measured = None
+        else:
+            students = len(options.get(CONF_CHILDREN) or ()) or students
+            measured = _measured_lifetime(self.config_entry)
+            estimate = estimate_daily_requests(
+                options,
+                students=max(1, students),
+                session_lifetime_minutes=measured,
+            )
         return {
             "estimate": str(estimate),
             "students": str(max(1, students)),
@@ -1115,17 +1375,32 @@ class PronoteOptionsFlow(OptionsFlow):
         }
 
 
+def _capable_tiers(entry: ConfigEntry) -> frozenset[Any]:
+    """Tiers this entry can actually collect."""
+    account = getattr(entry, "runtime_data", None)
+    if account is not None:
+        return frozenset(account.connector.capabilities.tiers)
+    if source_from_entry_data(dict(entry.data)) is Source.ECOLEDIRECTE:
+        return EcoledirecteConnector.CAPABILITIES.tiers
+    return frozenset(DEFAULT_TIER_INTERVALS)
+
+
 def _entry_children(entry: ConfigEntry) -> int:
     """How many children the entry follows."""
-    return len(entry.data.get(CONF_CHILDREN) or ()) or 1
+    stored = entry.data.get(CONF_CHILDREN)
+    if stored:
+        return len(stored)
+    keys = entry.data.get(CONF_CHILD_KEYS) or ()
+    return len(keys) or 1
 
 
 def _measured_lifetime(entry: ConfigEntry) -> float | None:
-    """The measured session lifetime, if the account is loaded."""
+    """The measured session lifetime, if the account is a Pronote extras owner."""
     account = getattr(entry, "runtime_data", None)
-    if account is None:
+    extras = getattr(account, "extras", None)
+    if extras is None:
         return None
-    lifetime = account.session.lifetime.observed_minutes
+    lifetime = extras.session.lifetime.observed_minutes
     return float(lifetime) if lifetime is not None else None
 
 

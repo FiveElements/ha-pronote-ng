@@ -295,13 +295,16 @@ async def _fetch(
     account: PronoteAccount, attachment: HomeworkAttachment, student_id: str
 ) -> tuple[bytes, str]:
     """Download one document through the one path to the network."""
+    extras = account.extras
+    if extras is None:
+        raise AttachmentUnavailable(attachment.name, 501)
 
     def work(client: Any) -> tuple[bytes, str | None, int]:
-        return account.gateway.homework_attachment(
+        return extras.gateway.homework_attachment(
             client, attachment_id=attachment.id, name=attachment.name
         )
 
-    content, declared, _cost = await account.session.run(
+    content, declared, _cost = await extras.session.run(
         str(Tier.HOMEWORK),
         # The priority every other human-initiated call in this integration
         # uses (`services.py`), and the same for a reason: somebody is waiting

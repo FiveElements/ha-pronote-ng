@@ -1,0 +1,1 @@
+"""EcoleDirecte connector implementation."""

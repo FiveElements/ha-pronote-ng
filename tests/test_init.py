@@ -21,10 +21,13 @@ credentials that are correct is worse than saying nothing.
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
+from homeassistant.const import ATTR_DEVICE_ID
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
@@ -38,15 +41,38 @@ from custom_components.pronote_ng.account import (
     PronoteAccount,
     _establishment_timezone,
 )
+from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
+    EcoledirecteConnector,
+)
+from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+    EcoleDirecteClient,
+)
+from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
+    EdRateLimiter,
+)
+from custom_components.pronote_ng.connectors.pronote import (
+    RateLimiter as PronoteConnectorRateLimiter,
+    SerialExecutor as PronoteConnectorSerialExecutor,
+    SessionManager as PronoteConnectorSessionManager,
+)
+from custom_components.pronote_ng.connectors.protocol import Source
 from custom_components.pronote_ng.const import (
+    CHILD_KEY,
+    CHILD_NAME,
+    CHILD_RESOURCE_ID,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
+    CONF_SOURCE,
     DOMAIN,
     FUNC_MENUS,
     FUNC_TIMETABLE,
     ISSUE_ACCOUNT_UNREADABLE,
     ISSUE_BOOTSTRAP_FAILED,
     OPT_ESTABLISHMENT_TIMEZONE,
+    OPT_READ_TIMEOUT,
     OPT_TIER_ENABLED,
+    SERVICE_GENERATE_TIMETABLE_PDF,
+    SERVICE_GET_ICAL_URL,
     SERVICE_GET_RATE_LIMIT_STATUS,
     SERVICE_REFRESH,
     TIER_PRIORITY,
@@ -54,9 +80,11 @@ from custom_components.pronote_ng.const import (
     Tier,
 )
 from custom_components.pronote_ng.hardened_client import BootstrapUnavailable
+from custom_components.pronote_ng.login_guard import limiter_state_store
 from custom_components.pronote_ng.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
+    RateLimitConfig,
 )
 from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
 from custom_components.pronote_ng.tiers import (
@@ -64,6 +92,7 @@ from custom_components.pronote_ng.tiers import (
     _priority_for,
     collect_tier,
 )
+from tests.test_ecoledirecte_client import RecordingTransport, load_fixture
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
@@ -109,6 +138,56 @@ async def test_setup_loads_the_entry_and_every_platform(
     assert mock_entry.runtime_data is account
     assert [student.id for student in account.students] == [STUDENT_ONE, STUDENT_TWO]
     assert hass.data[DOMAIN][mock_entry.entry_id] is account
+
+
+async def test_setup_uses_the_pronote_connector(account: PronoteAccount) -> None:
+    """The account source must stay explicit when another school backend is added."""
+    assert account.connector.capabilities.source is Source.PRONOTE
+
+
+async def test_an_unselected_child_with_unreadable_facts_does_not_block_setup(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """A child excluded in the flow must be filtered before its facts are decoded."""
+    from custom_components.pronote_ng.gateway import PronoteGateway
+
+    del school_day, no_spacing
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        data={**mock_entry.data, CONF_CHILDREN: [STUDENT_ONE]},
+    )
+    original = PronoteGateway.session_facts
+
+    def session_facts(gateway: PronoteGateway, client: FakeClient) -> Any:
+        if client.selected_child_id == STUDENT_TWO:
+            raise ValueError("unselected child is unreadable")
+        return original(gateway, client)
+
+    with (
+        patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=parent_client,
+        ),
+        patch.object(PronoteGateway, "session_facts", session_facts),
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+    account = mock_entry.runtime_data
+    assert [student.id for student in account.students] == [STUDENT_ONE]
+
+    await hass.config_entries.async_unload(mock_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_account_now_is_timezone_aware(account: PronoteAccount) -> None:
+    """Naive datetimes in entity state lose ordering and locale in one stroke."""
+    assert account.now().tzinfo is not None
+    assert account.today() == account.now().date()
 
 
 async def test_a_device_per_child_hangs_off_the_account_device(
@@ -669,6 +748,373 @@ async def test_a_batch_with_nothing_due_is_still_counted(
     assert account.completed_ticks == before + 1
 
 
+async def test_an_ed_batch_and_diagnostics_never_touch_session_manager() -> None:
+    """ED owns an asyncio lock, so a SessionManager access crashes its first tick."""
+    limiter = EdRateLimiter(
+        RateLimitConfig(min_request_interval=0, quiet_hours_enabled=False)
+    )
+    connector = SimpleNamespace(
+        capabilities=EcoledirecteConnector.CAPABILITIES,
+        limiter=limiter,
+        diagnostics=lambda: {
+            "limiter": limiter.snapshot_counters(),
+            "session": {"authenticated": True},
+        },
+    )
+    account = object.__new__(PronoteAccount)
+    account.connector = connector  # type: ignore[assignment]
+    account.scheduler = SimpleNamespace(  # type: ignore[assignment]
+        due=lambda: (Tier.TIMETABLE,),
+        diagnostics=dict,
+    )
+    account._shutting_down = False
+    account._completed_ticks = 0
+    account.state = SimpleNamespace(students=(), periods=())
+    account.stale_after = 3
+    account.entry = SimpleNamespace(options={})  # type: ignore[assignment]
+
+    collected: list[Tier] = []
+
+    async def collect(tier: Tier) -> None:
+        collected.append(tier)
+
+    account._async_collect = collect  # type: ignore[method-assign]
+    account._async_sync_issues = lambda: None  # type: ignore[method-assign]
+
+    await account._async_run_batch()
+
+    assert collected == [Tier.TIMETABLE]
+    assert account.diagnostics()["session"] == {"authenticated": True}
+
+
+async def test_an_ed_entry_instantiates_no_pronote_network_primitive(
+    hass: HomeAssistant,
+) -> None:
+    """A second backend must not silently inherit PRONOTE's thread and login costs."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        data={
+            CONF_SOURCE: Source.ECOLEDIRECTE.value,
+            "username": "demo.example.invalid",
+            "password": "not-a-real-password",
+            CONF_CHILDREN: ["1"],
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch.object(PronoteAccount, "async_setup", return_value=None),
+        patch.object(PronoteAccount, "async_start_first_collection"),
+        patch(
+            "custom_components.pronote_ng.connectors.pronote.SerialExecutor",
+            wraps=PronoteConnectorSerialExecutor,
+        ) as executor,
+        patch(
+            "custom_components.pronote_ng.connectors.pronote.SessionManager",
+            wraps=PronoteConnectorSessionManager,
+        ) as session_manager,
+        patch(
+            "custom_components.pronote_ng.connectors.pronote.RateLimiter",
+            wraps=PronoteConnectorRateLimiter,
+        ) as pronote_limiter,
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            return_value=None,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    account = entry.runtime_data
+    assert isinstance(account.connector, EcoledirecteConnector)
+    executor.assert_not_called()
+    session_manager.assert_not_called()
+    pronote_limiter.assert_not_called()
+
+
+async def test_an_ed_account_without_children_follows_child_key_resource_ids(
+    hass: HomeAssistant,
+) -> None:
+    """ED persists the selection as minted keys, not a second children list."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        data={
+            CONF_SOURCE: Source.ECOLEDIRECTE.value,
+            "username": "demo.example.invalid",
+            "password": "not-a-real-password",
+            "qcm_json": {},
+            CONF_CHILD_KEYS: [
+                {
+                    CHILD_KEY: "child-1",
+                    CHILD_RESOURCE_ID: "1",
+                    CHILD_NAME: "Enfant Un",
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    account = PronoteAccount(
+        hass,
+        entry,
+        connector_client=EcoleDirecteClient(RecordingTransport.scripted([])),
+    )
+
+    assert account._selected_children == ("1",)
+
+
+def _ed_entry_data() -> dict[str, Any]:
+    """Fictional ED entry: password persisted, selection only as child_keys."""
+    return {
+        CONF_SOURCE: Source.ECOLEDIRECTE.value,
+        "username": "demo.example.invalid",
+        "password": "not-a-real-password",
+        "qcm_json": {},
+        CONF_CHILD_KEYS: [
+            {
+                CHILD_KEY: "child-1",
+                CHILD_RESOURCE_ID: "1",
+                CHILD_NAME: "Enfant Un",
+            }
+        ],
+    }
+
+
+def _ed_collect_script() -> list[tuple[str, str, object]]:
+    """Login plus one métier POST per capable tier for the first collection."""
+    return [
+        ("GET", "login.awp", {"gtk": "gtk-demo"}),
+        ("POST", "login.awp", load_fixture("login_ok.json")),
+        ("POST", "emploidutemps.awp", load_fixture("emploi_du_temps.json")),
+        ("POST", "cahierdetexte.awp", load_fixture("cahier_de_texte.json")),
+        ("POST", "notes.awp", load_fixture("notes.json")),
+        ("POST", "viescolaire.awp", load_fixture("vie_scolaire.json")),
+    ]
+
+
+def _make_ed_client(
+    script: list[tuple[str, str, object]],
+) -> tuple[Any, RecordingTransport]:
+    """Build a client that ignores the HA session and uses a scripted transport."""
+    transport = RecordingTransport.scripted(script)
+
+    def factory(*_args: object, **kwargs: object) -> EcoleDirecteClient:
+        timeout = kwargs.get("read_timeout", 60.0)
+        assert isinstance(timeout, (int, float))
+        return EcoleDirecteClient(transport, read_timeout=float(timeout))
+
+    return factory, transport
+
+
+async def _setup_ed_entry(
+    hass: HomeAssistant,
+    *,
+    script: list[tuple[str, str, object]] | None = None,
+    options: dict[str, Any] | None = None,
+) -> tuple[Any, Any]:
+    """Stand an ED entry up through real platform forward."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    factory, _transport = _make_ed_client(script or _ed_collect_script())
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        unique_id="ecoledirecte:demo.example.invalid",
+        data=_ed_entry_data(),
+        options=options or {},
+    )
+    entry.add_to_hass(hass)
+    with (
+        patch("custom_components.pronote_ng.EcoleDirecteClient", side_effect=factory),
+        patch(
+            "custom_components.pronote_ng.connectors.pronote.SessionManager",
+            wraps=PronoteConnectorSessionManager,
+        ) as session_manager,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry, session_manager
+
+
+async def test_an_ed_entry_reaches_platforms_without_a_pronote_session(
+    hass: HomeAssistant,
+) -> None:
+    """Limiter tiles and options must work; session_age and iCal must not."""
+    from homeassistant.data_entry_flow import FlowResultType
+
+    entry, session_manager = await _setup_ed_entry(hass, options={OPT_READ_TIMEOUT: 12})
+    session_manager.assert_not_called()
+    assert isinstance(entry.runtime_data.connector, EcoledirecteConnector)
+    assert entry.runtime_data.connector.client.read_timeout == 12.0
+
+    registry = er.async_get(hass)
+    calls_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_calls_today"
+    )
+    limiter_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_limiter_state"
+    )
+    assert calls_id is not None
+    assert limiter_id is not None
+    assert hass.states.get(calls_id) is not None
+    assert hass.states.get(limiter_id) is not None
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_session_age")
+        is None
+    )
+    assert (
+        registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_session_lifetime"
+        )
+        is None
+    )
+    assert (
+        registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_child-1_next_test"
+        )
+        is None
+    )
+    for key in ("outing_today", "test_today", "holidays"):
+        assert (
+            registry.async_get_entity_id(
+                "binary_sensor", DOMAIN, f"{entry.entry_id}_child-1_{key}"
+            )
+            is None
+        )
+
+    class_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_child-1_class_name"
+    )
+    assert class_id is not None
+    class_state = hass.states.get(class_id)
+    assert class_state is not None
+    assert class_state.state == "4e Demo"
+
+    options = await hass.config_entries.options.async_init(entry.entry_id)
+    assert options["type"] is FlowResultType.MENU
+    general = await hass.config_entries.options.async_configure(
+        options["flow_id"], {"next_step_id": "general"}
+    )
+    general_keys = {
+        getattr(key, "schema", key) for key in general["data_schema"].schema
+    }
+    assert "session_strategy" not in general_keys
+    assert "write_operations_enabled" not in general_keys
+
+    child = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}_child-1"), entry.entry_id
+    )
+    assert child is not None
+    for service in (SERVICE_GET_ICAL_URL, SERVICE_GENERATE_TIMETABLE_PDF):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call(
+                DOMAIN,
+                service,
+                {ATTR_DEVICE_ID: child.id},
+                blocking=True,
+            )
+
+    account = entry.runtime_data
+    with patch.object(account, "async_request_tick"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_REFRESH,
+            {ATTR_DEVICE_ID: child.id},
+            blocking=True,
+        )
+    status = await hass.services.async_call(
+        DOMAIN,
+        SERVICE_GET_RATE_LIMIT_STATUS,
+        {ATTR_DEVICE_ID: child.id},
+        blocking=True,
+        return_response=True,
+    )
+    assert isinstance(status, dict)
+    assert "calls_today" in status
+    assert "scheduler" in status
+    assert "authenticated" in status["session"]
+
+
+async def test_an_ed_505_at_setup_opens_reauthentication(hass: HomeAssistant) -> None:
+    """A runtime 505 is bad credentials, not a silently broken entry."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    factory, _transport = _make_ed_client(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_505.json")),
+        ]
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        unique_id="ecoledirecte:demo.example.invalid-505",
+        data=_ed_entry_data(),
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.pronote_ng.EcoleDirecteClient", side_effect=factory):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    flows = [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["handler"] == DOMAIN
+    ]
+    assert [flow["context"]["source"] for flow in flows] == [SOURCE_REAUTH]
+
+
+async def test_an_ed_not_ready_retry_restores_the_punitive_limiter(
+    hass: HomeAssistant,
+) -> None:
+    """A fresh limiter every 80 s is the weekend-of-thousands-of-logins defect."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    class BoomTransport:
+        async def request(self, *_args: object, **_kwargs: object) -> object:
+            raise OSError("scripted transport failure")
+
+    def boom_factory(*_args: object, **_kwargs: object) -> EcoleDirecteClient:
+        return EcoleDirecteClient(BoomTransport())
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        unique_id="ecoledirecte:demo.example.invalid-transport",
+        data=_ed_entry_data(),
+    )
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.pronote_ng.EcoleDirecteClient", side_effect=boom_factory
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    stored = limiter_state_store(hass)[entry.entry_id]
+    assert stored.get("hold_until") is not None
+
+    def empty_factory(*_args: object, **_kwargs: object) -> EcoleDirecteClient:
+        return EcoleDirecteClient(RecordingTransport.scripted([]))
+
+    with patch(
+        "custom_components.pronote_ng.EcoleDirecteClient", side_effect=empty_factory
+    ):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    restored = limiter_state_store(hass)[entry.entry_id]
+    assert restored.get("hold_until") is not None
+
+
 async def test_a_stale_child_device_can_be_deleted(
     hass: HomeAssistant,
     account: PronoteAccount,
@@ -1066,7 +1512,7 @@ class TestWhatSurvivesAReload:
         del hass
         student_id = CHILDREN[0][0]
         recorded: list[Priority] = []
-        original = account.session.run
+        original = account.extras.session.run
 
         async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
             recorded.append(priority)
@@ -1075,7 +1521,7 @@ class TestWhatSurvivesAReload:
         # A tier that has never produced anything, which is what a cold
         # restart leaves behind.
         account.coordinators[Tier.MENUS].data = {}
-        with patch.object(account.session, "run", spy):
+        with patch.object(account.extras.session, "run", spy):
             await collect_tier(account, Tier.MENUS, student_id)
 
         assert recorded == [Priority.CRITICAL]
@@ -1095,13 +1541,13 @@ class TestWhatSurvivesAReload:
         assert account.snapshot(Tier.MENUS, student_id) is not None
 
         recorded: list[Priority] = []
-        original = account.session.run
+        original = account.extras.session.run
 
         async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
             recorded.append(priority)
             return await original(name, priority, fn, **kwargs)
 
-        with patch.object(account.session, "run", spy):
+        with patch.object(account.extras.session, "run", spy):
             await collect_tier(account, Tier.MENUS, student_id)
 
         assert recorded == [TIER_PRIORITY[Tier.MENUS]]
@@ -1218,6 +1664,6 @@ class TestWhichTimezonePronotesNaiveTimesAreReadIn:
             await hass.async_block_till_done()
 
         assert mock_entry.state is ConfigEntryState.LOADED
-        assert str(mock_entry.runtime_data.gateway.timezone) == str(
-            hass.config.time_zone
-        )
+        extras = mock_entry.runtime_data.extras
+        assert extras is not None
+        assert str(extras.gateway.timezone) == str(hass.config.time_zone)

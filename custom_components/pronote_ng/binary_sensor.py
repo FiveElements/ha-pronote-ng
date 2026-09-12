@@ -31,6 +31,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import callback
 
 from .account import PronoteAccount
+from .connectors.protocol import Source
 from .const import Tier
 from .entity import (
     ClockDrivenMixin,
@@ -95,7 +96,7 @@ def _next_midnight(account: PronoteAccount) -> datetime:
     an establishment abroad and a Home Assistant set to the family's timezone
     would otherwise disagree about which day it is (§4.2).
     """
-    now = account.gateway.now()
+    now = account.now()
     tomorrow = now.date() + timedelta(days=1)
     return datetime.combine(tomorrow, time.min, tzinfo=now.tzinfo)
 
@@ -115,7 +116,7 @@ def _next_boundary(
 
 def _today_lessons(facts: TimetableFacts, account: PronoteAccount) -> list[Any]:
     """Today's lessons, cancellations included."""
-    today = account.gateway.today()
+    today = account.today()
     return [lesson for lesson in facts.lessons if lesson.start.date() == today]
 
 
@@ -129,7 +130,7 @@ def _is_school_day(facts: TimetableFacts, account: PronoteAccount) -> bool:
 
 def _in_class(facts: TimetableFacts, account: PronoteAccount) -> bool:
     """The current instant falls inside a lesson the child attends."""
-    now = account.gateway.now()
+    now = account.now()
     return any(
         lesson.start <= now < lesson.end
         for lesson in facts.lessons
@@ -141,7 +142,7 @@ def _in_class_transition(
     facts: TimetableFacts, account: PronoteAccount
 ) -> datetime | None:
     """The next lesson boundary -- a start or an end, whichever comes first."""
-    now = account.gateway.now()
+    now = account.now()
     boundaries = [
         moment
         for lesson in facts.lessons
@@ -155,7 +156,7 @@ def _in_class_attributes(
     facts: TimetableFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Which lesson the child is in."""
-    now = account.gateway.now()
+    now = account.now()
     current = next(
         (
             lesson
@@ -231,7 +232,7 @@ def _is_holiday(facts: TimetableFacts, account: PronoteAccount) -> bool:
     timetable simply has not been published yet. The ``inferred`` attribute is
     there so an automation can decide how much to trust it.
     """
-    today = account.gateway.today()
+    today = account.today()
     horizon = today + timedelta(days=HOLIDAY_LOOKAHEAD_DAYS)
     return not any(
         today <= lesson.start.date() <= horizon
@@ -247,7 +248,7 @@ def _holiday_attributes(
     upcoming = [
         lesson.start
         for lesson in facts.lessons
-        if not lesson.canceled and lesson.start.date() >= account.gateway.today()
+        if not lesson.canceled and lesson.start.date() >= account.today()
     ]
     return {
         "inferred": True,
@@ -264,7 +265,7 @@ def _holiday_attributes(
 
 def _homework_overdue(facts: HomeworkFacts, account: PronoteAccount) -> bool:
     """An unfinished homework item is already past its deadline."""
-    today = account.gateway.today()
+    today = account.today()
     return any(not item.done and item.due < today for item in facts.homework)
 
 
@@ -272,7 +273,7 @@ def _overdue_attributes(
     facts: HomeworkFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Which homework items are late."""
-    today = account.gateway.today()
+    today = account.today()
     late = [item for item in facts.homework if not item.done and item.due < today]
     return {
         "count": len(late),
@@ -289,7 +290,7 @@ def _overdue_attributes(
 
 def _absence_in_progress(facts: AttendanceFacts, account: PronoteAccount) -> bool:
     """An absence window covers the current instant."""
-    now = account.gateway.now()
+    now = account.now()
     return any(absence.from_date <= now < absence.to_date for absence in facts.absences)
 
 
@@ -297,7 +298,7 @@ def _absence_transition(
     facts: AttendanceFacts, account: PronoteAccount
 ) -> datetime | None:
     """The next absence-window boundary."""
-    now = account.gateway.now()
+    now = account.now()
     boundaries = [
         moment
         for absence in facts.absences
@@ -310,7 +311,7 @@ def _absence_attributes(
     facts: AttendanceFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """The absence currently in progress."""
-    now = account.gateway.now()
+    now = account.now()
     current = next(
         (
             absence
@@ -333,7 +334,7 @@ def _absence_attributes(
 
 def _punishment_upcoming(facts: AttendanceFacts, account: PronoteAccount) -> bool:
     """A punishment slot is still in the future."""
-    now = account.gateway.now()
+    now = account.now()
     return any(
         slot.start > now
         for punishment in facts.punishments
@@ -345,7 +346,7 @@ def _punishment_transition(
     facts: AttendanceFacts, account: PronoteAccount
 ) -> datetime | None:
     """The next punishment slot, after which the answer may change."""
-    now = account.gateway.now()
+    now = account.now()
     starts = [
         slot.start for punishment in facts.punishments for slot in punishment.schedule
     ]
@@ -356,7 +357,7 @@ def _punishment_attributes(
     facts: AttendanceFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """The next punishment slot."""
-    now = account.gateway.now()
+    now = account.now()
     candidates = [
         (slot, punishment)
         for punishment in facts.punishments
@@ -455,10 +456,18 @@ async def async_setup_entry(
 ) -> None:
     """Create the per-child binary sensors, plus the account's throttle flag."""
     account = entry.runtime_data
+    supported = account.connector.capabilities.tiers
     entities: list[BinarySensorEntity] = []
 
     for student in account.students:
         for description in BINARY_SENSORS:
+            if description.tier not in supported:
+                continue
+            if (
+                account.connector.capabilities.source is Source.ECOLEDIRECTE
+                and description.key in {"outing_today", "test_today", "holidays"}
+            ):
+                continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
@@ -533,7 +542,7 @@ class PronoteBinarySensor(ClockDrivenMixin, PronoteEntity, BinarySensorEntity):
             self._cancel_transition()
             return
         moment = transition_fn(facts, self.account)
-        if moment is None or moment <= self.account.gateway.now():
+        if moment is None or moment <= self.account.now():
             self._cancel_transition()
             return
         # A second past the boundary, so the comparison that produced it has
