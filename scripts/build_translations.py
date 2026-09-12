@@ -275,7 +275,8 @@ CONFIG_EN: dict[str, Any] = {
         "ecoledirecte_qcm": {
             "title": "EcoleDirecte security question",
             "description": (
-                "EcoleDirecte requires an answer to its security question. "
+                "EcoleDirecte asks: {question}\n\n"
+                "Choices: {propositions}\n\n"
                 "Enter the saved question-to-answer mapping as a JSON object. "
                 "No account is created until the login succeeds."
             ),
@@ -508,7 +509,8 @@ CONFIG_FR: dict[str, Any] = {
         "ecoledirecte_qcm": {
             "title": "Question de sécurité EcoleDirecte",
             "description": (
-                "EcoleDirecte demande une réponse à sa question de sécurité. "
+                "EcoleDirecte demande : {question}\n\n"
+                "Choix : {propositions}\n\n"
                 "Saisissez la correspondance question-réponse mémorisée sous "
                 "forme d'objet JSON. Aucun compte n'est créé avant la réussite "
                 "de la connexion."

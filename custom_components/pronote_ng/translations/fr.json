@@ -58,7 +58,7 @@
       },
       "ecoledirecte_qcm": {
         "title": "Question de sécurité EcoleDirecte",
-        "description": "EcoleDirecte demande une réponse à sa question de sécurité. Saisissez la correspondance question-réponse mémorisée sous forme d'objet JSON. Aucun compte n'est créé avant la réussite de la connexion.",
+        "description": "EcoleDirecte demande : {question}\n\nChoix : {propositions}\n\nSaisissez la correspondance question-réponse mémorisée sous forme d'objet JSON. Aucun compte n'est créé avant la réussite de la connexion.",
         "data": {
           "qcm_json": "Réponses de sécurité (JSON)"
         }

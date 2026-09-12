@@ -214,6 +214,13 @@ async def test_a_250_does_not_increment_failed_logins() -> None:
     assert limiter.calls_today == 6
 
 
+def test_note_qcm_does_not_arm_credentials_hold() -> None:
+    """A 250 must not spend the credentials hold that blocks the next login."""
+    limiter = EdRateLimiter(_config())
+    limiter.note_qcm()
+    assert limiter.state is LimiterState.NOMINAL
+
+
 @pytest.mark.asyncio
 async def test_async_open_replays_a_stored_qcm_answer() -> None:
     """Runtime open must receive qcm_json; credentials alone never reach 200."""

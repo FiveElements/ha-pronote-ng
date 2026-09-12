@@ -22,6 +22,7 @@ framework rather than in the handler.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterator  # noqa: TC003 -- a pytest fixture annotation
 import json
 import logging
@@ -35,6 +36,7 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.pronote_ng.account import PronoteAccount
 from custom_components.pronote_ng.config_flow import (
     ProbeBootstrapFailed,
     ProbeEntUnknown,
@@ -68,6 +70,7 @@ from custom_components.pronote_ng.ratelimit import (
     LoginRefusedByLimiter,
 )
 from custom_components.pronote_ng.urls import public_url, url_host
+from tests.test_ecoledirecte_client import RecordingTransport, load_fixture
 
 from .conftest import REQUIRES_HASS
 
@@ -250,6 +253,76 @@ async def test_an_ecoledirecte_qcm_submit_creates_the_entry_after_200(
     assert created["type"] is FlowResultType.CREATE_ENTRY
     assert created["data"]["qcm_json"] == answers
     assert probe.call_args.args[3] == answers
+
+
+async def test_an_ecoledirecte_qcm_submit_after_250_is_not_held_by_the_limiter(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """A 250 is a challenge, not a 505: answers must reach login on the same guard."""
+    question = "Couleur préférée ?"
+    answer = "Bleu"
+    encoded_question = base64.b64encode(question.encode()).decode()
+    encoded_answer = base64.b64encode(answer.encode()).decode()
+    quiz = {
+        "code": 200,
+        "data": {
+            "question": encoded_question,
+            "propositions": [encoded_answer, base64.b64encode(b"Vert").decode()],
+        },
+    }
+    factors = {
+        "code": 200,
+        "data": {"cn": "not-a-real-cn", "cv": "not-a-real-cv"},
+    }
+    transport = RecordingTransport.scripted(
+        [
+            ("GET", "login.awp", {"gtk": "gtk-demo"}),
+            ("POST", "login.awp", load_fixture("login_250.json")),
+            ("POST", "doubleauth.awp", quiz),
+            ("GET", "login.awp", {"gtk": "gtk-retry"}),
+            ("POST", "login.awp", load_fixture("login_250.json")),
+            ("POST", "doubleauth.awp", quiz),
+            ("POST", "doubleauth.awp", factors),
+            ("GET", "login.awp", {"gtk": "gtk-after-qcm"}),
+            ("POST", "login.awp", load_fixture("login_ok.json")),
+        ]
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    with (
+        patch(
+            "custom_components.pronote_ng.config_flow.async_create_clientsession",
+            return_value=transport,
+        ),
+        patch.object(PronoteAccount, "async_setup", return_value=None),
+        patch.object(PronoteAccount, "async_start_first_collection"),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", return_value=None
+        ),
+    ):
+        challenged = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+        assert challenged["type"] is FlowResultType.FORM
+        assert challenged["step_id"] == "ecoledirecte_qcm"
+        placeholders = challenged.get("description_placeholders") or {}
+        assert placeholders.get("question") == question
+        assert answer in str(placeholders.get("propositions"))
+
+        created = await hass.config_entries.flow.async_configure(
+            challenged["flow_id"],
+            {"qcm_json": json.dumps({question: answer}, ensure_ascii=False)},
+        )
+        await hass.async_block_till_done()
+
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["data"]["qcm_json"] == {question: answer}
 
 
 async def test_an_ecoledirecte_entry_persists_exactly_the_contract_keys(

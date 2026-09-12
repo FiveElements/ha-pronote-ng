@@ -412,6 +412,8 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         self._children: list[tuple[str, str]] = []
         self._reauth_entry: ConfigEntry | None = None
         self._ecoledirecte_qcm: dict[str, Any] = {}
+        self._ecoledirecte_question: str = ""
+        self._ecoledirecte_propositions: tuple[str, ...] = ()
 
     @staticmethod
     @callback
@@ -570,6 +572,10 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id=STEP_ECOLEDIRECTE_QCM,
             data_schema=ECOLEDIRECTE_QCM_SCHEMA,
             errors=errors,
+            description_placeholders={
+                "question": self._ecoledirecte_question,
+                "propositions": ", ".join(self._ecoledirecte_propositions),
+            },
         )
 
     async def _async_try_ecoledirecte(self, errors: dict[str, str]) -> ConfigFlowResult:
@@ -580,7 +586,9 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
                 str(self._data["password"]),
                 self._ecoledirecte_qcm,
             )
-        except ConnectorChallengeRequired:
+        except ConnectorChallengeRequired as challenge:
+            self._ecoledirecte_question = challenge.question or ""
+            self._ecoledirecte_propositions = challenge.propositions
             return await self.async_step_ecoledirecte_qcm()
         except LoginRefusedByLimiter:
             errors["base"] = "rate_limited"

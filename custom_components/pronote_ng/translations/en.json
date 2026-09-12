@@ -58,7 +58,7 @@
       },
       "ecoledirecte_qcm": {
         "title": "EcoleDirecte security question",
-        "description": "EcoleDirecte requires an answer to its security question. Enter the saved question-to-answer mapping as a JSON object. No account is created until the login succeeds.",
+        "description": "EcoleDirecte asks: {question}\n\nChoices: {propositions}\n\nEnter the saved question-to-answer mapping as a JSON object. No account is created until the login succeeds.",
         "data": {
           "qcm_json": "Security answers (JSON)"
         }

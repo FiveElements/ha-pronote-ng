@@ -360,7 +360,8 @@ class EdRateLimiter:
             self._start_hold(DeferReason.CREDENTIALS_HOLD, self.config.credentials_hold)
 
     def note_qcm(self) -> None:
-        self._start_hold(DeferReason.CREDENTIALS_HOLD, self.config.credentials_hold)
+        """A 250 is a challenge, not a 505: do not arm credentials_hold."""
+        return
 
     def note_transport_failure(self, *, bootstrap: bool = False) -> None:
         self._consecutive_failures += 1
