@@ -473,50 +473,106 @@ def test_an_absent_period_list_yields_no_periods(gateway: PronoteGateway) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_the_timetable_costs_one_request_per_week(
+def test_the_timetable_costs_one_request_per_week_and_asks_for_two(
     gateway: PronoteGateway, client: FakeClient
 ) -> None:
-    """``Client.lessons()`` bills by week, so "today and tomorrow" is one post.
+    """``Client.lessons()`` bills by week, so a day and a week cost the same.
 
     Which is why the separate week tier was folded in: asking for the whole
-    week costs exactly the same request as asking for two days (§5.2).
+    week costs exactly the same request as asking for two days (§5.2). Two
+    weeks, however, are two posts -- the price of the horizon below.
     """
-    result = gateway.timetable(client, include_next_week=False)
-    assert result.calls == 1
-    assert client.posted_names == ["PageEmploiDuTemps"]
-
-
-def test_next_week_costs_nothing_extra_in_mid_week(
-    gateway: PronoteGateway, client: FakeClient
-) -> None:
-    """On a Thursday, tomorrow is in the same week: still one post."""
-    result = gateway.timetable(client, include_next_week=True)
-
-    assert result.calls == 1
-    assert client.posted_names == ["PageEmploiDuTemps"]
-
-
-def test_next_week_is_fetched_at_a_boundary_crossing(
-    clock: FakeClock, client: FakeClient
-) -> None:
-    """This is the one day in seven annexe B budgets 1.14 requests for.
-
-    ``get_week`` counts whole weeks from ``PremierLundi``, so a Sunday and the
-    Monday after it fall in different weeks -- and the timetable then costs two
-    posts rather than one. It is the only reason the tier is not budgeted at a
-    flat 1.
-    """
-    clock.set_wall(dt.datetime(2026, 3, 15, 18, 0, tzinfo=PARIS))
-    gateway = PronoteGateway("Europe/Paris", clock=clock.now)
-
-    result = gateway.timetable(client, include_next_week=True)
+    result = gateway.timetable(client)
 
     assert result.calls == 2
     assert client.posted_names == ["PageEmploiDuTemps", "PageEmploiDuTemps"]
-    assert result.facts.weeks_fetched == (
-        client.get_week(dt.date(2026, 3, 15)),
-        client.get_week(dt.date(2026, 3, 16)),
+
+
+def test_a_saturday_already_holds_the_monday_after_it(
+    clock: FakeClock, client: FakeClient
+) -> None:
+    """The weekend hole: forty-eight hours with no Monday in the timetable.
+
+    The horizon was "today and tomorrow", and next week was fetched only when
+    tomorrow fell in another week -- on a Sunday and on no other day. So from
+    Saturday's first collection the card drew an empty Monday, the next-lesson
+    sensor had nothing to point at, and the seven-day holiday question was
+    being answered from two days of data. Observed on a live instance on a
+    Saturday: twenty-seven lessons held, every one of them before the weekend,
+    and ``binary_sensor.<eleve>_vacances`` flipped to ``on`` at 00:00:01.
+    """
+    clock.set_wall(dt.datetime(2026, 3, 14, 9, 0, tzinfo=PARIS))
+    gateway = PronoteGateway("Europe/Paris", clock=clock.now)
+    monday = dt.datetime(2026, 3, 16, 8, 0, tzinfo=PARIS)
+    next_week = client.get_week(monday.date())
+    client.responses["PageEmploiDuTemps"] = lambda body: protocol.timetable_response(
+        [protocol.lesson(identifier="MONDAY-LESSON", start=monday)]
+        if body["numeroSemaine"] == next_week
+        else []
     )
+
+    result = gateway.timetable(client)
+
+    assert result.calls == 2
+    assert result.facts.weeks_fetched == (
+        client.get_week(dt.date(2026, 3, 14)),
+        next_week,
+    )
+    assert [lesson.id for lesson in result.facts.lessons] == ["MONDAY-LESSON"]
+
+
+def test_a_week_outside_the_school_year_is_never_asked_for(
+    clock: FakeClock, client: FakeClient
+) -> None:
+    """The summer holidays are two months of weeks that do not exist.
+
+    Between the last day of one school year and the first Monday of the next,
+    PRONOTE publishes no timetable at all, and a week number past
+    ``DerniereDate`` is not an empty week -- it is a question the server was
+    never asked. A tier that fails on it fails at every tick for two months and
+    takes the whole timetable down with it, so the weeks are clamped and the
+    collection places no request at all.
+    """
+    clock.set_wall(dt.datetime(2026, 7, 20, 9, 0, tzinfo=PARIS))
+    gateway = PronoteGateway("Europe/Paris", clock=clock.now)
+
+    result = gateway.timetable(client)
+
+    assert result.calls == 0
+    assert client.posted_names == []
+    assert result.facts.lessons == ()
+    assert result.facts.weeks_fetched == ()
+
+
+def test_the_last_week_of_the_year_does_not_drag_the_next_one_in(
+    clock: FakeClock, client: FakeClient
+) -> None:
+    """Half the window is outside the year, so only half of it is fetched."""
+    clock.set_wall(dt.datetime(2026, 7, 1, 9, 0, tzinfo=PARIS))
+    gateway = PronoteGateway("Europe/Paris", clock=clock.now)
+
+    result = gateway.timetable(client)
+
+    assert result.calls == 1
+    assert result.facts.weeks_fetched == (client.get_week(dt.date(2026, 7, 1)),)
+
+
+def test_the_days_before_the_first_monday_ask_for_the_first_week_once(
+    clock: FakeClock, client: FakeClient
+) -> None:
+    """``get_week`` puts them both in week 1, and one week is one request.
+
+    The week before the rentrée is exactly when a parent wants to know whether
+    the timetable has been published, so the tier is not silenced -- it simply
+    does not ask for the same week twice.
+    """
+    clock.set_wall(dt.datetime(2025, 8, 27, 9, 0, tzinfo=PARIS))
+    gateway = PronoteGateway("Europe/Paris", clock=clock.now)
+
+    result = gateway.timetable(client)
+
+    assert result.calls == 1
+    assert result.facts.weeks_fetched == (1,)
 
 
 def test_a_renamed_timetable_key_fails_the_tier(
@@ -525,7 +581,7 @@ def test_a_renamed_timetable_key_fails_the_tier(
     """Rather than reporting an empty week, which reads as "no school"."""
     client.responses["PageEmploiDuTemps"] = {"dataSec": {"data": {}}}
     with pytest.raises(ProtocolChanged):
-        gateway.timetable(client, include_next_week=False)
+        gateway.timetable(client)
 
 
 def test_a_lesson_carries_its_slot_coordinates(
@@ -539,7 +595,7 @@ def test_a_lesson_carries_its_slot_coordinates(
     client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
         [protocol.lesson(place=3, duration=2)]
     )
-    lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+    lesson = gateway.timetable(client).facts.lessons[0]
 
     assert lesson.place == 3
     assert lesson.duration == 2
@@ -558,7 +614,7 @@ def test_a_supplied_end_is_not_flagged_as_inferred(
             )
         ]
     )
-    lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+    lesson = gateway.timetable(client).facts.lessons[0]
 
     assert lesson.end_inferred is False
     assert lesson.end == dt.datetime(2026, 3, 12, 9, 0, tzinfo=PARIS)
@@ -578,7 +634,7 @@ def test_an_inverted_interval_is_refused(
     client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
         [protocol.lesson(start=dt.datetime(2026, 3, 12, 17, 0), place=8, duration=2)]
     )
-    lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+    lesson = gateway.timetable(client).facts.lessons[0]
 
     assert lesson.end > lesson.start
 
@@ -608,7 +664,7 @@ def test_an_end_the_guard_had_to_invent_is_flagged_even_when_one_was_sent(
             )
         ]
     )
-    lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+    lesson = gateway.timetable(client).facts.lessons[0]
 
     assert lesson.end == dt.datetime(2026, 3, 12, 11, 0, tzinfo=PARIS)
     assert lesson.end_inferred is True
@@ -627,7 +683,7 @@ def test_a_slot_with_no_published_content_still_decodes(
     client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
         [protocol.lesson(canceled=True, status="Prof. absent", with_contents=False)]
     )
-    lessons = gateway.timetable(client, include_next_week=False).facts.lessons
+    lessons = gateway.timetable(client).facts.lessons
 
     assert len(lessons) == 1
     assert lessons[0].canceled is True
@@ -651,7 +707,7 @@ def test_the_raw_fallback_uses_a_supplied_end_when_there_is_one(
             )
         ]
     )
-    lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+    lesson = gateway.timetable(client).facts.lessons[0]
 
     assert lesson.end == dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
     assert lesson.end_inferred is False
@@ -669,7 +725,7 @@ def test_a_lesson_with_no_identifier_or_no_start_is_dropped(
     client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
         [no_id, no_start, protocol.lesson(identifier="LESSON-3")]
     )
-    lessons = gateway.timetable(client, include_next_week=False).facts.lessons
+    lessons = gateway.timetable(client).facts.lessons
 
     assert [lesson.id for lesson in lessons] == ["LESSON-3"]
 
@@ -688,7 +744,7 @@ def test_a_null_inside_a_path_does_not_fail_the_tier(
     entry["cahierDeTextes"] = {"V": None}
 
     client.responses["PageEmploiDuTemps"] = protocol.timetable_response([entry])
-    lessons = gateway.timetable(client, include_next_week=False).facts.lessons
+    lessons = gateway.timetable(client).facts.lessons
 
     assert len(lessons) == 1
 
@@ -707,7 +763,7 @@ def test_the_timetable_hands_out_both_the_deduplicated_and_the_raw_week(
             protocol.lesson(identifier="LESSON-2", place=0, num=1),
         ]
     )
-    facts = gateway.timetable(client, include_next_week=False).facts
+    facts = gateway.timetable(client).facts
 
     assert [lesson.id for lesson in facts.lessons] == ["LESSON-2"]
     assert {lesson.id for lesson in facts.all_lessons} == {"LESSON-1", "LESSON-2"}
@@ -2161,7 +2217,7 @@ class TestTheColourInstruments:
             [protocol.lesson(background_color="#336699")]
         )
 
-        lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+        lesson = gateway.timetable(client).facts.lessons[0]
 
         assert lesson.background_color == "#336699"
 
@@ -2179,7 +2235,7 @@ class TestTheColourInstruments:
             [protocol.lesson()]
         )
 
-        lesson = gateway.timetable(client, include_next_week=False).facts.lessons[0]
+        lesson = gateway.timetable(client).facts.lessons[0]
 
         assert lesson.background_color is None
 
@@ -2197,7 +2253,7 @@ class TestTheColourInstruments:
         """
         client.responses["PageEmploiDuTemps"] = protocol.timetable_response([])
 
-        result = gateway.timetable(client, include_next_week=False)
+        result = gateway.timetable(client)
 
         assert result.facts.lessons == ()
 

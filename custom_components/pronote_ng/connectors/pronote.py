@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
 import time
 from typing import TYPE_CHECKING, Any, Final, cast
 
@@ -37,6 +36,7 @@ from .protocol import ConnectorCapabilities, Source
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping, Sequence
+    from datetime import date, datetime
 
     from ..hardened_client import HardenedClient  # noqa: TID252
     from ..models import Period  # noqa: TID252
@@ -170,20 +170,16 @@ class PronoteConnector:
 
         match tier:
             case Tier.TIMETABLE:
-                today = self.today()
-                tomorrow = today + timedelta(days=1)
-                include_next_week = tomorrow.isocalendar()[1] != today.isocalendar()[1]
-                return cast(
-                    "GatewayResult[Any]",
-                    await self.session.run(
-                        str(tier),
-                        priority,
-                        lambda client: self.gateway.timetable(
-                            client, include_next_week=include_next_week
-                        ),
-                        student_id=student_id,
-                        cost=2 if include_next_week else 1,
-                    ),
+                # Two weeks, every time, and two requests declared for them.
+                # The gateway drops a week that falls outside the school year,
+                # so the real cost is sometimes 1 and, all summer, 0 -- but the
+                # limiter charges at admission and never refunds, so the
+                # declaration is the upper bound rather than the likely case.
+                # Declaring less and spending more is the failure this whole
+                # chain exists to prevent; declaring more and spending less
+                # only leaves budget unused.
+                return await self._run(
+                    tier, student_id, priority, self.gateway.timetable, cost=2
                 )
             case Tier.HOMEWORK:
                 return await self._run(
@@ -271,8 +267,9 @@ class PronoteConnector:
         student_id: str,
         priority: Priority,
         function: Callable[[HardenedClient], Any],
+        cost: int = 1,
     ) -> GatewayResult[Any]:
-        """Run a one-request gateway operation."""
+        """Run a gateway operation whose cost is known before it is placed."""
         return cast(
             "GatewayResult[Any]",
             await self.session.run(
@@ -280,6 +277,7 @@ class PronoteConnector:
                 priority,
                 function,
                 student_id=student_id,
+                cost=cost,
             ),
         )
 

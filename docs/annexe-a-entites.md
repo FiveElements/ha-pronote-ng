@@ -434,7 +434,7 @@ l'établissement renomme « Trimestre 1 » en « Semestre 1 ».
 | `binary_sensor.<é>_devoirs_en_retard` | un devoir non fait a une échéance passée | `problem` | `homework` | `Homework.done`/`date` |
 | `binary_sensor.<é>_absence_en_cours` | une absence couvre l'heure courante | `problem` | `attendance` | `Absence.from_date`/`to_date` |
 | `binary_sensor.<é>_punition_a_venir` | une punition est programmée dans le futur | `problem` | `attendance` | `Punishment.schedule` |
-| `binary_sensor.<é>_vacances` | aucun cours dans les 7 jours et hors période active | — | `timetable` | — |
+| `binary_sensor.<é>_vacances` | aucun cours dans les 7 jours **ou** aucun cours de toute la semaine courante | — | `timetable` | — |
 | `binary_sensor.<compte>_collectes_bridees` | le limiteur retarde des collectes | `problem` | — | — |
 
 ### 3.1 Trois jumeaux retirés en v2

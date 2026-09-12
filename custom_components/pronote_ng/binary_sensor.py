@@ -69,6 +69,11 @@ SCAN_INTERVAL = timedelta(seconds=30)
 #: How far ahead ``holidays`` looks for a lesson. Seven days rather than "the
 #: active period", because PRONOTE publishes no holiday calendar: the only
 #: evidence available is the absence of lessons (annexe A §3).
+#:
+#: Seven is also exactly what the timetable tier now fetches ahead at its
+#: narrowest -- a Sunday, whose window is this week plus the next. The question
+#: used to be wider than the data it was asked of, which is how a Saturday with
+#: two days of lessons behind it answered "holidays".
 HOLIDAY_LOOKAHEAD_DAYS: Final = 7
 
 
@@ -225,20 +230,39 @@ def _test_attributes(facts: TimetableFacts, account: PronoteAccount) -> dict[str
 
 
 def _is_holiday(facts: TimetableFacts, account: PronoteAccount) -> bool:
-    """No lesson at all in the next seven days.
+    """No lesson in the seven days ahead, or none in the whole current week.
 
     Inferred, and it says so. PRONOTE exposes no holiday calendar, so the only
     evidence is the absence of lessons -- which also reads as ``on`` when the
     timetable simply has not been published yet. The ``inferred`` attribute is
     there so an automation can decide how much to trust it.
+
+    The two clauses answer two different shapes of break, and either one alone
+    gets a week of the year wrong.
+
+    **Forward** is the break that is about to start: on the Saturday before the
+    Toussaint holidays the week just gone is full and the week ahead is empty,
+    and only looking ahead can see it. It needs the seven days to be *fetched*,
+    which is why the timetable tier now always reaches into next week.
+
+    **The current week** is the break that is already running. A holiday of two
+    weeks -- Toussaint, Noël, février, Pâques -- or the two months of summer
+    has a tail: from the Monday of its last week, "is there a lesson in the
+    next seven days" finds the return and answers ``off`` while the child is
+    still on holiday. Asking whether *this* week holds a lesson at all answers
+    that correctly for every day of it, and does not fire on a pupil whose
+    Monday happens to be free, because the rest of the week still has lessons.
     """
     today = account.today()
-    horizon = today + timedelta(days=HOLIDAY_LOOKAHEAD_DAYS)
-    return not any(
-        today <= lesson.start.date() <= horizon
-        for lesson in facts.lessons
-        if not lesson.canceled
+    monday = today - timedelta(days=today.weekday())
+    dates = [lesson.start.date() for lesson in facts.lessons if not lesson.canceled]
+    nothing_ahead = not any(
+        today <= day <= today + timedelta(days=HOLIDAY_LOOKAHEAD_DAYS) for day in dates
     )
+    nothing_this_week = not any(
+        monday <= day <= monday + timedelta(days=6) for day in dates
+    )
+    return nothing_ahead or nothing_this_week
 
 
 def _holiday_attributes(
@@ -250,10 +274,20 @@ def _holiday_attributes(
         for lesson in facts.lessons
         if not lesson.canceled and lesson.start.date() >= account.today()
     ]
+    today = account.today()
+    monday = today - timedelta(days=today.weekday())
     return {
         "inferred": True,
         "lookahead_days": HOLIDAY_LOOKAHEAD_DAYS,
         "next_lesson": min(upcoming).isoformat() if upcoming else None,
+        # Which of the two clauses can fire, so a card can say "holidays" and
+        # "no school this week" without re-deriving either from the lesson
+        # list -- and so a bug report shows which one answered.
+        "current_week_without_lessons": not any(
+            monday <= lesson.start.date() <= monday + timedelta(days=6)
+            for lesson in facts.lessons
+            if not lesson.canceled
+        ),
         "weeks_fetched": list(facts.weeks_fetched),
     }
 
