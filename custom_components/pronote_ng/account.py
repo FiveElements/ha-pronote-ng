@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
@@ -36,7 +36,7 @@ from homeassistant.util import dt as dt_util
 
 from .child_keys import is_minted, pair
 from .connectors.factory import build_connector, source_from_entry_data
-from .connectors.protocol import Source
+from .connectors.protocol import LimiterView, PronoteExtras, Source, has_pronote_extras
 from .const import (
     CHILD_RESOURCE_ID,
     CONF_ACCOUNT_PIN,
@@ -99,14 +99,9 @@ if TYPE_CHECKING:
 
     from . import PronoteConfigEntry
     from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
-    from .connectors.ecoledirecte.ed_limiter import EdRateLimiter
-    from .connectors.pronote import PronoteConnector
     from .connectors.protocol import ConnectorCapabilities
     from .coordinator import TierData
     from .delta import DeltaEvent
-    from .gateway import PronoteGateway
-    from .ratelimit import RateLimiter
-    from .session import SerialExecutor, SessionManager
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -339,24 +334,17 @@ class PronoteAccount:
         return self.state.students
 
     @property
-    def gateway(self) -> PronoteGateway:
-        """The PRONOTE extras gateway kept for services during the migration."""
-        return cast("PronoteConnector", self.connector).gateway
-
-    @property
-    def limiter(self) -> RateLimiter | EdRateLimiter:
+    def limiter(self) -> LimiterView:
         """The connector-owned limiter kept for account orchestration."""
-        return cast("PronoteConnector", self.connector).limiter
+        return self.connector.limiter
 
     @property
-    def executor(self) -> SerialExecutor:
-        """The connector-owned executor kept for compatibility."""
-        return cast("PronoteConnector", self.connector).executor
-
-    @property
-    def session(self) -> SessionManager:
-        """The connector-owned session kept for services during the migration."""
-        return cast("PronoteConnector", self.connector).session
+    def extras(self) -> PronoteExtras | None:
+        """PRONOTE session extras, or None when the source has none."""
+        connector = self.connector
+        if has_pronote_extras(connector):
+            return connector
+        return None
 
     @property
     def establishment_name(self) -> str:
@@ -976,8 +964,9 @@ class PronoteAccount:
         # `(child, tier)` -- 36 logins in a single tick for a two-child
         # account with three closed periods, against a cap of 24.
         self.limiter.begin_batch()
-        if self.connector.capabilities.source is Source.PRONOTE:
-            self.session.begin_batch()
+        extras = self.extras
+        if extras is not None:
+            extras.session.begin_batch()
         try:
             for tier in due:
                 if self._stopping():

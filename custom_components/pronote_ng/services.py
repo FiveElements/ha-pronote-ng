@@ -38,6 +38,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 import voluptuous as vol
 
 from .const import (
+    AGNOSTIC_SERVICES,
     DOMAIN,
     SERVICE_GENERATE_TIMETABLE_PDF,
     SERVICE_GET_ICAL_URL,
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from datetime import date
 
     from .account import PronoteAccount
+    from .connectors.protocol import PronoteExtras
     from .models import Identity
 
 ATTR_DEVICE_ID: Final = "device_id"
@@ -258,7 +260,13 @@ def _require_writes(account: PronoteAccount) -> None:
 
 
 def _require_service(account: PronoteAccount, service: str) -> None:
-    """Refuse a service the connector does not advertise."""
+    """Refuse a service the connector does not advertise.
+
+    ``refresh`` and ``get_rate_limit_status`` are source-agnostic: they only
+    touch the scheduler and the limiter's in-memory counters.
+    """
+    if service in AGNOSTIC_SERVICES:
+        return
     if service not in account.connector.capabilities.services:
         raise ServiceValidationError(
             f"{account.connector.capabilities.source} does not support "
@@ -266,8 +274,18 @@ def _require_service(account: PronoteAccount, service: str) -> None:
         )
 
 
+def _require_pronote_extras(account: PronoteAccount) -> PronoteExtras:
+    """Refuse callers that need the PRONOTE session façade."""
+    extras = account.extras
+    if extras is None:
+        raise ServiceValidationError(
+            f"{account.connector.capabilities.source} does not support PRONOTE extras"
+        )
+    return extras
+
+
 async def _run(
-    account: PronoteAccount,
+    extras: PronoteExtras,
     tier: Tier,
     student_id: str | None,
     fn: Any,
@@ -282,7 +300,7 @@ async def _run(
     saying when to try again.
     """
     try:
-        return await account.session.run(
+        return await extras.session.run(
             str(tier), priority, fn, student_id=student_id, cost=cost
         )
     except TierDeferred as deferred:
@@ -339,11 +357,12 @@ async def _async_get_ical_url(call: ServiceCall) -> ServiceResponse:
     """
     account, student_id = _resolve_student(call.hass, call)
     _require_service(account, SERVICE_GET_ICAL_URL)
+    extras = _require_pronote_extras(account)
 
     def work(client: Any) -> tuple[str, int]:
-        return account.gateway.ical_url(client)
+        return extras.gateway.ical_url(client)
 
-    url, _cost = await _run(account, Tier.TIMETABLE, student_id, work, cost=1)
+    url, _cost = await _run(extras, Tier.TIMETABLE, student_id, work, cost=1)
     return {"url": url}
 
 
@@ -355,11 +374,12 @@ async def _async_get_identity(call: ServiceCall) -> ServiceResponse:
     """
     account, student_id = _resolve_student(call.hass, call)
     _require_service(account, SERVICE_GET_IDENTITY)
+    extras = _require_pronote_extras(account)
 
     def work(client: Any) -> tuple[Identity, int]:
-        return account.gateway.identity(client)
+        return extras.gateway.identity(client)
 
-    identity, _cost = await _run(account, Tier.STATIC, student_id, work, cost=1)
+    identity, _cost = await _run(extras, Tier.STATIC, student_id, work, cost=1)
     return {
         "name": identity.name,
         "birth_date": identity.birth_date.isoformat() if identity.birth_date else None,
@@ -387,13 +407,14 @@ async def _async_mark_homework_done(call: ServiceCall) -> None:
     account, student_id = _resolve_student(call.hass, call)
     _require_service(account, SERVICE_MARK_HOMEWORK_DONE)
     _require_writes(account)
+    extras = _require_pronote_extras(account)
     homework_id = call.data[ATTR_HOMEWORK_ID]
     done = call.data[ATTR_DONE]
 
     def work(client: Any) -> int:
-        return account.gateway.set_homework_done(client, homework_id, done=done)
+        return extras.gateway.set_homework_done(client, homework_id, done=done)
 
-    await _run(account, Tier.HOMEWORK, student_id, work, cost=1)
+    await _run(extras, Tier.HOMEWORK, student_id, work, cost=1)
     # Re-read soon rather than immediately: the tick is local truth already, and
     # an instant re-fetch would double the cost of every checkbox.
     account.scheduler.request([Tier.HOMEWORK])
@@ -404,12 +425,13 @@ async def _async_mark_information_read(call: ServiceCall) -> None:
     account, student_id = _resolve_student(call.hass, call)
     _require_service(account, SERVICE_MARK_INFORMATION_READ)
     _require_writes(account)
+    extras = _require_pronote_extras(account)
     information_id = call.data[ATTR_INFORMATION_ID]
 
     def work(client: Any) -> int:
-        return account.gateway.mark_information_read(client, information_id)
+        return extras.gateway.mark_information_read(client, information_id)
 
-    await _run(account, Tier.NEWS, student_id, work, cost=1)
+    await _run(extras, Tier.NEWS, student_id, work, cost=1)
     account.scheduler.request([Tier.NEWS])
 
 
@@ -424,6 +446,7 @@ async def _async_send_message(call: ServiceCall) -> None:
     account, student_id = _resolve_student(call.hass, call)
     _require_service(account, SERVICE_SEND_MESSAGE)
     _require_writes(account)
+    extras = _require_pronote_extras(account)
     message = call.data[ATTR_MESSAGE]
     discussion_id = call.data.get(ATTR_DISCUSSION_ID)
     recipients = call.data.get(ATTR_RECIPIENTS)
@@ -437,13 +460,13 @@ async def _async_send_message(call: ServiceCall) -> None:
 
     def work(client: Any) -> int:
         if discussion_id is not None:
-            return account.gateway.reply_to_discussion(client, discussion_id, message)
-        return account.gateway.start_discussion(
+            return extras.gateway.reply_to_discussion(client, discussion_id, message)
+        return extras.gateway.start_discussion(
             client, str(subject), message, recipients or []
         )
 
     try:
-        await _run(account, Tier.DISCUSSIONS, student_id, work, cost=3)
+        await _run(extras, Tier.DISCUSSIONS, student_id, work, cost=3)
     except DiscussionNotFound as error:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
@@ -477,13 +500,14 @@ async def _async_generate_timetable_pdf(call: ServiceCall) -> ServiceResponse:
     """
     account, student_id = _resolve_student(call.hass, call)
     _require_service(account, SERVICE_GENERATE_TIMETABLE_PDF)
+    extras = _require_pronote_extras(account)
     day: date | None = call.data.get(ATTR_DAY)
     portrait = call.data[ATTR_ORIENTATION] == ORIENTATION_PORTRAIT
 
     def work(client: Any) -> tuple[str, int]:
-        return account.gateway.timetable_pdf_url(client, day, portrait=portrait)
+        return extras.gateway.timetable_pdf_url(client, day, portrait=portrait)
 
-    url, _cost = await _run(account, Tier.TIMETABLE, student_id, work, cost=1)
+    url, _cost = await _run(extras, Tier.TIMETABLE, student_id, work, cost=1)
     return {"url": url}
 
 
@@ -496,10 +520,16 @@ async def _async_get_rate_limit_status(call: ServiceCall) -> ServiceResponse:
     account, _ = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
     _require_service(account, SERVICE_GET_RATE_LIMIT_STATUS)
     counters = account.limiter.snapshot_counters()
+    extras = account.extras
+    session = (
+        extras.session.diagnostics()
+        if extras is not None
+        else account.connector.diagnostics().get("session", {})
+    )
     return {
         **counters,
         "scheduler": account.scheduler.diagnostics(),
-        "session": account.session.diagnostics(),
+        "session": session,
     }
 
 

@@ -10,8 +10,11 @@ from .errors import (
 from .protocol import (
     ChallengeKind,
     ConnectorCapabilities,
+    LimiterView,
+    PronoteExtras,
     SchoolConnector,
     Source,
+    has_pronote_extras,
 )
 
 __all__ = [
@@ -24,6 +27,9 @@ __all__ = [
     "ConnectorTransportError",
     "ConnectorUndecodableError",
     "ConnectorUnsupportedError",
+    "LimiterView",
+    "PronoteExtras",
     "SchoolConnector",
     "Source",
+    "has_pronote_extras",
 ]

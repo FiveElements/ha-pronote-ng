@@ -472,6 +472,9 @@ SERVICE_SEND_MESSAGE: Final = "send_message"
 SERVICE_GENERATE_TIMETABLE_PDF: Final = "generate_timetable_pdf"
 SERVICE_GET_RATE_LIMIT_STATUS: Final = "get_rate_limit_status"
 
+#: Services every source implements: they never touch a school backend.
+AGNOSTIC_SERVICES: Final = frozenset({SERVICE_REFRESH, SERVICE_GET_RATE_LIMIT_STATUS})
+
 #: Attributes never written to the recorder: PRONOTE lists blow past the 16 KiB
 #: attribute limit, and the useful history is the count, not the payload (§9).
 #:

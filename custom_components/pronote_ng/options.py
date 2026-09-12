@@ -376,9 +376,9 @@ def estimate_ecoledirecte_daily_requests(
     child, and a parent spanning establishments adds one ``renewtoken``.
     """
     enabled = tier_enabled(options)
-    posts = sum(
-        1 for tier in _ED_ESTIMATOR_TIERS if enabled.get(tier, True)
-    ) * max(1, students)
+    posts = sum(1 for tier in _ED_ESTIMATOR_TIERS if enabled.get(tier, True)) * max(
+        1, students
+    )
     total = 2 + posts
     if include_qcm:
         total += 4

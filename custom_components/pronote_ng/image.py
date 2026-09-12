@@ -89,13 +89,15 @@ class PronoteProfileImage(PronoteEntity, ImageEntity):
             return self._cached
         self._attempted = True
 
-        account = self.account
+        extras = self.account.extras
+        if extras is None:
+            return None
 
         def work(client: Any) -> tuple[bytes | None, int]:
-            return account.gateway.profile_picture(client)
+            return extras.gateway.profile_picture(client)
 
         try:
-            data, _cost = await account.session.run(
+            data, _cost = await extras.session.run(
                 str(Tier.STATIC),
                 Priority.LOW,
                 work,

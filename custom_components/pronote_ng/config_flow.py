@@ -197,13 +197,19 @@ ECOLEDIRECTE_SCHEMA: Final = vol.Schema(
     }
 )
 
-ECOLEDIRECTE_QCM_SCHEMA: Final = vol.Schema(
-    {
-        vol.Required("qcm_json"): TextSelector(
-            TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
-        )
-    }
-)
+
+def _ecoledirecte_qcm_schema(propositions: tuple[str, ...]) -> vol.Schema:
+    """One choice among the decoded propositions, not a JSON object to type."""
+    return vol.Schema(
+        {
+            vol.Required("choice"): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(propositions),
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+        }
+    )
 
 
 def _ent_schema() -> vol.Schema:
@@ -576,17 +582,17 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect remembered QCM answers without creating a half-born entry."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            try:
-                answers = _parse_qcm_answers(user_input["qcm_json"])
-            except (json.JSONDecodeError, ValueError):
-                errors["qcm_json"] = "invalid_qcm"
+            choice = str(user_input["choice"])
+            if choice not in self._ecoledirecte_propositions:
+                errors["choice"] = "invalid_qcm"
             else:
+                answers = {self._ecoledirecte_question: choice}
                 self._ecoledirecte_qcm = answers
                 self._data["qcm_json"] = answers
                 return await self._async_try_ecoledirecte(errors)
         return self.async_show_form(
             step_id=STEP_ECOLEDIRECTE_QCM,
-            data_schema=ECOLEDIRECTE_QCM_SCHEMA,
+            data_schema=_ecoledirecte_qcm_schema(self._ecoledirecte_propositions),
             errors=errors,
             description_placeholders={
                 "question": self._ecoledirecte_question,
@@ -1390,18 +1396,11 @@ def _entry_children(entry: ConfigEntry) -> int:
 
 def _measured_lifetime(entry: ConfigEntry) -> float | None:
     """The measured session lifetime, if the account is a Pronote extras owner."""
-    if source_from_entry_data(dict(entry.data)) is Source.ECOLEDIRECTE:
-        return None
     account = getattr(entry, "runtime_data", None)
-    if account is None:
+    extras = getattr(account, "extras", None)
+    if extras is None:
         return None
-    connector = getattr(account, "connector", None)
-    if connector is not None and not hasattr(connector, "session"):
-        return None
-    session = getattr(account, "session", None)
-    if session is None:
-        return None
-    lifetime = session.lifetime.observed_minutes
+    lifetime = extras.session.lifetime.observed_minutes
     return float(lifetime) if lifetime is not None else None
 
 
@@ -1511,14 +1510,6 @@ def _parse_qr_payload(raw: str) -> dict[str, Any]:
         # is what the entry's address is rebuilt from.
         raise ValueError("url is not a usable string")
     return payload
-
-
-def _parse_qcm_answers(raw: str) -> dict[str, Any]:
-    """Parse the durable EcoleDirecte question-to-answer mapping."""
-    answers = json.loads(raw)
-    if not isinstance(answers, dict):
-        raise ValueError("QCM answers must be a JSON object")  # noqa: TRY004
-    return answers
 
 
 class ProbeError(Exception):

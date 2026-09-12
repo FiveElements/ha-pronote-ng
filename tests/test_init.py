@@ -948,9 +948,7 @@ async def test_an_ed_entry_reaches_platforms_without_a_pronote_session(
     """Limiter tiles and options must work; session_age and iCal must not."""
     from homeassistant.data_entry_flow import FlowResultType
 
-    entry, session_manager = await _setup_ed_entry(
-        hass, options={OPT_READ_TIMEOUT: 12}
-    )
+    entry, session_manager = await _setup_ed_entry(hass, options={OPT_READ_TIMEOUT: 12})
     session_manager.assert_not_called()
     assert isinstance(entry.runtime_data.connector, EcoledirecteConnector)
     assert entry.runtime_data.connector.client.read_timeout == 12.0
@@ -1021,6 +1019,26 @@ async def test_an_ed_entry_reaches_platforms_without_a_pronote_session(
                 {ATTR_DEVICE_ID: child.id},
                 blocking=True,
             )
+
+    account = entry.runtime_data
+    with patch.object(account, "async_request_tick"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_REFRESH,
+            {ATTR_DEVICE_ID: child.id},
+            blocking=True,
+        )
+    status = await hass.services.async_call(
+        DOMAIN,
+        SERVICE_GET_RATE_LIMIT_STATUS,
+        {ATTR_DEVICE_ID: child.id},
+        blocking=True,
+        return_response=True,
+    )
+    assert isinstance(status, dict)
+    assert "calls_today" in status
+    assert "scheduler" in status
+    assert "authenticated" in status["session"]
 
 
 async def test_an_ed_505_at_setup_opens_reauthentication(hass: HomeAssistant) -> None:
@@ -1494,7 +1512,7 @@ class TestWhatSurvivesAReload:
         del hass
         student_id = CHILDREN[0][0]
         recorded: list[Priority] = []
-        original = account.session.run
+        original = account.extras.session.run
 
         async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
             recorded.append(priority)
@@ -1503,7 +1521,7 @@ class TestWhatSurvivesAReload:
         # A tier that has never produced anything, which is what a cold
         # restart leaves behind.
         account.coordinators[Tier.MENUS].data = {}
-        with patch.object(account.session, "run", spy):
+        with patch.object(account.extras.session, "run", spy):
             await collect_tier(account, Tier.MENUS, student_id)
 
         assert recorded == [Priority.CRITICAL]
@@ -1523,13 +1541,13 @@ class TestWhatSurvivesAReload:
         assert account.snapshot(Tier.MENUS, student_id) is not None
 
         recorded: list[Priority] = []
-        original = account.session.run
+        original = account.extras.session.run
 
         async def spy(name: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
             recorded.append(priority)
             return await original(name, priority, fn, **kwargs)
 
-        with patch.object(account.session, "run", spy):
+        with patch.object(account.extras.session, "run", spy):
             await collect_tier(account, Tier.MENUS, student_id)
 
         assert recorded == [TIER_PRIORITY[Tier.MENUS]]
@@ -1646,6 +1664,6 @@ class TestWhichTimezonePronotesNaiveTimesAreReadIn:
             await hass.async_block_till_done()
 
         assert mock_entry.state is ConfigEntryState.LOADED
-        assert str(mock_entry.runtime_data.gateway.timezone) == str(
-            hass.config.time_zone
-        )
+        extras = mock_entry.runtime_data.extras
+        assert extras is not None
+        assert str(extras.gateway.timezone) == str(hass.config.time_zone)

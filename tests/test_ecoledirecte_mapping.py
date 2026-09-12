@@ -135,13 +135,13 @@ def test_login_mapping_produces_every_student_and_empty_session_facts() -> None:
                     "typeCompte": "P",
                     "profile": {
                         "eleves": [
-                                {
-                                    "id": 2,
-                                    "idLogin": 102,
-                                    "prenom": "Enfant",
-                                    "nom": "Deux",
-                                    "classe": {"libelle": "5e Demo"},
-                                },
+                            {
+                                "id": 2,
+                                "idLogin": 102,
+                                "prenom": "Enfant",
+                                "nom": "Deux",
+                                "classe": {"libelle": "5e Demo"},
+                            },
                             {
                                 "id": 3,
                                 "idLogin": 103,

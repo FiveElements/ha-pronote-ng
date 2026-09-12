@@ -8,10 +8,18 @@ from custom_components.pronote_ng.connectors.errors import ConnectorUnsupportedE
 from custom_components.pronote_ng.connectors.protocol import (
     ConnectorCapabilities,
     Source,
+    has_pronote_extras,
 )
 from custom_components.pronote_ng.const import Priority, Tier
 from custom_components.pronote_ng.models import GatewayResult, HomeworkFacts
 from tests.fixtures.fake_connector import FakeConnector
+
+
+def test_has_pronote_extras_is_a_runtime_guard() -> None:
+    """A cast would let mypy miss an Ecoledirecte connector; this check cannot."""
+    assert not has_pronote_extras(FakeConnector())
+    extras = SimpleNamespace(session=object(), gateway=object(), executor=object())
+    assert has_pronote_extras(extras)
 
 
 def test_an_entry_without_a_source_key_is_pronote() -> None:

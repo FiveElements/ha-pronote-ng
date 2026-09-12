@@ -4,7 +4,7 @@ import datetime as dt
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
 from custom_components.pronote_ng.connectors.errors import ConnectorUnsupportedError
 from custom_components.pronote_ng.connectors.protocol import (
@@ -40,6 +40,7 @@ class FakeConnector(SchoolConnector):
             writes=frozenset(),
             services=frozenset(),
         )
+        self.limiter = object()
         self._session_facts = SessionFacts(
             student=Student(
                 id="STUDENT-1",
@@ -60,6 +61,9 @@ class FakeConnector(SchoolConnector):
 
     async def async_open(self) -> None:
         return None
+
+    async def async_load_session_facts(self, student_ids: Sequence[str]) -> None:
+        del student_ids
 
     def session_facts(self, student_id: str) -> SessionFacts:
         return self._session_facts

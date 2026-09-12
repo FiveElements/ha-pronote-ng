@@ -1137,9 +1137,7 @@ def _menu_tomorrow_attributes(
     facts: MenusFacts, account: PronoteAccount
 ) -> dict[str, Any]:
     """Tomorrow's menu."""
-    return _menu_attributes_for(
-        _menu_for(facts, account.today() + timedelta(days=1))
-    )
+    return _menu_attributes_for(_menu_for(facts, account.today() + timedelta(days=1)))
 
 
 def _staff_count(facts: StaticFacts, _a: PronoteAccount) -> StateValue:
@@ -1882,10 +1880,7 @@ def _diagnostic_sensors(account: PronoteAccount) -> list[SensorEntity]:
     ]
     if has_pronote_extras(account.connector):
         keys[4:4] = ["session_age", "session_lifetime"]
-    return [
-        PronoteLimiterSensor(account, coordinator, key)
-        for key in keys
-    ]
+    return [PronoteLimiterSensor(account, coordinator, key) for key in keys]
 
 
 class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntity):
@@ -1936,10 +1931,16 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                     return None
                 return self.account.now() + timedelta(seconds=remaining)
             case "session_age":
-                age = self.account.session.session_age
+                extras = self.account.extras
+                if extras is None:
+                    return None
+                age = extras.session.session_age
                 return int(age) if age is not None else None
             case "session_lifetime":
-                measured = self.account.session.lifetime.observed_minutes
+                extras = self.account.extras
+                if extras is None:
+                    return None
+                measured = extras.session.lifetime.observed_minutes
                 return round(measured, 1) if measured is not None else None
             case "logins_today":
                 return limiter.logins_today
@@ -2034,7 +2035,10 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
                 # The measured value, and how it is being acted on. This is what
                 # turns the session strategy from a bet into an observation
                 # (§6.5).
-                session = self.account.session
+                extras = self.account.extras
+                if extras is None:
+                    return {}
+                session = extras.session
                 return {
                     "samples": len(session.lifetime.samples),
                     "last_expiry": (

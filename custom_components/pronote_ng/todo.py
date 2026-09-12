@@ -128,12 +128,18 @@ class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):
         done = item.status == TodoItemStatus.COMPLETED
         homework_id = item.uid
         account = self.account
+        extras = account.extras
+        if extras is None:
+            raise ServiceValidationError(
+                f"{account.connector.capabilities.source} does not support "
+                "homework writes"
+            )
 
         def work(client: Any) -> int:
-            return account.gateway.set_homework_done(client, homework_id, done=done)
+            return extras.gateway.set_homework_done(client, homework_id, done=done)
 
         try:
-            await account.session.run(
+            await extras.session.run(
                 str(Tier.HOMEWORK),
                 # A human just tapped a checkbox, so this outranks a scheduled
                 # collection -- but it still goes through the limiter, and it

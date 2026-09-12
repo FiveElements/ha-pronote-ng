@@ -276,11 +276,10 @@ CONFIG_EN: dict[str, Any] = {
             "title": "EcoleDirecte security question",
             "description": (
                 "EcoleDirecte asks: {question}\n\n"
-                "Choices: {propositions}\n\n"
-                "Enter the saved question-to-answer mapping as a JSON object. "
-                "No account is created until the login succeeds."
+                "Select the remembered answer. No account is created until "
+                "the login succeeds."
             ),
-            "data": {"qcm_json": "Security answers (JSON)"},
+            "data": {"choice": "Answer"},
         },
         "children": {
             "title": "Which children to follow",
@@ -378,7 +377,7 @@ CONFIG_EN: dict[str, Any] = {
             "to anything sensible, it sends this portal's username and "
             "password to the PRONOTE server instead."
         ),
-        "invalid_qcm": "Enter a JSON object containing the security answers.",
+        "invalid_qcm": "Select one of the proposed answers.",
         "cannot_connect": "Could not reach the server.",
         "ed_invalid_auth": (
             "EcoleDirecte refused these credentials. Check them before trying again."
@@ -510,12 +509,10 @@ CONFIG_FR: dict[str, Any] = {
             "title": "Question de sécurité EcoleDirecte",
             "description": (
                 "EcoleDirecte demande : {question}\n\n"
-                "Choix : {propositions}\n\n"
-                "Saisissez la correspondance question-réponse mémorisée sous "
-                "forme d'objet JSON. Aucun compte n'est créé avant la réussite "
-                "de la connexion."
+                "Choisissez la réponse mémorisée. Aucun compte n'est créé "
+                "avant la réussite de la connexion."
             ),
-            "data": {"qcm_json": "Réponses de sécurité (JSON)"},
+            "data": {"choice": "Réponse"},
         },
         "children": {
             "title": "Enfants à suivre",
@@ -620,7 +617,7 @@ CONFIG_FR: dict[str, Any] = {
             "l'identifiant et le mot de passe de ce portail au serveur "
             "PRONOTE."
         ),
-        "invalid_qcm": ("Saisissez un objet JSON contenant les réponses de sécurité."),
+        "invalid_qcm": "Choisissez l'une des réponses proposées.",
         "cannot_connect": "Impossible de joindre le serveur.",
         "ed_invalid_auth": (
             "EcoleDirecte a refusé ces identifiants. Vérifiez-les avant de recommencer."

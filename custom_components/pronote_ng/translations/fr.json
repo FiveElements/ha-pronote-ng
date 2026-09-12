@@ -58,9 +58,9 @@
       },
       "ecoledirecte_qcm": {
         "title": "Question de sécurité EcoleDirecte",
-        "description": "EcoleDirecte demande : {question}\n\nChoix : {propositions}\n\nSaisissez la correspondance question-réponse mémorisée sous forme d'objet JSON. Aucun compte n'est créé avant la réussite de la connexion.",
+        "description": "EcoleDirecte demande : {question}\n\nChoisissez la réponse mémorisée. Aucun compte n'est créé avant la réussite de la connexion.",
         "data": {
-          "qcm_json": "Réponses de sécurité (JSON)"
+          "choice": "Réponse"
         }
       },
       "children": {
@@ -101,7 +101,7 @@
       "qr_refused": "PRONOTE n'a pas honoré ce QR code. Son code à quatre chiffres était juste — une erreur sur celui-là est signalée à part, et détectée avant tout envoi — donc ce qui a été refusé, c'est le QR code lui-même. Presque toujours, cela veut dire qu'il a déjà servi, ou qu'il a été généré il y a plus de quelques minutes : PRONOTE les délivre à usage unique et les périme vite. Générez-en un nouveau et utilisez-le immédiatement, le formulaire déjà ouvert. Si un QR code généré quelques secondes plus tôt est refusé lui aussi, c'est peut-être que le compte n'est pas autorisé à enrôler un nouvel appareil : renseignez-vous auprès de l'établissement plutôt que de réessayer, car réessayer en boucle une connexion refusée est précisément ce qui fait bloquer une adresse.",
       "invalid_qr_payload": "Cela ne ressemble pas au contenu d'un QR code PRONOTE. Il doit s'agir d'un objet JSON avec login, jeton et url — les deux premiers en hexadécimal. Collez-le en entier, exactement tel que l'application le donne.",
       "unknown_ent": "Aucun fournisseur ENT de ce nom n'est installé. Choisissez-en un dans la liste plutôt que de le saisir : un nom non reconnu ne retombe pas sur quelque chose de raisonnable, il envoie l'identifiant et le mot de passe de ce portail au serveur PRONOTE.",
-      "invalid_qcm": "Saisissez un objet JSON contenant les réponses de sécurité.",
+      "invalid_qcm": "Choisissez l'une des réponses proposées.",
       "cannot_connect": "Impossible de joindre le serveur.",
       "ed_invalid_auth": "EcoleDirecte a refusé ces identifiants. Vérifiez-les avant de recommencer.",
       "rate_limited": "Trop de tentatives de connexion dans la dernière heure : celle-ci n'a pas été envoyée. Attendez un peu avant de réessayer, car réessayer une connexion en boucle est précisément ce qui fait bloquer une adresse.",

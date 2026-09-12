@@ -213,7 +213,11 @@ async def test_a_250_opens_the_qcm_step_and_does_not_create_the_entry(
     )
     with patch(
         "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
-        side_effect=ConnectorChallengeRequired(ChallengeKind.QCM),
+        side_effect=ConnectorChallengeRequired(
+            ChallengeKind.QCM,
+            question="Couleur préférée ?",
+            propositions=("Bleu", "Vert"),
+        ),
     ):
         challenged = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -236,7 +240,11 @@ async def test_an_ecoledirecte_qcm_submit_creates_the_entry_after_200(
     )
     with patch(
         "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
-        side_effect=ConnectorChallengeRequired(ChallengeKind.QCM),
+        side_effect=ConnectorChallengeRequired(
+            ChallengeKind.QCM,
+            question="Couleur préférée ?",
+            propositions=("Bleu", "Vert"),
+        ),
     ):
         challenged = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -245,13 +253,18 @@ async def test_an_ecoledirecte_qcm_submit_creates_the_entry_after_200(
     assert challenged["step_id"] == "ecoledirecte_qcm"
 
     answers = {"Couleur préférée ?": "Bleu"}
+    schema_keys = {
+        getattr(key, "schema", key) for key in challenged["data_schema"].schema
+    }
+    assert "choice" in schema_keys
+    assert "qcm_json" not in schema_keys
     with patch(
         "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
         return_value={"students": (("1", "Enfant Un"),)},
     ) as probe:
         created = await hass.config_entries.flow.async_configure(
             challenged["flow_id"],
-            {"qcm_json": json.dumps(answers, ensure_ascii=False)},
+            {"choice": "Bleu"},
         )
 
     assert created["type"] is FlowResultType.CREATE_ENTRY
@@ -321,7 +334,7 @@ async def test_an_ecoledirecte_qcm_submit_after_250_is_not_held_by_the_limiter(
 
         created = await hass.config_entries.flow.async_configure(
             challenged["flow_id"],
-            {"qcm_json": json.dumps({question: answer}, ensure_ascii=False)},
+            {"choice": answer},
         )
         await hass.async_block_till_done()
 

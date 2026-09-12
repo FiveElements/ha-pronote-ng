@@ -646,7 +646,7 @@ async def test_a_running_account_shows_the_lifetime_it_measured(
     form = await _open(hass, account.entry, "general")
 
     measured = form["description_placeholders"]["measured"]
-    observed = account.session.lifetime.observed_minutes
+    observed = account.extras.session.lifetime.observed_minutes
 
     if observed is None:
         assert measured == "-"
@@ -694,14 +694,16 @@ def test_a_loaded_account_with_no_sample_yet_still_measures_nothing() -> None:
     would render as "the session dies instantly" and the estimator would treat
     as one login per call.
     """
-    entry = _Entry(runtime_data=_Entry(session=_Session(_Lifetime(None))))
+    entry = _Entry(
+        runtime_data=_Entry(extras=_Entry(session=_Session(_Lifetime(None))))
+    )
 
     assert _measured_lifetime(entry) is None  # type: ignore[arg-type]
 
 
 def test_a_measured_lifetime_comes_back_as_a_float() -> None:
     """Converted, not passed through: the estimator does arithmetic on it."""
-    entry = _Entry(runtime_data=_Entry(session=_Session(_Lifetime(30))))
+    entry = _Entry(runtime_data=_Entry(extras=_Entry(session=_Session(_Lifetime(30)))))
 
     lifetime = _measured_lifetime(entry)  # type: ignore[arg-type]
 
