@@ -82,91 +82,145 @@ précise, et un déplacement de version demande de relire deux fichiers.
 ### 2.1 Les couches
 
 Le code se lit en quatre couches, de la plus abstraite à la plus contrainte.
+La voie vers le réseau n'est plus la passerelle Pronote : c'est un
+**connecteur** (spécification connecteurs §3.1). Auth, transport, budget et
+décodage vivent dedans. Au-dessus, l'ordonnanceur, le delta, les coordinateurs
+et les plateformes ne voient qu'une couture ; `tiers.py` ne fait plus que
+`collect` + instantané + delta.
 
-**Le cœur de domaine** ne connaît ni PRONOTE ni Home Assistant. Il contient le
-limiteur (`ratelimit.py`), l'ordonnanceur (`scheduler.py`), le détecteur de
-delta (`delta.py`), les DTO gelés (`models.py`), les constantes (`const.py`),
+**Le cœur de domaine** ne connaît ni un protocole scolaire ni Home Assistant.
+Il contient l'ordonnanceur (`scheduler.py`), le détecteur de delta
+(`delta.py`), les DTO gelés (`models.py`), les constantes (`const.py`),
 la lecture et l'estimation des options (`options.py`) et la normalisation
 d'URL (`urls.py`). Ces modules prennent des horloges injectables et répondent
 à des questions ; c'est ce qui les rend testables à 100 % sans réseau et sans
-instance Home Assistant.
+instance Home Assistant. Les DTO restent ceux de Pronote — le pivot interne
+n'est pas un second modèle « école » (spécification connecteurs §3.2). Le
+pivot **cartes**, lui, est le JSON d'attributs de
+[l'annexe A §2.1](annexe-a-entites.md#21-forme-des-éléments).
 
-**L'orchestration** relie le cœur au monde : `account.py` possède le battement
-de cœur et la boucle de collecte, `tiers.py` associe chaque palier à sa
-requête et à son DTO, `session.py` possède le client et décide quand se
-reconnecter, `coordinator.py` détient les instantanés, `login_guard.py`
-conserve l'état punitif qui doit survivre aux objets qui l'ont ouvert.
+**L'orchestration** relie le cœur au monde sans importer un protocole :
+`account.py` possède le battement de cœur et la boucle de collecte, `tiers.py`
+demande un palier au connecteur puis publie l'instantané, `coordinator.py`
+détient les instantanés, `login_guard.py` conserve l'état punitif Pronote qui
+doit survivre aux objets qui l'ont ouvert. Une entry Ecoledirecte ne construit
+ni `SerialExecutor`, ni `SessionManager`, ni le `RateLimiter` Pronote.
 
-**La frontière `pronotepy`** ne compte que deux modules : `gateway.py`
-(décodage vers DTO) et `hardened_client.py` (le client durci et son
-transport). Ils sont les seuls à importer des *types de données* amont.
+**La couture `SchoolConnector`** *est* la voie réseau. `build_connector()`
+lit `source` sur l'entrée (absente = Pronote, spécification connecteurs §3.6)
+et rend une implémentation. Un connecteur = un compte d'une source ; deux
+sources dans le foyer = deux entries. Les capacités (`tiers`, `writes`,
+`services`) commandent ce qui est collecté, exposé en entité et proposé dans
+les options (spécification connecteurs §3.4).
+
+* **Pronote** — `PronoteConnector` possède encore toute la pile historique :
+  `session.py`, `ratelimit.py` (annexe B : compteur chiffré, `Erreur.G`,
+  5–7 requêtes par login), `gateway.py` et `hardened_client.py`. Ces deux
+  derniers restent les seuls à importer des *types de données* `pronotepy`.
+* **Ecoledirecte** — `EcoledirecteConnector` possède son limiteur
+  (`ed_limiter.py`), un client aiohttp calqué sur le handshake
+  `ecoledirecte_api` 0.3.0 (`ed_client.py`) et le mapping vers les DTO
+  (`ed_mapping.py`). Seul `connectors/ecoledirecte/` voit le JSON Aplim. Le
+  paquet PyPI `ecoledirecte` n'est **pas** une dépendance : son `backoff`
+  relancerait un login hors admission, et son journal DEBUG fuit le jeton
+  (spécification connecteurs §7.1). La version d'API est la constante
+  `ECOLEDIRECTE_API_VERSION` dans `ed_client.py` ; le workflow
+  `ecoledirecte-watch` la compare chaque semaine à `APIVERSION` lu dans le
+  sdist ou la *wheel* PyPI, **échoue** s'ils divergent, et ouvre une *pull
+  request* qui met à jour la constante. Un 517 en production, c'est cette
+  sonde en retard, pas un « réessayer ».
+
+Les deux limiteurs isolent leurs compteurs. Ils partagent la *forme* de
+décision (`admit` / `TierDeferred` / `LimiterState`), les clés d'options et
+la politique d'heures creuses, jamais les octets ni le garde-fou de flow
+(spécification connecteurs §3.3). Ecoledirecte v1 ne collecte que
+`TIMETABLE`, `HOMEWORK`, `MARKS` et `ATTENDANCE` ; `SESSION` n'est jamais
+passé à `async_collect` (spécification connecteurs §3.5).
 
 **La couche Home Assistant** : `__init__.py` (setup et teardown), les sept
 plateformes d'entités, `config_flow.py` et `flow_login.py`, `services.py`,
-`diagnostics.py`, et les trois modules de *device automation*.
+`diagnostics.py`, et les trois modules de *device automation*. Les services
+Pronote-only parlent à l'implémentation Pronote, pas au protocole commun :
+une entry Ecoledirecte n'a rien à leur offrir.
 
 ```mermaid
 flowchart TB
   subgraph HA["Home Assistant"]
     CE["Config entry et runtime_data"]
     PLAT["Plateformes sensor, binary_sensor, calendar, todo, event, image, button"]
-    SVC["Services et device automations"]
+    SVC["Services Pronote-only et device automations"]
     DIAG["Diagnostics et repairs"]
     REG["Device et entity registry"]
   end
 
-  subgraph ORCH["Orchestration"]
+  subgraph ORCH["Orchestration · ni protocole"]
     ACC["account.py · battement de coeur, batch, deltas"]
-    TIERS["tiers.py · un palier, une requete, un DTO"]
-    SESS["session.py · SessionManager et SerialExecutor"]
+    TIERS["tiers.py · collect, snapshot, delta"]
     COORD["coordinator.py · un coordinateur par palier"]
-    GUARD["login_guard.py · etat punitif hors entree"]
+    GUARD["login_guard.py · etat punitif Pronote hors entree"]
   end
 
-  subgraph CORE["Coeur de domaine · ni PRONOTE ni Home Assistant"]
-    RL["ratelimit.py · 3 couches et 2 compteurs"]
+  subgraph CORE["Coeur de domaine"]
     SCHED["scheduler.py · echeances, pas de minuteurs"]
     DELTA["delta.py · detection de changement"]
-    MODELS["models.py · DTO geles"]
+    MODELS["models.py · DTO geles, pivot interne"]
     OPT["options.py · lecture et estimation du budget"]
   end
 
-  subgraph BOUND["Frontiere pronotepy · les deux seuls modules"]
+  subgraph SEAM["Couture SchoolConnector · la voie reseau"]
+    FACT["build_connector · source ou Pronote"]
+    SC["SchoolConnector"]
+  end
+
+  subgraph PR["PronoteConnector"]
+    SESS["session.py · SessionManager et SerialExecutor"]
+    RL["ratelimit.py · annexe B"]
     GW["gateway.py · decodage vers DTO"]
     HC["hardened_client.py · client durci et transport"]
   end
 
+  subgraph ED["EcoledirecteConnector"]
+    EDLIM["ed_limiter.py"]
+    EDHTTP["ed_client.py · handshake 0.3.0"]
+    EDMAP["ed_mapping.py"]
+  end
+
   PY["pronotepy 2.15.7"]
-  NET["Serveur PRONOTE de l etablissement"]
+  NETP["Serveur PRONOTE de l etablissement"]
+  NETE["api.ecoledirecte.com"]
 
   CE --> ACC
   PLAT --> COORD
-  SVC --> ACC
+  SVC --> PR
   DIAG --> ACC
   PLAT --> REG
   ACC --> TIERS
   ACC --> SCHED
-  ACC --> RL
   ACC --> DELTA
   ACC --> COORD
   ACC --> GUARD
-  TIERS --> SESS
-  TIERS --> GW
+  ACC --> OPT
+  ACC --> FACT
+  FACT --> SC
+  TIERS --> SC
+  SC --> PR
+  SC --> ED
   SESS --> RL
   SESS --> HC
   GW --> MODELS
+  ED --> MODELS
   GW --> PY
   HC --> PY
-  PY --> NET
-  OPT --> RL
+  PY --> NETP
+  EDHTTP --> NETE
   COORD --> MODELS
 
   classDef boundary fill:#fde68a,stroke:#b45309,color:#111
-  class GW,HC boundary
+  class GW,HC,EDHTTP,EDMAP boundary
 ```
 
-La frontière `pronotepy` est le trait le plus important du diagramme. Elle
-existe pour trois raisons concrètes, énoncées dans
+La frontière `pronotepy` reste le trait le plus important **du connecteur
+Pronote**. Elle existe pour trois raisons concrètes, énoncées dans
 l'en-tête de `custom_components/pronote_ng/models.py` :
 
 * un objet `pronotepy` lu après la fermeture de sa session lève
@@ -183,8 +237,10 @@ directement via `communication.post` en contournant `ClientBase.post` et — sur
 un compte parent — la signature `membre` qui dit *de quel enfant* il s'agit.
 Lire `ClientInfo.address`, `.email`, `.phone` ou `.ine_number` depuis n'importe
 où déclenche donc un appel non budgété et **possiblement mal attribué**. C'est
-la meilleure justification de la frontière : elle transforme un piège
-d'attribution en une impossibilité de construction.
+la meilleure justification de cette frontière-là : elle transforme un piège
+d'attribution en une impossibilité de construction. Côté Ecoledirecte, le
+même principe s'applique sans `pronotepy` : le JSON Aplim s'arrête au
+mapping, et aucun jeton ne franchit la mémoire du client.
 
 ### 2.2 Le cycle de vie de l'entrée de configuration
 

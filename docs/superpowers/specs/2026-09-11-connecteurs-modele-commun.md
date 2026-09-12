@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Statut** | Conception — 11 septembre 2026. Revue : [`2026-09-11-connecteurs-modele-commun-revue.md`](./2026-09-11-connecteurs-modele-commun-revue.md). Réponse : [`2026-09-11-connecteurs-modele-commun-reponse.md`](./2026-09-11-connecteurs-modele-commun-reponse.md). Suite de revue : **§7 du même fichier revue**, pas un quatrième document. |
+| **Statut** | partiellement implémenté. Conception — 11 septembre 2026. Revue : [`2026-09-11-connecteurs-modele-commun-revue.md`](./2026-09-11-connecteurs-modele-commun-revue.md). Réponse : [`2026-09-11-connecteurs-modele-commun-reponse.md`](./2026-09-11-connecteurs-modele-commun-reponse.md). Suite de revue : **§7 du même fichier revue**, pas un quatrième document. |
 | **Périmètre** | Couture `SchoolConnector`, DTO Pronote comme pivot interne, attributs annexe A comme pivot cartes, Ecoledirecte lecture (**quatre** paliers collectés) |
 | **Hors périmètre** | Rebranding du domaine / HACS / blueprints ; Platinum `async-dependency` Pronote ; extraire une PyPI ; un foyer mixte sur **une** entry |
 | **Implémentation** | [`docs/superpowers/plans/2026-09-11-connecteurs-modele-commun.md`](../plans/2026-09-11-connecteurs-modele-commun.md) |
@@ -25,7 +25,7 @@ Revue du 11 septembre : la coupe « le connecteur possède le fil » tenait ; le
 | Coût d'un login ED | **2** à l'admission (GTK + POST). Si 250, **+4** à l'admission **avant** la suite QCM. Pas de remboursement. |
 | Boucle | aiohttp sur la boucle, deadline `asyncio.wait_for` = `read_timeout` (défaut 60 s), pas 120 s. |
 | Session HTTP | `async_create_clientsession(hass)` **puis** écraser UA / origin / referer par le jeu `EDClient`. Session dédiée (cookies GTK). |
-| Couture Pronote | `PronoteAccount.__init__` ne construit **rien** de source-spécifique. `build_connector()` d'abord, horloge du connecteur, **puis** le scheduler. Une entry ED ne crée ni `SerialExecutor`, ni `SessionManager`, ni `RateLimiter` Pronote. `tiers.py` n'appelle plus `session.run`. Services / todo / PJ / image : `PronoteExtras`. |
+| Couture Pronote | `PronoteAccount.__init__` ne construit **rien** de source-spécifique. `build_connector()` d'abord, horloge du connecteur, **puis** le scheduler. Une entry ED ne crée ni SerialExecutor, ni SessionManager, ni le limiteur Pronote. Les paliers n'appellent plus le réseau. Services / todo / PJ / image : PronoteExtras. |
 | Produit ED v1 | **Quatre** paliers collectés (`TIMETABLE`, `HOMEWORK`, `MARKS`, `ATTENDANCE`). `SESSION` n'est **jamais** passé à `async_collect`. Pas les blueprints Pronote. Devoirs **sans corps**. |
 | Permanence | `typeCours == "PERMANENCE"` → créneau suivi, `detention=False` (ce n'est pas une retenue). `_in_class` ne filtre que `canceled` et `exempted` : `in_class` **s'allume**. `status` = `"PERMANENCE"`. Ensemble **fermé** : tout autre `typeCours` (y compris un jeton Aplim inconnu) → `status=None`, **pas** la valeur brute. `_lesson_events` (calendrier `timetable`) met `Lesson.status` en première ligne de description. |
 | Durées absentes | `Delay.minutes` et `Absence.days` deviennent `int \| None`. ED : `None`, sérialisé `null`. **Jamais** `0` (un `numeric_state` resterait valide et ne partirait jamais). Dette Pronote, hors chantier : `minutes=int(upstream.minutes or 0)` reste ; seul ED honore `None`. |
