@@ -20,7 +20,9 @@ credentials that are correct is worse than saying nothing.
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -81,6 +83,7 @@ from custom_components.pronote_ng.const import (
     OPT_ESTABLISHMENT_TIMEZONE,
     OPT_READ_TIMEOUT,
     OPT_TIER_ENABLED,
+    OPT_TIER_INTERVAL,
     SERVICE_GENERATE_TIMETABLE_PDF,
     SERVICE_GET_ICAL_URL,
     SERVICE_GET_RATE_LIMIT_STATUS,
@@ -1171,6 +1174,129 @@ async def test_an_ed_entry_reaches_platforms_without_a_pronote_session(
     assert "calls_today" in status
     assert "scheduler" in status
     assert "authenticated" in status["session"]
+
+
+def _english_entity_id(platform: str, child_name: str, key: str) -> str:
+    """Entity id HA mints from the English translated name, never the key."""
+    from homeassistant.util import slugify
+
+    catalogue = json.loads(
+        Path("custom_components/pronote_ng/translations/en.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    name = catalogue["entity"][platform][key]["name"]
+    return f"{platform}.{slugify(child_name)}_{slugify(name)}"
+
+
+async def test_an_ecoledirecte_entry_creates_no_menu_entity(
+    hass: HomeAssistant,
+) -> None:
+    """Empty canteen tiles were how a missing ED page looked on the dashboard.
+
+    Coordinators are built for every ``Tier``, menus included, so
+    ``account.coordinators.get(Tier.MENUS)`` is not ``None`` on this entry.
+    Skipping the sensor because the coordinator is missing would therefore
+    not fire -- the capabilities filter in ``sensor.async_setup_entry`` is
+    what keeps ``menu_today`` and ``menu_tomorrow`` off an Ecoledirecte child.
+    """
+    entry, _session_manager = await _setup_ed_entry(hass)
+    account = entry.runtime_data
+    assert Tier.MENUS in account.coordinators
+    assert Tier.MENUS not in account.connector.capabilities.tiers
+
+    registry = er.async_get(hass)
+    for key in ("menu_today", "menu_tomorrow"):
+        assert (
+            registry.async_get_entity_id(
+                "sensor", DOMAIN, f"{entry.entry_id}_child-1_{key}"
+            )
+            is None
+        )
+        assert hass.states.get(_english_entity_id("sensor", "Enfant Un", key)) is None
+
+
+async def test_an_ecoledirecte_options_page_omits_the_menus_tier(
+    hass: HomeAssistant,
+) -> None:
+    """A menus checkbox on ED would look like the canteen page had been turned on.
+
+    ``async_step_tiers`` walks ``_capable_tiers``. Without that filter the
+    form still shows ``interval_menus`` and ``enabled_menus`` for a connector
+    that cannot collect them, and storing the switch as on would be a silent
+    no-op the user would read as a broken menu sensor.
+    """
+    from homeassistant.data_entry_flow import FlowResultType
+
+    entry, _session_manager = await _setup_ed_entry(hass)
+
+    options = await hass.config_entries.options.async_init(entry.entry_id)
+    assert options["type"] is FlowResultType.MENU
+    tiers = await hass.config_entries.options.async_configure(
+        options["flow_id"], {"next_step_id": "tiers"}
+    )
+    assert tiers["type"] is FlowResultType.FORM
+    fields = {str(key) for key in tiers["data_schema"].schema}
+
+    assert OPT_TIER_INTERVAL.format(tier=Tier.MENUS.value) not in fields
+    assert OPT_TIER_ENABLED.format(tier=Tier.MENUS.value) not in fields
+    for tier in EcoledirecteConnector.CAPABILITIES.tiers:
+        assert OPT_TIER_INTERVAL.format(tier=tier.value) in fields
+        assert OPT_TIER_ENABLED.format(tier=tier.value) in fields
+
+
+async def test_an_ecoledirecte_entry_offers_no_menu_button(
+    hass: HomeAssistant,
+) -> None:
+    """A refresh-menus control must not appear for a connector without that page.
+
+    ``BUTTONS`` currently has no menus key, so a registry scan of the live
+    entry would pass even with the capabilities filter deleted. This test
+    therefore asks ``button.async_setup_entry`` to consider a menus button
+    while the menus coordinator is present -- the same double-skip trap as
+    the sensors -- and checks the filter is what discards it.
+    """
+    from custom_components.pronote_ng.button import (
+        PronoteButtonDescription,
+        async_setup_entry as async_setup_buttons,
+    )
+
+    entry, _session_manager = await _setup_ed_entry(hass)
+    account = entry.runtime_data
+    assert Tier.MENUS in account.coordinators
+    assert Tier.MENUS not in account.connector.capabilities.tiers
+
+    registry = er.async_get(hass)
+    assert (
+        registry.async_get_entity_id(
+            "button", DOMAIN, f"{entry.entry_id}_child-1_refresh"
+        )
+        is not None
+    )
+    assert (
+        registry.async_get_entity_id(
+            "button", DOMAIN, f"{entry.entry_id}_child-1_refresh_marks"
+        )
+        is not None
+    )
+
+    created: list[Any] = []
+
+    def capture(entities: Any, *_args: Any, **_kwargs: Any) -> None:
+        created.extend(entities)
+
+    menus_button = PronoteButtonDescription(
+        key="refresh_menus",
+        tier=Tier.MENUS,
+        requests=(Tier.MENUS,),
+    )
+    with patch(
+        "custom_components.pronote_ng.button.BUTTONS",
+        (menus_button,),
+    ):
+        await async_setup_buttons(hass, entry, capture)  # type: ignore[arg-type]
+
+    assert created == []
 
 
 async def test_an_ed_505_at_setup_opens_reauthentication(hass: HomeAssistant) -> None:
