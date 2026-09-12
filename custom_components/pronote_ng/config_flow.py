@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 import uuid as uuid_module
 
 from homeassistant.config_entries import (
@@ -35,7 +35,8 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -53,9 +54,20 @@ from homeassistant.helpers.selector import (
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .child_keys import pair
+from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
+from .connectors.ecoledirecte.ed_limiter import EdRateLimiter
+from .connectors.ecoledirecte.ed_mapping import students_from_accounts
+from .connectors.errors import (
+    ConnectorChallengeRequired,
+    ConnectorCredentialsError,
+    ConnectorTransportError,
+)
+from .connectors.protocol import Source
 from .const import (
     BRAND_LOGO_URL,
     CONF_ACCOUNT_PIN,
+    CONF_CHILD_KEYS,
     CONF_CHILDREN,
     CONF_DEVICE_NAME,
     CONF_ENT,
@@ -63,6 +75,7 @@ from .const import (
     CONF_PRONOTE_URL,
     CONF_QR_PAYLOAD,
     CONF_QR_PIN,
+    CONF_SOURCE,
     CONF_UUID,
     DEFAULT_HOMEWORK_HORIZON,
     DEFAULT_MASTER_TICK,
@@ -103,12 +116,19 @@ from .const import (
     SessionStrategy,
 )
 from .login_guard import clear_login_penalties, login_guard
-from .options import estimate_daily_requests, tier_enabled, tier_intervals
+from .options import (
+    build_rate_limit_config,
+    estimate_daily_requests,
+    tier_enabled,
+    tier_intervals,
+)
 from .ratelimit import REQUESTS_PER_LOGIN, LoginOutcome, LoginRefusedByLimiter
 from .urls import public_url
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from .connectors.ecoledirecte.ed_client import Transport
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -116,6 +136,8 @@ STEP_USER: Final = "user"
 STEP_QR_CODE: Final = "qr_code"
 STEP_CREDENTIALS: Final = "credentials"
 STEP_ENT: Final = "ent"
+STEP_ECOLEDIRECTE: Final = "ecoledirecte"
+STEP_ECOLEDIRECTE_QCM: Final = "ecoledirecte_qcm"
 STEP_CHILDREN: Final = "children"
 STEP_REAUTH_CONFIRM: Final = "reauth_confirm"
 STEP_REAUTH_QR: Final = "reauth_qr"
@@ -162,6 +184,21 @@ CREDENTIALS_SCHEMA: Final = vol.Schema(
         vol.Required("username"): _TEXT,
         vol.Required("password"): _PASSWORD,
         vol.Optional(CONF_ACCOUNT_PIN): _PASSWORD,
+    }
+)
+
+ECOLEDIRECTE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required("username"): _TEXT,
+        vol.Required("password"): _PASSWORD,
+    }
+)
+
+ECOLEDIRECTE_QCM_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required("qcm_json"): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
+        )
     }
 )
 
@@ -311,6 +348,52 @@ def _probe(data: dict[str, Any]) -> dict[str, Any]:
     return probe_account(data)
 
 
+async def _probe_ecoledirecte(
+    hass: HomeAssistant,
+    username: str,
+    password: str,
+    qcm_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Authenticate against EcoleDirecte with its own limiter and HTTP session."""
+    del qcm_json
+    limiter = _ecoledirecte_flow_limiter(hass)
+    client = EcoleDirecteClient(
+        cast("Transport", async_create_clientsession(hass)),
+    )
+    try:
+        payload = await limiter.login(
+            lambda: client.login(username, password),
+            cost=2,
+        )
+    except ConnectorCredentialsError:
+        limiter.note_bad_credentials()
+        raise
+    except ConnectorChallengeRequired:
+        await limiter.charge_qcm()
+        limiter.note_qcm()
+        raise
+    except ConnectorTransportError:
+        limiter.note_transport_failure(bootstrap=True)
+        raise
+    limiter.note_success()
+    return {
+        "students": tuple(
+            (student.id, student.name) for student in students_from_accounts(payload)
+        )
+    }
+
+
+def _ecoledirecte_flow_limiter(hass: HomeAssistant) -> EdRateLimiter:
+    """Return the instance-wide enrolment guard dedicated to EcoleDirecte."""
+    key = f"{DOMAIN}_ecoledirecte_flow_limiter"
+    limiter = hass.data.get(key)
+    if isinstance(limiter, EdRateLimiter):
+        return limiter
+    limiter = EdRateLimiter(build_rate_limit_config({}))
+    hass.data[key] = limiter
+    return limiter
+
+
 class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
     """Walk the user through one PRONOTE account."""
 
@@ -321,6 +404,7 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._children: list[tuple[str, str]] = []
         self._reauth_entry: ConfigEntry | None = None
+        self._ecoledirecte_qcm: dict[str, Any] = {}
 
     @staticmethod
     @callback
@@ -339,7 +423,12 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask which of the three login methods to use."""
         return self.async_show_menu(
             step_id=STEP_USER,
-            menu_options=[STEP_QR_CODE, STEP_CREDENTIALS, STEP_ENT],
+            menu_options=[
+                STEP_QR_CODE,
+                STEP_CREDENTIALS,
+                STEP_ENT,
+                STEP_ECOLEDIRECTE,
+            ],
             # See BRAND_LOGO_URL for why this is a URL and for the version gate
             # that keeps it: the mark reaches this screen as a markdown image
             # because hassfest refuses a URL written into the translation
@@ -432,6 +521,83 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id=STEP_ENT, data_schema=_ent_schema(), errors=errors
+        )
+
+    # -- EcoleDirecte ------------------------------------------------------
+
+    async def async_step_ecoledirecte(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Log in to EcoleDirecte with an identifier and password."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._data = {
+                CONF_SOURCE: Source.ECOLEDIRECTE.value,
+                "username": user_input["username"],
+                "password": user_input["password"],
+                "qcm_json": self._ecoledirecte_qcm,
+                "title": "EcoleDirecte",
+            }
+            return await self._async_try_ecoledirecte(errors)
+        return self.async_show_form(
+            step_id=STEP_ECOLEDIRECTE,
+            data_schema=ECOLEDIRECTE_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_ecoledirecte_qcm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect remembered QCM answers without creating a half-born entry."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                answers = _parse_qcm_answers(user_input["qcm_json"])
+            except (json.JSONDecodeError, ValueError):
+                errors["qcm_json"] = "invalid_qcm"
+            else:
+                self._ecoledirecte_qcm = answers
+                self._data["qcm_json"] = answers
+                return await self._async_try_ecoledirecte(errors)
+        return self.async_show_form(
+            step_id=STEP_ECOLEDIRECTE_QCM,
+            data_schema=ECOLEDIRECTE_QCM_SCHEMA,
+            errors=errors,
+        )
+
+    async def _async_try_ecoledirecte(self, errors: dict[str, str]) -> ConfigFlowResult:
+        try:
+            outcome = await _probe_ecoledirecte(
+                self.hass,
+                str(self._data["username"]),
+                str(self._data["password"]),
+                self._ecoledirecte_qcm,
+            )
+        except ConnectorChallengeRequired:
+            return await self.async_step_ecoledirecte_qcm()
+        except ConnectorCredentialsError:
+            errors["base"] = "invalid_auth"
+        except ConnectorTransportError:
+            errors["base"] = "cannot_connect"
+        except Exception:
+            _LOGGER.exception("unexpected failure while validating EcoleDirecte")
+            errors["base"] = "unknown"
+        else:
+            students = list(outcome["students"])
+            await self.async_set_unique_id(
+                f"{Source.ECOLEDIRECTE.value}:{self._data['username']}"
+            )
+            self._abort_if_unique_id_configured()
+            self._children = students
+            self._data[CONF_CHILD_KEYS] = pair([], students)[1]
+            if len(students) > 1:
+                return await self.async_step_children()
+            self._data[CONF_CHILDREN] = [student_id for student_id, _ in students]
+            return self._async_create()
+        return self.async_show_form(
+            step_id=STEP_ECOLEDIRECTE,
+            data_schema=ECOLEDIRECTE_SCHEMA,
+            errors=errors,
         )
 
     # -- child selection ---------------------------------------------------
@@ -1235,6 +1401,14 @@ def _parse_qr_payload(raw: str) -> dict[str, Any]:
         # is what the entry's address is rebuilt from.
         raise ValueError("url is not a usable string")
     return payload
+
+
+def _parse_qcm_answers(raw: str) -> dict[str, Any]:
+    """Parse the durable EcoleDirecte question-to-answer mapping."""
+    answers = json.loads(raw)
+    if not isinstance(answers, dict):
+        raise ValueError("QCM answers must be a JSON object")  # noqa: TRY004
+    return answers
 
 
 class ProbeError(Exception):

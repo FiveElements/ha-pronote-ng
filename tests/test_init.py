@@ -48,6 +48,7 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
 from custom_components.pronote_ng.connectors.protocol import Source
 from custom_components.pronote_ng.const import (
     CONF_CHILDREN,
+    CONF_SOURCE,
     DOMAIN,
     FUNC_MENUS,
     FUNC_TIMETABLE,
@@ -66,8 +67,10 @@ from custom_components.pronote_ng.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
     RateLimitConfig,
+    RateLimiter,
 )
 from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
+from custom_components.pronote_ng.session import SerialExecutor, SessionManager
 from custom_components.pronote_ng.tiers import (
     _FIRST_COLLECTION_ATTEMPTS,
     _priority_for,
@@ -765,6 +768,55 @@ async def test_an_ed_batch_and_diagnostics_never_touch_session_manager() -> None
 
     assert collected == [Tier.TIMETABLE]
     assert account.diagnostics()["session"] == {"authenticated": True}
+
+
+async def test_an_ed_entry_instantiates_no_pronote_network_primitive(
+    hass: HomeAssistant,
+) -> None:
+    """A second backend must not silently inherit PRONOTE's thread and login costs."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="EcoleDirecte",
+        data={
+            CONF_SOURCE: Source.ECOLEDIRECTE.value,
+            "username": "demo.example.invalid",
+            "password": "not-a-real-password",
+            CONF_CHILDREN: ["1"],
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch.object(PronoteAccount, "async_setup", return_value=None),
+        patch.object(PronoteAccount, "async_start_first_collection"),
+        patch(
+            "custom_components.pronote_ng.session.SerialExecutor",
+            wraps=SerialExecutor,
+        ) as executor,
+        patch(
+            "custom_components.pronote_ng.session.SessionManager",
+            wraps=SessionManager,
+        ) as session_manager,
+        patch(
+            "custom_components.pronote_ng.ratelimit.RateLimiter",
+            wraps=RateLimiter,
+        ) as pronote_limiter,
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            return_value=None,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    account = entry.runtime_data
+    assert isinstance(account.connector, EcoledirecteConnector)
+    executor.assert_not_called()
+    session_manager.assert_not_called()
+    pronote_limiter.assert_not_called()
 
 
 async def test_a_stale_child_device_can_be_deleted(

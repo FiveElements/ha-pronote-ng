@@ -190,6 +190,7 @@ CONFIG_EN: dict[str, Any] = {
                 "qr_code": "QR code from the mobile app (recommended)",
                 "credentials": "Username and password",
                 "ent": "Federated login (ENT)",
+                "ecoledirecte": "EcoleDirecte",
             },
         },
         "qr_code": {
@@ -258,6 +259,27 @@ CONFIG_EN: dict[str, Any] = {
                 "password": "Password",
                 "ent": "Portal",
             },
+        },
+        "ecoledirecte": {
+            "title": "Connect to EcoleDirecte",
+            "description": (
+                "Enter the credentials used to sign in to EcoleDirecte. The "
+                "password is stored because EcoleDirecte does not issue a "
+                "durable device token."
+            ),
+            "data": {
+                "username": "Username",
+                "password": "Password",
+            },
+        },
+        "ecoledirecte_qcm": {
+            "title": "EcoleDirecte security question",
+            "description": (
+                "EcoleDirecte requires an answer to its security question. "
+                "Enter the saved question-to-answer mapping as a JSON object. "
+                "No account is created until the login succeeds."
+            ),
+            "data": {"qcm_json": "Security answers (JSON)"},
         },
         "children": {
             "title": "Which children to follow",
@@ -355,6 +377,7 @@ CONFIG_EN: dict[str, Any] = {
             "to anything sensible, it sends this portal's username and "
             "password to the PRONOTE server instead."
         ),
+        "invalid_qcm": "Enter a JSON object containing the security answers.",
         "cannot_connect": "Could not reach the server.",
         "rate_limited": (
             "Too many login attempts in the last hour, so this one was not "
@@ -391,6 +414,7 @@ CONFIG_FR: dict[str, Any] = {
                 "qr_code": "QR code de l'application mobile (recommandé)",
                 "credentials": "Identifiant et mot de passe",
                 "ent": "Connexion par l'ENT",
+                "ecoledirecte": "EcoleDirecte",
             },
         },
         "qr_code": {
@@ -465,6 +489,28 @@ CONFIG_FR: dict[str, Any] = {
                 "password": "Mot de passe",
                 "ent": "Portail",
             },
+        },
+        "ecoledirecte": {
+            "title": "Se connecter à EcoleDirecte",
+            "description": (
+                "Saisissez les identifiants utilisés pour EcoleDirecte. Le mot "
+                "de passe est conservé, car EcoleDirecte ne fournit pas de "
+                "jeton d'appareil durable."
+            ),
+            "data": {
+                "username": "Identifiant",
+                "password": "Mot de passe",
+            },
+        },
+        "ecoledirecte_qcm": {
+            "title": "Question de sécurité EcoleDirecte",
+            "description": (
+                "EcoleDirecte demande une réponse à sa question de sécurité. "
+                "Saisissez la correspondance question-réponse mémorisée sous "
+                "forme d'objet JSON. Aucun compte n'est créé avant la réussite "
+                "de la connexion."
+            ),
+            "data": {"qcm_json": "Réponses de sécurité (JSON)"},
         },
         "children": {
             "title": "Enfants à suivre",
@@ -569,6 +615,7 @@ CONFIG_FR: dict[str, Any] = {
             "l'identifiant et le mot de passe de ce portail au serveur "
             "PRONOTE."
         ),
+        "invalid_qcm": ("Saisissez un objet JSON contenant les réponses de sécurité."),
         "cannot_connect": "Impossible de joindre le serveur.",
         "rate_limited": (
             "Trop de tentatives de connexion dans la dernière heure : celle-ci "

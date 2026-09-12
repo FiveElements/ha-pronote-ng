@@ -7,7 +7,8 @@
         "menu_options": {
           "qr_code": "QR code from the mobile app (recommended)",
           "credentials": "Username and password",
-          "ent": "Federated login (ENT)"
+          "ent": "Federated login (ENT)",
+          "ecoledirecte": "EcoleDirecte"
         }
       },
       "qr_code": {
@@ -45,6 +46,21 @@
           "username": "Username",
           "password": "Password",
           "ent": "Portal"
+        }
+      },
+      "ecoledirecte": {
+        "title": "Connect to EcoleDirecte",
+        "description": "Enter the credentials used to sign in to EcoleDirecte. The password is stored because EcoleDirecte does not issue a durable device token.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "ecoledirecte_qcm": {
+        "title": "EcoleDirecte security question",
+        "description": "EcoleDirecte requires an answer to its security question. Enter the saved question-to-answer mapping as a JSON object. No account is created until the login succeeds.",
+        "data": {
+          "qcm_json": "Security answers (JSON)"
         }
       },
       "children": {
@@ -85,6 +101,7 @@
       "qr_refused": "PRONOTE would not honour this QR code. Its four-digit code was right -- a wrong one is reported separately, and is caught before anything is sent -- so what was refused is the QR code itself. Almost always that means it has already been used, or was generated more than a few minutes ago: PRONOTE issues them for single use and expires them quickly. Generate a new one and use it straight away, with the form already open. If a QR code you generated seconds earlier is refused too, the account may not be allowed to enrol a new device -- check with the establishment rather than retrying, because repeatedly retrying a refused login is what gets an address blocked.",
       "invalid_qr_payload": "That does not look like the content of a PRONOTE QR code. It should be a JSON object with login, jeton and url -- the first two written in hexadecimal. Paste it whole, exactly as the app gives it.",
       "unknown_ent": "No ENT provider by that name is installed. Pick one from the list rather than typing it in: an unrecognised name does not fall back to anything sensible, it sends this portal's username and password to the PRONOTE server instead.",
+      "invalid_qcm": "Enter a JSON object containing the security answers.",
       "cannot_connect": "Could not reach the server.",
       "rate_limited": "Too many login attempts in the last hour, so this one was not sent. Wait a little before trying again: repeatedly retrying a login is what gets an address blocked by PRONOTE.",
       "unknown": "Unexpected error. Check the Home Assistant log."

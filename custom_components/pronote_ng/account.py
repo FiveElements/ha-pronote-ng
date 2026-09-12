@@ -97,6 +97,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from . import PronoteConfigEntry
+    from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
     from .connectors.ecoledirecte.ed_limiter import EdRateLimiter
     from .connectors.pronote import PronoteConnector
     from .connectors.protocol import ConnectorCapabilities
@@ -188,7 +189,13 @@ def scheduled_tiers(
 class PronoteAccount:
     """Orchestrates one PRONOTE account: session, budget, cadence, snapshots."""
 
-    def __init__(self, hass: HomeAssistant, entry: PronoteConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: PronoteConfigEntry,
+        *,
+        connector_client: EcoleDirecteClient | None = None,
+    ) -> None:
         self.hass = hass
         self.entry = entry
         self.state = AccountState()
@@ -207,22 +214,25 @@ class PronoteAccount:
             bounded_option(options, OPT_STALE_AFTER, DEFAULT_STALE_AFTER)
         )
 
-        self.connector = build_connector(
-            hass,
-            entry,
-            entry_id=entry.entry_id,
-            timezone=_establishment_timezone(hass, options),
-            credentials=_credentials_from_entry(entry),
-            rate_limit_config=build_rate_limit_config(options),
-            limiter_state=limiter_state_store(hass).get(entry.entry_id, {}),
-            strategy=SessionStrategy(
+        connector_deps: dict[str, Any] = {
+            "entry_id": entry.entry_id,
+            "timezone": _establishment_timezone(hass, options),
+            "credentials": _credentials_from_entry(entry),
+            "rate_limit_config": build_rate_limit_config(options),
+            "limiter_state": limiter_state_store(hass).get(entry.entry_id, {}),
+            "strategy": SessionStrategy(
                 options.get(OPT_SESSION_STRATEGY, DEFAULT_SESSION_STRATEGY)
             ),
-            connect_timeout=connect_timeout,
-            read_timeout=read_timeout,
-            history_periods=int(options.get(OPT_HISTORY_PERIODS, 0) or 0),
-            on_credentials_rotated=self._async_persist_credentials,
-        )
+            "connect_timeout": connect_timeout,
+            "read_timeout": read_timeout,
+            "history_periods": int(options.get(OPT_HISTORY_PERIODS, 0) or 0),
+            "on_credentials_rotated": self._async_persist_credentials,
+        }
+        if connector_client is not None:
+            connector_deps["client"] = connector_client
+            connector_deps["username"] = str(entry.data.get("username", ""))
+            connector_deps["password"] = str(entry.data.get("password", ""))
+        self.connector = build_connector(hass, entry, **connector_deps)
         enabled = tier_enabled(options)
         supported = scheduled_tiers(self.connector.capabilities, enabled)
         self.scheduler = FetchScheduler(

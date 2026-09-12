@@ -19,7 +19,7 @@ from ..errors import (  # noqa: TID252
 from ..protocol import ChallengeKind  # noqa: TID252
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Mapping
 
 API_BASE = "https://api.ecoledirecte.com/v3"
 ECOLEDIRECTE_API_VERSION = "4.101.3"
@@ -61,12 +61,12 @@ class Response(Protocol):
 class Transport(Protocol):
     """Injectable HTTP boundary used by the client."""
 
-    async def request(
+    def request(
         self,
         method: str,
         url: str,
         **kwargs: object,
-    ) -> Response: ...
+    ) -> Awaitable[Response]: ...
 
 
 class EcoleDirecteClient:

@@ -14,15 +14,19 @@ that does not know which child it belongs to has no stable ``unique_id``, and
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from homeassistant.const import Platform
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from pronotepy.exceptions import PronoteAPIError
 
 from .account import PronoteAccount
 from .attachment import async_register_view
+from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
+from .connectors.factory import source_from_entry_data
+from .connectors.protocol import Source
 from .const import DOMAIN
 from .services import async_setup_services
 from .session import (
@@ -38,6 +42,8 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.typing import ConfigType
+
+    from .connectors.ecoledirecte.ed_client import Transport
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -93,7 +99,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa:
 
 async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> bool:
     """Set up one PRONOTE account."""
-    account = PronoteAccount(hass, entry)
+    connector_client = (
+        EcoleDirecteClient(
+            cast("Transport", async_create_clientsession(hass)),
+        )
+        if source_from_entry_data(dict(entry.data)) is Source.ECOLEDIRECTE
+        else None
+    )
+    account = PronoteAccount(hass, entry, connector_client=connector_client)
 
     try:
         await account.async_setup()

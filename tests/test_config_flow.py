@@ -43,6 +43,8 @@ from custom_components.pronote_ng.config_flow import (
     ProbeQrInvalid,
     ProbeQrRefused,
 )
+from custom_components.pronote_ng.connectors.errors import ConnectorChallengeRequired
+from custom_components.pronote_ng.connectors.protocol import ChallengeKind
 from custom_components.pronote_ng.const import (
     CONF_ACCOUNT_PIN,
     CONF_CHILDREN,
@@ -52,6 +54,7 @@ from custom_components.pronote_ng.const import (
     CONF_PRONOTE_URL,
     CONF_QR_PAYLOAD,
     CONF_QR_PIN,
+    CONF_SOURCE,
     CONF_UUID,
     DOMAIN,
     LoginMode,
@@ -123,7 +126,12 @@ async def _start(hass: HomeAssistant) -> str:
         DOMAIN, context={"source": SOURCE_USER}
     )
     assert result["type"] is FlowResultType.MENU
-    assert set(result["menu_options"]) == {"qr_code", "credentials", "ent"}
+    assert set(result["menu_options"]) == {
+        "qr_code",
+        "credentials",
+        "ent",
+        "ecoledirecte",
+    }
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "credentials"}
@@ -154,6 +162,56 @@ async def _submit_credentials(
 # ---------------------------------------------------------------------------
 # The happy paths
 # ---------------------------------------------------------------------------
+
+
+async def test_an_ecoledirecte_login_stores_password_and_not_the_token(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """Aplim has no durable device token; the password is the only replayable secret."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        return_value={"students": (("1", "Enfant Un"),)},
+    ):
+        created = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["data"]["password"] == "not-a-real-password"
+    assert "token" not in created["data"]
+    assert created["data"][CONF_SOURCE] == "ecoledirecte"
+
+
+async def test_a_250_opens_the_qcm_step_and_does_not_create_the_entry(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """An entry that exists without a 200 login would be half-born."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        side_effect=ConnectorChallengeRequired(ChallengeKind.QCM),
+    ):
+        challenged = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"username": "demo.example.invalid", "password": "not-a-real-password"},
+        )
+    assert challenged["type"] is FlowResultType.FORM
+    assert challenged["step_id"] == "ecoledirecte_qcm"
+    assert hass.config_entries.async_entries(DOMAIN) == []
 
 
 async def test_a_single_child_account_is_created_straight_away(
