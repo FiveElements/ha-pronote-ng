@@ -50,12 +50,22 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
 from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
     EdRateLimiter,
 )
+from custom_components.pronote_ng.connectors.errors import (
+    ConnectorChallengeRequired,
+    ConnectorChildMissingError,
+    ConnectorCredentialsError,
+    ConnectorError,
+    ConnectorSessionExpiredError,
+    ConnectorTransportError,
+    ConnectorUndecodableError,
+    ConnectorUnsupportedError,
+)
 from custom_components.pronote_ng.connectors.pronote import (
     RateLimiter as PronoteConnectorRateLimiter,
     SerialExecutor as PronoteConnectorSerialExecutor,
     SessionManager as PronoteConnectorSessionManager,
 )
-from custom_components.pronote_ng.connectors.protocol import Source
+from custom_components.pronote_ng.connectors.protocol import ChallengeKind, Source
 from custom_components.pronote_ng.const import (
     CHILD_KEY,
     CHILD_NAME,
@@ -521,6 +531,128 @@ async def test_an_undecodable_login_asks_for_a_report(
 
     assert mock_entry.state is ConfigEntryState.SETUP_RETRY
     _issue(hass, mock_entry, ISSUE_ACCOUNT_UNREADABLE)
+
+
+@pytest.mark.parametrize(
+    ("error", "state", "issue_key", "reauth"),
+    [
+        pytest.param(
+            ConnectorCredentialsError("505"),
+            ConfigEntryState.SETUP_ERROR,
+            None,
+            True,
+            id="credentials",
+        ),
+        pytest.param(
+            ConnectorChallengeRequired(ChallengeKind.QCM),
+            ConfigEntryState.SETUP_ERROR,
+            None,
+            True,
+            id="challenge",
+        ),
+        pytest.param(
+            ConnectorTransportError("timeout"),
+            ConfigEntryState.SETUP_RETRY,
+            ISSUE_BOOTSTRAP_FAILED,
+            False,
+            id="transport",
+        ),
+        pytest.param(
+            ConnectorUndecodableError("notes key missing"),
+            ConfigEntryState.SETUP_RETRY,
+            ISSUE_ACCOUNT_UNREADABLE,
+            False,
+            id="undecodable",
+        ),
+        pytest.param(
+            ConnectorError("a connector failure with no class of its own"),
+            ConfigEntryState.SETUP_RETRY,
+            ISSUE_ACCOUNT_UNREADABLE,
+            False,
+            id="bare",
+        ),
+        pytest.param(
+            ConnectorSessionExpiredError(
+                "EcoleDirecte session token is no longer valid"
+            ),
+            ConfigEntryState.SETUP_RETRY,
+            None,
+            False,
+            id="session-expired",
+        ),
+        pytest.param(
+            ConnectorChildMissingError("STUDENT-9"),
+            ConfigEntryState.SETUP_RETRY,
+            ISSUE_ACCOUNT_UNREADABLE,
+            False,
+            id="child-missing",
+        ),
+        pytest.param(
+            ConnectorUnsupportedError("menus"),
+            ConfigEntryState.SETUP_RETRY,
+            ISSUE_ACCOUNT_UNREADABLE,
+            False,
+            id="unsupported",
+        ),
+    ],
+)
+async def test_each_seam_error_at_setup_has_a_named_home_assistant_outcome(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    school_day: Any,
+    no_spacing: None,
+    error: Exception,
+    state: ConfigEntryState,
+    issue_key: str | None,
+    reauth: bool,
+) -> None:
+    """The scale is re-auth / retry / repair, not an unhandled traceback (#20).
+
+    Credentials and a human challenge start re-authentication, the same
+    outcome as ``InvalidCredentials``. An undecodable payload -- and a bare
+    ``ConnectorError``, which is how a vanished EcoleDirecte token arrives --
+    must open the same repair as ``AccountUnreadable``: retry, do not send the
+    parent to re-enter credentials that are still correct. Transport stays on
+    the bootstrap repair. Caller-bug subclasses that leak to set-up still get
+    a named issue rather than ``SETUP_ERROR`` with no repair.
+
+    An expired session is the exception that proves the scale is about what
+    the user should *do*: it retries and opens **nothing**. The connector has
+    already dropped its tokens, so the next attempt logs in again -- and a
+    repair card asking for a bug report, which nothing ever closes, would
+    outlive the condition by weeks.
+    """
+    del school_day, no_spacing
+    with patch.object(PronoteAccount, "async_setup", side_effect=error):
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert mock_entry.state is state
+    flows = [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["handler"] == DOMAIN
+    ]
+    if reauth:
+        assert [flow["context"]["source"] for flow in flows] == [SOURCE_REAUTH]
+    else:
+        assert flows == []
+    if issue_key is None:
+        registry = ir.async_get(hass)
+        assert (
+            registry.async_get_issue(
+                DOMAIN, f"{ISSUE_ACCOUNT_UNREADABLE}_{mock_entry.entry_id}"
+            )
+            is None
+        )
+        assert (
+            registry.async_get_issue(
+                DOMAIN, f"{ISSUE_BOOTSTRAP_FAILED}_{mock_entry.entry_id}"
+            )
+            is None
+        )
+    else:
+        _issue(hass, mock_entry, issue_key)
 
 
 async def test_a_server_refusal_is_not_reported_as_a_credential_problem(

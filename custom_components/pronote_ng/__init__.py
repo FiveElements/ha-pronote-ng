@@ -28,7 +28,10 @@ from .connectors.ecoledirecte.ed_client import EcoleDirecteClient
 from .connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
+    ConnectorError,
+    ConnectorSessionExpiredError,
     ConnectorTransportError,
+    ConnectorUndecodableError,
 )
 from .connectors.factory import source_from_entry_data
 from .connectors.protocol import Source
@@ -131,27 +134,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> b
         # to store is a secret we must know how to request again (§8.1).
         await account.async_unload()
         raise ConfigEntryAuthFailed(str(error)) from error
-    except BootstrapFailed as error:
+    except (BootstrapFailed, ConnectorTransportError) as error:
         # Deliberately does not claim a cause. pronotepy decides an address is
         # suspended with `if "IP" in html` -- two capitals anywhere in the page
         # -- and telling parents their home connection is banned because of a
-        # school's footer would be worse than saying nothing (§6.3).
+        # school's footer would be worse than saying nothing (§6.3). A transport
+        # failure is the same class of event on the other source.
         account.async_open_bootstrap_issue()
         await account.async_unload()
         raise ConfigEntryNotReady(str(error)) from error
-    except AccountUnreadable as error:
+    except (
+        LoginRefused,
+        LoginRefusedByLimiter,
+        IntegrationFault,
+        ConnectorSessionExpiredError,
+    ) as error:
+        # Retry, and open nothing. These are ordinary ends of a session rather
+        # than faults to report: the connector has already dropped the tokens
+        # it held, so the retry logs in again. This arm sits *above* the
+        # `ConnectorError` catch-all deliberately -- an expired token that fell
+        # through to it opened a repair asking the user to file a bug report,
+        # for a condition that fixed itself on the next attempt, and no code
+        # path ever closes that card again.
+        await account.async_unload()
+        raise ConfigEntryNotReady(str(error)) from error
+    except (AccountUnreadable, ConnectorUndecodableError, ConnectorError) as error:
         # The server answered and the credentials were fine; what came back is
-        # outside what the pinned pronotepy can parse. Retrying is right --
-        # establishments do publish transient nonsense -- but the limiter holds
-        # it back, so this does not become a loop.
+        # outside the declared contract. Retrying is right -- establishments do
+        # publish transient nonsense -- but the limiter holds it back, so this
+        # does not become a loop. An unreadable payload raises
+        # `ConnectorUndecodableError`; a bare `ConnectorError` is the last
+        # resort, and catching the base class is what stops any connector
+        # error from reaching set-up unclassified. Both must name the same
+        # repair as `AccountUnreadable`, never `ConfigEntryAuthFailed`.
         account.async_open_unreadable_issue()
-        await account.async_unload()
-        raise ConfigEntryNotReady(str(error)) from error
-    except (LoginRefused, LoginRefusedByLimiter, IntegrationFault) as error:
-        await account.async_unload()
-        raise ConfigEntryNotReady(str(error)) from error
-    except ConnectorTransportError as error:
-        account.async_open_bootstrap_issue()
         await account.async_unload()
         raise ConfigEntryNotReady(str(error)) from error
     except PronoteAPIError as error:

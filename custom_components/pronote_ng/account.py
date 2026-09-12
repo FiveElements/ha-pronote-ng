@@ -1288,9 +1288,10 @@ class PronoteAccount:
 
         A separate repair from ``bootstrap_failed`` because the diagnosis is
         genuinely different and so is the remedy: the address is right, the
-        credentials are right, and something in this establishment's response
-        is outside what the pinned ``pronotepy`` handles. The user cannot fix
-        that, so the text asks for a report rather than for a correction.
+        credentials are right, and something in the establishment's response
+        is outside the declared contract -- the pinned ``pronotepy`` on a
+        PRONOTE entry, or the DTO mapping on another source. The user cannot
+        fix that, so the text asks for a report rather than for a correction.
         """
         ir.async_create_issue(
             self.hass,

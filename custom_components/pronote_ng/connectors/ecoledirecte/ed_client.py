@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from ..errors import (  # noqa: TID252
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
-    ConnectorError,
+    ConnectorSessionExpiredError,
     ConnectorTransportError,
     ConnectorUndecodableError,
 )
@@ -300,7 +300,9 @@ class EcoleDirecteClient:
             )
         if code in {520, 525}:
             self._forget_tokens()
-            raise ConnectorError("EcoleDirecte session token is no longer valid")
+            raise ConnectorSessionExpiredError(
+                "EcoleDirecte session token is no longer valid"
+            )
         raise ConnectorUndecodableError(
             f"EcoleDirecte returned an unsupported business code: {code!r}"
         )

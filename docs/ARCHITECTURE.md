@@ -261,13 +261,23 @@ ordre qui n'est pas indifférent.
    (enfants, périodes, période courante) à **zéro requête supplémentaire**,
    puis l'armement du battement de cœur et une première collecte immédiate.
 4. Classement des échecs. C'est ici que le vocabulaire d'erreurs de
-   `session.py` se traduit en vocabulaire Home Assistant :
-   `InvalidCredentials` et `MfaRequired` deviennent `ConfigEntryAuthFailed`,
-   donc un flow de ré-authentification ; `BootstrapFailed`,
-   `AccountUnreadable`, `LoginRefused`, `IntegrationFault`, `PronoteAPIError`,
-   `TimeoutError` et `OSError` deviennent `ConfigEntryNotReady`, donc un retry.
-   La distinction compte : répondre « identifiants invalides » à un serveur
-   qui répond mal envoie l'utilisateur ressaisir un mot de passe correct.
+   `session.py` **et** de `connectors/errors.py` se traduit en vocabulaire
+   Home Assistant (§7.2) : `InvalidCredentials`, `MfaRequired`,
+   `ConnectorCredentialsError` et `ConnectorChallengeRequired` deviennent
+   `ConfigEntryAuthFailed`, donc un flow de ré-authentification ;
+   `BootstrapFailed` et `ConnectorTransportError` ouvrent la réparation
+   `bootstrap_failed` puis `ConfigEntryNotReady` ; `AccountUnreadable`,
+   `ConnectorUndecodableError` et un `ConnectorError` nu ouvrent
+   `account_unreadable` puis `ConfigEntryNotReady` ; `LoginRefused`,
+   `LoginRefusedByLimiter`, `IntegrationFault`, `ConnectorSessionExpiredError`,
+   `PronoteAPIError`, `TimeoutError` et `OSError` deviennent
+   `ConfigEntryNotReady` **sans** réparation. La position de ce dernier bras
+   au-dessus de l'attrape-tout `ConnectorError` n'est pas cosmétique : un jeton
+   de session expiré y ouvrait sinon une carte demandant un rapport de bug —
+   qu'aucun chemin de code ne referme — pour une condition réparée au réessai
+   suivant, le connecteur ayant déjà oublié ses jetons. La distinction compte :
+   répondre « identifiants invalides » à un serveur qui répond mal envoie
+   l'utilisateur ressaisir un mot de passe correct.
 5. `entry.runtime_data = account`, et *aussi* `hass.data[DOMAIN][entry_id]`.
    Le second n'est pas une redondance : les *device automations* et les
    services résolvent un compte depuis un `device_id` sans avoir l'entrée sous
