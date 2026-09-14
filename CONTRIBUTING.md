@@ -120,6 +120,55 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "C:/chemin/vers/ha-pronote-ng:/work" -w /w
 Construire une image une fois pour toutes évite de réinstaller les dépendances
 à chaque exécution — la pile de test de Home Assistant est volumineuse.
 
+### 2.3 `graft`, l'index de code (facultatif)
+
+Le dépôt est indexé par [graft](https://github.com/trailhq/Graft) (licence MIT,
+publié sur npm sous `@nanonets/graft`) : un graphe du code en fiches markdown,
+une par fichier, qui nomment le `fichier:ligne` de chaque symbole et les arêtes
+« qui appelle quoi ». Un agent de code y lit en une requête ce que plusieurs
+lectures de fichiers coûteraient en milliers de jetons — et, plus utile ici, les
+arêtes répondent à « qui appelle ce symbole » sans qu'on ait à faire confiance à
+un `grep` sur un nom court.
+
+Aucun portail n'en dépend, et rien dans `custom_components/` ne le connaît. Qui
+ne l'installe pas travaille exactement comme avant : ce que le dépôt versionne,
+c'est la configuration, jamais l'index.
+
+```bash
+npm install -g @nanonets/graft
+graft build          # construit graft/ à partir des sources, ~11 Mo
+```
+
+Quatre points sur ce que le dépôt porte réellement.
+
+**`graft/` n'est pas versionné.** L'index se régénère intégralement à partir du
+code. Le committer reviendrait à verser onze mégaoctets dérivés, à les
+reconstruire dans chaque PR et à arbitrer des conflits sur un artefact ;
+`.gitignore` l'exclut donc, et les commandes `graft` rafraîchissent le graphe
+d'elles-mêmes avant de répondre.
+
+**`.ignore` le réadmet à la recherche.** `ripgrep` lit `.ignore` avant
+`.gitignore` : sans ce fichier, un `rg` dans le dépôt ne verrait aucune fiche,
+alors qu'elles sont précisément faites pour être lues. Il ne réadmet que la
+recherche, jamais le suivi de version.
+
+**`.claude/` configure Claude Code, et rien d'autre.** `settings.json` y
+enregistre les hooks et la ligne de statut de graft, `skills/graft/SKILL.md` dit
+quand employer laquelle des six commandes, et `.mcp.json` déclare le serveur MCP
+— que le client demande d'activer explicitement au premier lancement. Les
+préférences propres à un poste vont dans `.claude/settings.local.json`, qui
+n'est pas versionné. Les deux fichiers de `.claude/helpers/` ne sont que des
+amorces : ils cherchent le paquet installé et n'ont aucun effet en son absence.
+L'installeur de graft y grave le chemin absolu de la machine qui l'a lancé, ce
+que ce dépôt neutralise à chaque fois — un chemin d'un autre poste n'aide
+personne, et porte un nom de compte.
+
+**La règle §1.1 tient sans aménagement.** graft n'indexe que ce qui est déjà
+suivi en version, où aucun identifiant réel ne figure ; il suit `.gitignore`,
+donc l'index couvre `custom_components/`, `scripts/` et `tests/`, et jamais
+`tests/fixtures/_raw/`. Une fiche reste néanmoins du contenu dérivé du dépôt :
+elle se relit avant d'être collée dans un ticket, comme n'importe quel extrait.
+
 ---
 
 ## 3. Les portails

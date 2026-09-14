@@ -49,6 +49,32 @@ to a user in an issue.
 "commit and push" while `HEAD` is `main` means: create a branch, commit there,
 push the branch, open the PR. Direct `git push origin main` is forbidden.
 
+## Ask graft before you grep
+
+This repo is indexed by [graft](https://github.com/trailhq/Graft)
+(`npm install -g @nanonets/graft`, MIT). `graft/` holds one markdown card per
+source file — every symbol with its exact span, plus the who-calls-what edges —
+and `graft ask`, `grep`, `skeleton`, `callers` and `map` query it in under a
+second, no API key. Reach for it before reading source. `graft callers <symbol>
+--depth all` is the cheap way to see the blast radius of a change before making
+it, which is worth more here than in most codebases: the failures this project
+guards against are silent ones — a tier that quietly stops collecting, a cost
+declared wrong, a lazy property read outside the accounting.
+
+`graft/` is **generated and gitignored**; run `graft build` once after cloning.
+The query commands refresh the graph themselves, so an edit you have not
+committed is already reflected. `.ignore` re-admits the cards to `ripgrep`
+without re-admitting them to git, and `.mcp.json` plus `.claude/` wire the same
+graph into Claude Code as MCP tools, hooks and a skill. None of it is a gate:
+`validate.yml` never runs graft, and a contributor without it loses speed and
+nothing else.
+
+Two cautions. A card's spans are a projection rebuilt at the end of a turn, so
+for a file you edited this turn the card can lag — the commands do not, so
+prefer them. And graft returns line numbers, while this project's prose cites a
+**symbol**, not a line: a range drifts silently and most of them had, which is
+why `scripts/check_doc_citations.py` exists.
+
 ## Commands
 
 The gates, which are exactly what `.github/workflows/validate.yml` runs:
