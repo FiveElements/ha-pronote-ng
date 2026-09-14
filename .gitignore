@@ -27,5 +27,11 @@ Thumbs.db
 tests/fixtures/_raw/
 *.raw.json
 
+# Isolated git worktrees (superpowers).
+.worktrees/
+
 # The MkDocs build output.
 site/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
