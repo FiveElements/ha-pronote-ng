@@ -567,3 +567,120 @@ class TestWhenTheRepairCannotBeSound:
 
         assert "repairable for one child" not in caplog.text
         assert "orphaned generation" not in caplog.text
+
+    async def test_a_device_already_holding_the_minted_identifier_is_not_merged(
+        self,
+        hass: Any,
+        mock_entry: Any,
+        parent_client: Any,
+        school_day: Any,
+        no_spacing: None,
+        caplog: Any,
+    ) -> None:
+        """Two devices for one child is a state the repair must not resolve.
+
+        It happens to an instance that ran a version which created the minted
+        device beside the old one instead of re-pointing it. Claiming the
+        identifier is impossible -- it is already taken -- and merging would
+        decide for the user which of two devices keeps the name, area and
+        labels they set by hand. So the older one is left alone and the reason
+        is said out loud, on a device page where it can be deleted.
+        """
+        del school_day, no_spacing
+        devices = dr.async_get(hass)
+        announced, _name = CHILDREN[0]
+        legacy = devices.async_get_or_create(
+            config_entry_id=mock_entry.entry_id,
+            identifiers={(DOMAIN, f"{mock_entry.entry_id}_{announced}")},
+            name="Enfant Un",
+        )
+        minted = devices.async_get_or_create(
+            config_entry_id=mock_entry.entry_id,
+            identifiers={(DOMAIN, f"{mock_entry.entry_id}_child-1")},
+            name="Enfant Un",
+        )
+        assert legacy.id != minted.id
+
+        with patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=parent_client,
+        ):
+            assert await hass.config_entries.async_setup(mock_entry.entry_id)
+            await hass.async_block_till_done()
+
+            assert "already carries the minted identifier" in caplog.text
+            still_there = devices.async_get(legacy.id)
+            assert still_there is not None, "the older device was deleted"
+            assert (DOMAIN, f"{mock_entry.entry_id}_{announced}") in (
+                still_there.identifiers
+            ), "the older device was re-pointed onto an identifier already taken"
+
+            await hass.config_entries.async_unload(mock_entry.entry_id)
+            await hass.async_block_till_done()
+
+    async def test_a_row_whose_identity_is_already_taken_is_left_behind(
+        self,
+        hass: Any,
+        mock_entry: Any,
+        parent_client: Any,
+        school_day: Any,
+        no_spacing: None,
+        caplog: Any,
+    ) -> None:
+        """One entity refused beats an entry that will not load.
+
+        `async_update_entity` raises when the `unique_id` it is handed is
+        already held, and it is called in a loop during set-up: letting that
+        propagate would turn one duplicated row into an integration that
+        cannot start at all. The row is left where it is, named in the log, and
+        every other row of the same child still moves.
+        """
+        del school_day, no_spacing
+        entities = er.async_get(hass)
+        announced, _name = CHILDREN[0]
+        prefix = f"{mock_entry.entry_id}_{announced}_"
+        blocked = entities.async_get_or_create(
+            "sensor",
+            DOMAIN,
+            f"{prefix}next_lesson",
+            suggested_object_id="enfant_un_prochain_cours_ancien",
+            config_entry=mock_entry,
+        )
+        squatter = entities.async_get_or_create(
+            "sensor",
+            DOMAIN,
+            f"{mock_entry.entry_id}_child-1_next_lesson",
+            suggested_object_id="enfant_un_prochain_cours",
+            config_entry=mock_entry,
+        )
+        movable = entities.async_get_or_create(
+            "sensor",
+            DOMAIN,
+            f"{prefix}homework_count",
+            suggested_object_id="enfant_un_devoirs_a_faire",
+            config_entry=mock_entry,
+        )
+
+        with patch(
+            "custom_components.pronote_ng.session.build_client",
+            return_value=parent_client,
+        ):
+            assert await hass.config_entries.async_setup(mock_entry.entry_id)
+            await hass.async_block_till_done()
+
+            assert "already holds the identity it would take" in caplog.text
+            assert squatter.entity_id in caplog.text
+
+            refused = entities.async_get(blocked.entity_id)
+            assert refused is not None
+            assert refused.unique_id == f"{prefix}next_lesson", (
+                "the refused row was re-pointed anyway"
+            )
+            moved = entities.async_get(movable.entity_id)
+            assert moved is not None
+            assert moved.unique_id == f"{mock_entry.entry_id}_child-1_homework_count", (
+                "one refused row stopped the others from moving"
+            )
+
+            await hass.config_entries.async_unload(mock_entry.entry_id)
+            await hass.async_block_till_done()

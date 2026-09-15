@@ -41,6 +41,7 @@ import pytest
 from custom_components.pronote_ng import async_remove_config_entry_device
 from custom_components.pronote_ng.account import (
     PronoteAccount,
+    TierRecord,
     _establishment_timezone,
 )
 from custom_components.pronote_ng.child_keys import is_minted
@@ -81,11 +82,14 @@ from custom_components.pronote_ng.const import (
     FUNC_TIMETABLE,
     ISSUE_ACCOUNT_UNREADABLE,
     ISSUE_BOOTSTRAP_FAILED,
+    ISSUE_INVALID_CREDENTIALS,
+    ISSUE_MFA_REQUIRED,
     OPT_ESTABLISHMENT_TIMEZONE,
     OPT_READ_TIMEOUT,
     OPT_SESSION_STRATEGY,
     OPT_TIER_ENABLED,
     OPT_TIER_INTERVAL,
+    OPT_WRITE_OPERATIONS_ENABLED,
     SERVICE_GENERATE_TIMETABLE_PDF,
     SERVICE_GET_ICAL_URL,
     SERVICE_GET_RATE_LIMIT_STATUS,
@@ -2183,3 +2187,329 @@ class TestWhichTimezonePronotesNaiveTimesAreReadIn:
         extras = mock_entry.runtime_data.extras
         assert extras is not None
         assert str(extras.gateway.timezone) == str(hass.config.time_zone)
+
+
+async def test_a_refresh_naming_a_tier_the_source_lacks_asks_for_nothing(
+    hass: HomeAssistant,
+) -> None:
+    """An automation shared between two sources must not fail on one of them.
+
+    ``refresh`` is source-agnostic, so it is reachable on an Ecoledirecte
+    entry -- but the tier list in a blueprint written for PRONOTE names pages
+    Ecoledirecte does not have. Filtering them out leaves nothing to ask for,
+    and that has to be a no-op: refusing would break the automation, and
+    reading "nothing left" as "everything" would spend a full round of
+    requests for a tier list that matched none of them.
+    """
+    entry, _session_manager = await _setup_ed_entry(hass)
+    account = entry.runtime_data
+    before = account.completed_ticks
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_REFRESH,
+        {
+            "device_id": _ed_account_device(hass, entry),
+            "tiers": [Tier.MENUS.value],
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert account.completed_ticks == before
+    assert account.scheduler.boosted_tiers() == ()
+
+
+async def test_a_service_the_source_does_not_declare_is_refused_by_name(
+    hass: HomeAssistant,
+) -> None:
+    """Refused for the right reason, and the reason names the source.
+
+    Ecoledirecte declares no services at all. A refusal that said only
+    "unsupported" would send a user looking at their PRONOTE credentials; the
+    message has to say which source is answering, because on a mixed household
+    the same action works on the entry next to it.
+    """
+    entry, _session_manager = await _setup_ed_entry(hass)
+
+    with pytest.raises(ServiceValidationError) as raised:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_GET_ICAL_URL,
+            {"device_id": _ed_account_device(hass, entry)},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert "ecoledirecte" in str(raised.value).lower()
+
+
+async def test_an_ecoledirecte_homework_list_refuses_a_tick(
+    hass: HomeAssistant,
+) -> None:
+    """Tapping a checkbox must fail cleanly, not half-write.
+
+    The list is offered because Ecoledirecte collects homework; writing it
+    back is a PRONOTE-only path that lives on ``PronoteExtras``. Without the
+    guard the tick would reach ``None.gateway`` and raise ``AttributeError``,
+    which Home Assistant shows as an unexplained error on the card instead of
+    a sentence naming the source.
+
+    Writes are enabled on purpose: with them off the list is read-only through
+    its supported features and the checkbox is never offered, so the guard
+    that matters -- the one behind an *enabled* write -- would stay
+    unreachable.
+    """
+    from homeassistant.components.todo import TodoItem, TodoItemStatus
+
+    from custom_components.pronote_ng.todo import PronoteHomeworkTodoList
+
+    entry, _session_manager = await _setup_ed_entry(
+        hass, options={OPT_WRITE_OPERATIONS_ENABLED: True}
+    )
+    account = entry.runtime_data
+    assert account.extras is None
+    assert account.write_enabled
+
+    entity = PronoteHomeworkTodoList(
+        account,
+        account.coordinators[Tier.HOMEWORK],
+        account.students[0],
+    )
+
+    with pytest.raises(ServiceValidationError) as raised:
+        await entity.async_update_todo_item(
+            TodoItem(
+                uid="HOMEWORK-1",
+                summary="Exercices 4 a 7",
+                status=TodoItemStatus.COMPLETED,
+            )
+        )
+
+    assert "does not support" in str(raised.value)
+
+
+def _ed_account_device(hass: HomeAssistant, entry: Any) -> str:
+    """The account device of an Ecoledirecte entry.
+
+    Looked up through the owning entry: from HA 2026.9 an identifier is only
+    unique within a config entry, and the entry-less lookup is deprecated.
+    """
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
+    assert device is not None
+    return device.id
+
+
+async def test_a_reauthentication_clears_the_hold_on_the_live_account_too(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """Three places hold the penalty, and the live account is the one that bites.
+
+    Clearing only the flow's guard and the saved state leaves the loaded
+    account holding its own counters, so the very next tick walks into the
+    hold the user just cleared by retyping their password -- and the repair
+    card comes straight back, which reads as "the new password is wrong too".
+    """
+    from custom_components.pronote_ng.login_guard import (
+        clear_login_penalties,
+        limiter_state_store,
+    )
+    from custom_components.pronote_ng.ratelimit import LoginOutcome
+
+    account.limiter.note_login(LoginOutcome.BAD_CREDENTIALS)
+    limiter_state_store(hass)[mock_entry.entry_id] = account.limiter.export_state()
+    assert account.limiter.snapshot_counters()["failed_logins_hour"] > 0
+
+    clear_login_penalties(hass, mock_entry.entry_id)
+
+    assert account.limiter.snapshot_counters()["failed_logins_hour"] == 0
+    assert mock_entry.entry_id not in limiter_state_store(hass)
+
+
+async def test_a_reauthentication_with_no_entry_still_clears_the_flow_guard(
+    hass: HomeAssistant,
+) -> None:
+    """A re-auth can begin before any entry exists to repair.
+
+    The flow's own guard is shared by every attempt on the instance, so a
+    person who mistyped a password twice in the *add* flow must not arrive at
+    the repair flow already held. Passing no entry id is the ordinary shape of
+    that call, and it must not reach into ``hass.data`` for an entry that is
+    not there.
+    """
+    from custom_components.pronote_ng.login_guard import (
+        clear_login_penalties,
+        login_guard,
+    )
+    from custom_components.pronote_ng.ratelimit import LoginOutcome
+
+    login_guard(hass).note_login(LoginOutcome.BAD_CREDENTIALS)
+    assert login_guard(hass).snapshot_counters()["failed_logins_hour"] > 0
+
+    clear_login_penalties(hass, None)
+
+    assert login_guard(hass).snapshot_counters()["failed_logins_hour"] == 0
+
+
+async def test_a_tick_is_skipped_while_the_previous_batch_is_still_running(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """Skipping, never queueing.
+
+    A queued tick lets a slow server build a backlog that then arrives all at
+    once -- which is the burst the single heartbeat exists to prevent. Skipping
+    is safe because the deadlines have not moved: the next tick picks the same
+    tiers up.
+    """
+    before = account.completed_ticks
+
+    await account._tick_lock.acquire()
+    try:
+        await account._async_tick()
+        await account.async_request_tick()
+        await hass.async_block_till_done()
+    finally:
+        account._tick_lock.release()
+
+    assert account.completed_ticks == before
+
+
+async def test_nothing_is_collected_once_the_account_is_stopping(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """Unload must not race a batch into a session it has just closed.
+
+    The executor is shut down on unload, so a tier that started afterwards
+    raises from inside the worker -- which Home Assistant reports as an error
+    during teardown, for an entry the user simply removed.
+    """
+    before = account.completed_ticks
+    account._shutting_down = True
+    try:
+        await account._async_tick()
+        await account.async_request_tick()
+        await hass.async_block_till_done()
+    finally:
+        account._shutting_down = False
+
+    assert account.completed_ticks == before
+
+
+async def test_a_tier_with_no_coordinator_is_skipped_rather_than_crashing(
+    account: PronoteAccount,
+) -> None:
+    """A tier can be capable and still have no coordinator: disabled in options.
+
+    Both readers have to agree. ``_async_collect`` returning early keeps the
+    batch going, and ``snapshot`` answering ``None`` keeps every entity that
+    asks about that tier on the "no data" path rather than on an
+    ``AttributeError``.
+    """
+    removed = account.coordinators.pop(Tier.MENUS)
+    try:
+        await account._async_collect(Tier.MENUS)
+        assert account.snapshot(Tier.MENUS, account.students[0].id) is None
+    finally:
+        account.coordinators[Tier.MENUS] = removed
+
+
+async def test_a_child_with_no_minted_key_falls_back_loudly(
+    account: PronoteAccount, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The fallback is a bug report, not a feature.
+
+    Returning the PRONOTE resource identifier keeps the entry loading -- which
+    is right, because raising would lose every child's entities to protect the
+    identity of one -- but that identifier rotates, so the entities built on it
+    are orphaned at the next session. The log line is the only thing that turns
+    a silent orphaning into something a user can report.
+    """
+    caplog.set_level(logging.ERROR, logger="custom_components.pronote_ng.account")
+    student_id = account.students[0].id
+    keys = dict(account._child_keys)
+    account._child_keys.clear()
+    try:
+        assert account.stable_key(student_id) == student_id
+    finally:
+        account._child_keys.update(keys)
+
+    assert "no minted key" in caplog.text
+    assert "not stable between sessions" in caplog.text
+
+
+async def test_a_deferred_tier_is_deferred_and_not_recorded_as_a_failure(
+    account: PronoteAccount,
+) -> None:
+    """Postponed by the limiter is not a broken page.
+
+    Counting it as a failure would drive the tier's consecutive-failure count
+    up and, at three, cost it the first-collection dispensation -- so a tight
+    budget would look exactly like a tab the establishment does not publish.
+    """
+    from custom_components.pronote_ng.ratelimit import TierDeferred
+
+    record = account.state.records.setdefault(Tier.MENUS, TierRecord())
+    failures_before = record.consecutive_failures
+
+    with patch.object(
+        account.connector,
+        "async_collect",
+        side_effect=TierDeferred("the daily cap is close", 900.0),
+    ):
+        await account._async_collect(Tier.MENUS)
+
+    assert record.consecutive_failures == failures_before
+
+
+async def test_an_authentication_refusal_stops_the_batch_and_holds_the_retry(
+    account: PronoteAccount,
+) -> None:
+    """The defect here got an address suspended.
+
+    An authentication refusal leaves the *consecutive* failure counter at
+    zero -- bad credentials, a demanded PIN and an unreadable bootstrap all
+    do -- so the exponential back-off is still zero seconds. Deferring by that
+    made the tier due again on the very next tick, and ten tiers then
+    attempted ten logins a tick.
+    """
+    from custom_components.pronote_ng.session import InvalidCredentials
+
+    with patch.object(
+        account.connector,
+        "async_collect",
+        side_effect=InvalidCredentials("the password was refused"),
+    ):
+        await account._async_collect(Tier.MENUS)
+
+    # Not due again immediately: the limiter's retry delay is what holds it.
+    assert Tier.MENUS not in account.scheduler.due()
+
+
+@pytest.mark.parametrize(
+    ("opener", "issue"),
+    [
+        pytest.param(
+            "async_open_credentials_issue", ISSUE_INVALID_CREDENTIALS, id="credentials"
+        ),
+        pytest.param("async_open_mfa_issue", ISSUE_MFA_REQUIRED, id="mfa"),
+    ],
+)
+async def test_an_authentication_problem_asks_the_user_rather_than_retrying(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    account: PronoteAccount,
+    opener: str,
+    issue: str,
+) -> None:
+    """Neither of these can be fixed by trying again, and trying again is costly.
+
+    A wrong password and a demanded PIN both count against the IP guard, whose
+    sanction is the undocumented and expensive one. So the integration stops
+    and opens a repair card; the card is the only thing that tells the user
+    the integration is waiting for them rather than broken.
+    """
+    getattr(account, opener)()
+
+    assert _issue(hass, mock_entry, issue) is not None

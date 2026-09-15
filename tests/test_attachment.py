@@ -738,3 +738,299 @@ class _FakeRequest:
         from homeassistant.helpers.http import KEY_HASS
 
         self.app = {KEY_HASS: hass}
+
+
+# ---------------------------------------------------------------------------
+# The view: what a browser gets when the document is not there
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        pytest.param('Devoir "maison".pdf', "Devoir maison.pdf", id="quotes-removed"),
+        pytest.param(
+            "Exercices" + chr(92) + "4.pdf",
+            "Exercices4.pdf",
+            id="backslash-removed",
+        ),
+        pytest.param("Énoncé été.pdf", "?nonc? ?t?.pdf", id="accents-reduced"),
+        pytest.param("Éé", "??", id="a-name-that-survives-as-marks"),
+        pytest.param('""', "document", id="nothing-left-is-still-a-filename"),
+    ],
+)
+def test_the_download_filename_is_reduced_to_something_a_header_can_carry(
+    name: str, expected: str
+) -> None:
+    """A ``Content-Disposition`` header is ASCII, and a quote closes it early.
+
+    The name in the attribute stays the real one -- this is only what the
+    browser is told to call the file it saves. The empty case is the one worth
+    pinning: a name made entirely of characters that drop out would otherwise
+    produce a header naming no file at all, which browsers answer by saving
+    the page instead of the document.
+    """
+    from custom_components.pronote_ng.attachment import _ascii
+
+    assert _ascii(name) == expected
+
+
+def test_a_document_that_belongs_to_no_homework_is_not_located(
+    account: PronoteAccount,
+) -> None:
+    """A fingerprint nobody can match must resolve to nothing, not to anything.
+
+    The view answers 404 on this, and the alternative is worse than an error:
+    a resolver that fell through to "the first attachment" would serve one
+    child's document to a signature minted for another.
+    """
+    assert _locate(account, "a" * 64) is None
+
+
+def test_an_attachment_with_no_identifier_is_skipped_rather_than_matched(
+    account: PronoteAccount,
+) -> None:
+    """PRONOTE publishes documents that carry a name and no ``N``.
+
+    Those cannot be downloaded -- there is nothing to ask for -- and their
+    fingerprint would be built from an empty identifier, so every one of them
+    would share it. Two homework items with such a document would then be
+    indistinguishable, and the view would serve whichever came first.
+    """
+    from custom_components.pronote_ng.attachment import fingerprint
+
+    # The fingerprint an empty identifier would produce, if one were minted.
+    collision = fingerprint("HOMEWORK-1", "")
+
+    assert _locate(account, collision) is None
+
+
+@REQUIRES_HASS
+class TestWhatTheBrowserGetsBack:
+    """The view end to end: the bytes, the cache, and the two failures.
+
+    Asserted through ``PronoteAttachmentView.get`` rather than on ``_fetch``,
+    because what a dashboard tile meets is a status and a set of headers. A
+    document that downloads correctly and is then served with the wrong
+    ``Content-Disposition`` lands in the downloads folder instead of opening,
+    and nothing below the view would notice.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """One homework item with one file, which is what needs serving."""
+        from .fixtures.client import FakeClient
+
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageCahierDeTexte"] = protocol.homework_response(
+            [protocol.homework(attachments=("enonce.pdf",))]
+        )
+        return client
+
+    @staticmethod
+    def _print(account: PronoteAccount) -> str:
+        snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
+        assert snapshot is not None
+        item = snapshot.data.homework[0]
+        return fingerprint(item.id, item.attachments[0].id)
+
+    async def test_an_address_naming_no_document_is_a_404_and_costs_nothing(
+        self, hass: HomeAssistant, account: PronoteAccount, parent_client: FakeClient
+    ) -> None:
+        """A signed address outlives the document it names.
+
+        The signature bounds *who* may ask, not *what* is still there: a tile
+        rendered from yesterday's snapshot carries an address for a homework
+        item that has since left the display horizon. That has to answer with a
+        status and without a request -- the snapshot is the authority, so a
+        fingerprint it cannot match is refused before the wire.
+        """
+        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+
+        before = len(parent_client.communication.session.gets)
+
+        response = await PronoteAttachmentView().get(
+            _FakeRequest(hass),  # type: ignore[arg-type]
+            account.entry.entry_id,
+            "0" * 64,
+        )
+
+        assert response.status == 404
+        assert "no such document" in response.text
+        assert len(parent_client.communication.session.gets) == before
+
+    async def test_the_bytes_are_served_inline_and_the_second_read_is_free(
+        self, hass: HomeAssistant, account: PronoteAccount, parent_client: FakeClient
+    ) -> None:
+        """One request per document, however many times a card is rendered.
+
+        A dashboard re-renders on every state change of every entity on it, and
+        an exercise sheet is the same bytes for ever -- it is addressed by a
+        digest of its identifiers, not by a position. Without the cache a page
+        holding four documents would spend four requests each time somebody
+        opened it, which is how a daily budget disappears into a screen nobody
+        is even looking at.
+        """
+        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+
+        print_ = self._print(account)
+        view = PronoteAttachmentView()
+
+        first = await view.get(
+            _FakeRequest(hass),  # type: ignore[arg-type]
+            account.entry.entry_id,
+            print_,
+        )
+
+        assert first.status == 200
+        assert first.body == b"%PDF-1.4 not a real document"
+        assert first.content_type == "application/pdf"
+        assert first.headers["Content-Disposition"] == 'inline; filename="enonce.pdf"'
+        assert "private" in first.headers["Cache-Control"]
+        fetched = len(parent_client.communication.session.gets)
+        assert fetched == 1
+
+        second = await view.get(
+            _FakeRequest(hass),  # type: ignore[arg-type]
+            account.entry.entry_id,
+            print_,
+        )
+
+        assert second.status == 200
+        assert second.body == first.body
+        assert len(parent_client.communication.session.gets) == fetched, (
+            "the second read went to PRONOTE: the cache is not being reused"
+        )
+
+    async def test_a_download_that_fails_answers_502_and_caches_nothing(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A failed download must not become a cached empty document.
+
+        502 and not 500: the school's server refused, this integration did not
+        break, and the distinction is what tells a reader whether to open an
+        issue here. Caching the failure would be worse than the failure -- the
+        document would stay broken until a reload, long after the server
+        recovered.
+        """
+        from custom_components.pronote_ng.attachment import (
+            PronoteAttachmentView,
+            cache_for,
+        )
+
+        print_ = self._print(account)
+
+        with patch(
+            "custom_components.pronote_ng.attachment._fetch",
+            side_effect=AttachmentUnavailable("enonce.pdf", 403),
+        ):
+            response = await PronoteAttachmentView().get(
+                _FakeRequest(hass),  # type: ignore[arg-type]
+                account.entry.entry_id,
+                print_,
+            )
+
+        assert response.status == 502
+        assert cache_for(hass, account.entry.entry_id).get(print_) is None
+
+    async def test_a_source_with_no_pronote_session_cannot_download_at_all(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Ecoledirecte has no session to fetch through, and must say so.
+
+        The view is registered once for the whole instance, so it answers for
+        every entry whatever its source. Reaching the gateway with no session
+        would be an ``AttributeError`` inside the handler, which aiohttp turns
+        into a 500 -- a broken integration, rather than a source that does not
+        offer the feature.
+        """
+        del hass
+        from custom_components.pronote_ng.attachment import _fetch
+
+        snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
+        assert snapshot is not None
+        document = snapshot.data.homework[0].attachments[0]
+
+        with (
+            patch(
+                "custom_components.pronote_ng.account.has_pronote_extras",
+                return_value=False,
+            ),
+            pytest.raises(AttachmentUnavailable) as raised,
+        ):
+            await _fetch(account, document, CHILDREN[0][0])
+
+        assert raised.value.status == 501
+
+
+@REQUIRES_HASS
+class TestWhatTheScanSkipsOverRatherThanStopsAt:
+    """``_locate`` walks every child, and a gap at one must not end the walk."""
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """A document PRONOTE sent with no ``N``, beside one that has one."""
+        from .fixtures.client import FakeClient
+
+        item = protocol.homework(attachments=("sans_n.pdf", "enonce.pdf"))
+        # PRONOTE does publish documents carrying a name and no identifier;
+        # the fixture builder always mints one, so it is removed here rather
+        # than adding an option nothing else would use.
+        item["ListePieceJointe"]["V"][0]["N"] = ""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageCahierDeTexte"] = protocol.homework_response([item])
+        return client
+
+    async def test_a_document_with_no_identifier_is_stepped_over(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Skipped, and the document after it is still found.
+
+        Every attachment with no ``N`` would share one fingerprint -- the
+        digest of an empty identifier -- so matching on it would serve an
+        arbitrary document. Returning ``None`` at the first such attachment
+        would be the other defect: the usable document sitting behind it in the
+        same homework item would become unreachable.
+        """
+        del hass
+        snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
+        assert snapshot is not None
+        item = snapshot.data.homework[0]
+        nameless, usable = item.attachments
+        assert nameless.id == ""
+
+        assert _locate(account, fingerprint(item.id, "")) is None
+
+        located = _locate(account, fingerprint(item.id, usable.id))
+        assert located is not None
+        assert located[1].name == usable.name
+
+    async def test_a_child_whose_homework_never_collected_does_not_end_the_scan(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """One child with no snapshot, and the sibling's document still serves.
+
+        A second child's first collection can be deferred by the budget, or
+        fail, or simply not have happened yet on a freshly added entry. If the
+        scan answered ``None`` at that child instead of stepping over it, every
+        document of every child listed after them would return 404 -- and the
+        order children are announced in is PRONOTE's, so which siblings broke
+        would look arbitrary.
+        """
+        del hass
+        real = account.snapshot
+        item = account.snapshot(Tier.HOMEWORK, CHILDREN[1][0])
+        assert item is not None, "the fixture must give both children homework"
+
+        def missing_for_the_first(tier: Tier, student_id: str) -> Any:
+            if student_id == CHILDREN[0][0]:
+                return None
+            return real(tier, student_id)
+
+        with patch.object(account, "snapshot", missing_for_the_first):
+            located = _locate(
+                account, fingerprint(item.data.homework[0].id, "ATTACHMENT-2")
+            )
+
+        assert located is not None
+        assert located[0] == CHILDREN[1][0]

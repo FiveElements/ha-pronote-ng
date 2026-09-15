@@ -41,11 +41,7 @@ rules:
   log-when-unavailable: done
   parallel-updates: done
   reauthentication-flow: done
-  test-coverage:
-    status: todo
-    comment: >
-      The CI gate is 80 % global (100 % on ratelimit, scheduler, gateway,
-      delta). Silver requires 95 % on every integration module.
+  test-coverage: done
 
   # Gold
   devices: done

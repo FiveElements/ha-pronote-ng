@@ -355,11 +355,24 @@ every persistence path.
 
 ## Coverage gate
 
-80 % global, and **100 %** on `ratelimit.py`, `scheduler.py`, `gateway.py` and
-`delta.py`, measured as `min(line, branch)`. Those four because their failures
-are invisible: a limiter that lets a call through shows nothing until the
-sanction; a skipped tier looks like slightly old data; a wrong decode produces a
-plausible value; a missed change is an event that never arrives.
+Three floors, and `scripts/check_coverage.py` fails on any of them:
+
+- **95 % on every module**, with no exception list. A global average hides
+  exactly what matters here: four modules carry more than five hundred
+  statements each, so a module of forty can fall to nothing without moving the
+  global figure by a point. The list of modules is read off the coverage
+  report, never written in the script — a module added tomorrow is held to the
+  floor without anybody remembering to register it.
+- **100 %** on `ratelimit.py`, `scheduler.py`, `gateway.py`, `delta.py` and the
+  three `connectors/ecoledirecte/ed_*.py`, because their failures are
+  invisible: a limiter that lets a call through shows nothing until the
+  sanction; a skipped tier looks like slightly old data; a wrong decode
+  produces a plausible value; a missed change is an event that never arrives.
+- **80 % global**, kept as a weaker second guard.
+
+Everything is measured as `min(line, branch)`. The 95 % floor is Silver
+`test-coverage` on the Home Assistant quality scale; adding a module without
+tests now fails CI rather than diluting an average.
 
 ## Test conventions
 

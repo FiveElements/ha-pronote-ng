@@ -188,7 +188,18 @@ python scripts/check_coverage.py coverage.xml
 
 ### 3.1 La couverture
 
-Le portail exige **80 %** globalement, et **100 %** sur quatre modules :
+Le portail exige **95 % sur chaque module**, sans liste d'exceptions, **80 %**
+globalement en garde-fou plus faible, et **100 %** sur sept modules.
+
+Les 95 % par module sont la règle `test-coverage` de l'échelle de qualité Home
+Assistant (palier argent). Ce n'est pas une moyenne déguisée : quatre modules
+de ce paquet dépassent les cinq cents instructions, donc un module de quarante
+peut tomber à zéro sans faire bouger le chiffre global d'un point. La liste des
+modules est **lue dans le rapport de couverture**, jamais écrite dans le
+script — un module ajouté demain est tenu au seuil sans que personne ait à
+penser à l'inscrire.
+
+Les sept modules tenus à 100 % :
 
 | Module | Pourquoi 100 % |
 | --- | --- |
@@ -196,6 +207,9 @@ Le portail exige **80 %** globalement, et **100 %** sur quatre modules :
 | `scheduler.py` | un palier sauté ressemble à des données un peu vieilles |
 | `gateway.py` | un décodage faux produit une valeur plausible |
 | `delta.py` | un changement manqué, c'est un évènement qui n'arrive jamais |
+| `ed_client.py` | un code métier Ecoledirecte mal classé relogue hors du limiteur |
+| `ed_limiter.py` | même raison que `ratelimit.py`, sur l'autre source |
+| `ed_mapping.py` | même raison que `gateway.py` : une valeur plausible et fausse |
 
 Pour chacun, la métrique retenue est le **minimum de la couverture de lignes et
 de branches** : 100 % de lignes avec une branche manquante ne passe pas.

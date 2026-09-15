@@ -18,18 +18,40 @@ import datetime as dt
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from homeassistant.util import dt as dt_util
 import pytest
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.pronote_ng import binary_sensor
 from custom_components.pronote_ng.binary_sensor import (
     _holiday_attributes,
     _is_holiday,
 )
+from custom_components.pronote_ng.connectors.protocol import (
+    ConnectorCapabilities,
+    Source,
+)
+from custom_components.pronote_ng.const import Tier
+from custom_components.pronote_ng.coordinator import PronoteTierCoordinator
+from custom_components.pronote_ng.models import (
+    Absence,
+    AttendanceFacts,
+    Punishment,
+    PunishmentSlot,
+)
 
+from .conftest import CHILDREN, REQUIRES_HASS
 from .test_delta import a_lesson, timetable
 
 if TYPE_CHECKING:
+    from freezegun.api import FrozenDateTimeFactory
+    from homeassistant.core import HomeAssistant
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
     from custom_components.pronote_ng.account import PronoteAccount
     from custom_components.pronote_ng.models import TimetableFacts
+
+    from .fixtures.client import FakeClient
 
 PARIS = ZoneInfo("Europe/Paris")
 
@@ -192,3 +214,399 @@ def test_the_attributes_say_which_clause_can_answer() -> None:
         attributes["next_lesson"]
         == dt.datetime.combine(NEXT_MONDAY, dt.time(8, 0), tzinfo=PARIS).isoformat()
     )
+
+
+# ---------------------------------------------------------------------------
+# What "in progress" publishes once something actually is
+# ---------------------------------------------------------------------------
+
+
+class _Clock:
+    """The two things the attendance attribute functions ask of an account."""
+
+    def __init__(self, moment: dt.datetime) -> None:
+        self._moment = moment
+
+    def now(self) -> dt.datetime:
+        """The instant the entity is being evaluated at."""
+        return self._moment
+
+    def today(self) -> dt.date:
+        """The day that instant falls on, in the establishment's zone."""
+        return self._moment.date()
+
+
+def _absence(
+    *, start: dt.datetime, end: dt.datetime, justified: bool = False
+) -> Absence:
+    """One absence, with the fields upstream really carries."""
+    return Absence(
+        id="ABSENCE-1",
+        from_date=start,
+        to_date=end,
+        justified=justified,
+        hours="2h00",
+        days=0,
+        reasons=("Maladie",),
+    )
+
+
+def test_an_absence_in_progress_publishes_its_own_dates_and_not_the_days() -> None:
+    """The attribute block exists so a card can say *which* absence.
+
+    The state answers "is my child absent right now", which is what an
+    automation triggers on. A dashboard also has to name the absence, and the
+    only honest source for that is the absence the clause actually matched --
+    picking the first of the list would show yesterday's on a card while the
+    state is about today's.
+    """
+    from custom_components.pronote_ng.binary_sensor import _absence_attributes
+
+    now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
+    facts = AttendanceFacts(
+        period_id="P1",
+        absences=(
+            _absence(
+                start=dt.datetime(2026, 3, 2, 8, 0, tzinfo=PARIS),
+                end=dt.datetime(2026, 3, 2, 17, 0, tzinfo=PARIS),
+            ),
+            _absence(
+                start=dt.datetime(2026, 3, 12, 8, 0, tzinfo=PARIS),
+                end=dt.datetime(2026, 3, 12, 17, 0, tzinfo=PARIS),
+                justified=True,
+            ),
+        ),
+        delays=(),
+        punishments=(),
+    )
+
+    attributes = _absence_attributes(facts, _Clock(now))  # type: ignore[arg-type]
+
+    assert attributes["from_date"] == "2026-03-12T08:00:00+01:00"
+    assert attributes["justified"] is True
+    assert attributes["reasons"] == ["Maladie"]
+
+
+def test_no_absence_in_progress_publishes_nothing_rather_than_the_next_one() -> None:
+    """An empty block is the honest answer when the state is off.
+
+    Publishing the *next* absence here would make a card read "absent" with a
+    future date while the state says otherwise -- and the two are read
+    together.
+    """
+    from custom_components.pronote_ng.binary_sensor import _absence_attributes
+
+    now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
+    facts = AttendanceFacts(
+        period_id="P1",
+        absences=(
+            _absence(
+                start=dt.datetime(2026, 3, 20, 8, 0, tzinfo=PARIS),
+                end=dt.datetime(2026, 3, 20, 17, 0, tzinfo=PARIS),
+            ),
+        ),
+        delays=(),
+        punishments=(),
+    )
+
+    assert _absence_attributes(facts, _Clock(now)) == {}  # type: ignore[arg-type]
+
+
+def test_the_next_punishment_slot_is_the_earliest_still_ahead() -> None:
+    """A punishment has several slots, and only the next one matters.
+
+    ``min`` over the slots still ahead, not the first of the list: PRONOTE
+    returns a punishment's schedule in its own order, and a card showing a
+    detention that has already been served is worse than showing none.
+    """
+    from custom_components.pronote_ng.binary_sensor import _punishment_attributes
+
+    now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
+    facts = AttendanceFacts(
+        period_id="P1",
+        absences=(),
+        delays=(),
+        punishments=(
+            Punishment(
+                id="PUNISHMENT-1",
+                nature="Retenue",
+                reasons=("Travail non fait",),
+                giver=None,
+                given_at=None,
+                exclusion=False,
+                during_lesson=False,
+                homework=None,
+                schedule=(
+                    PunishmentSlot(
+                        start=dt.datetime(2026, 3, 19, 13, 0, tzinfo=PARIS),
+                        duration_minutes=60,
+                    ),
+                    PunishmentSlot(
+                        start=dt.datetime(2026, 3, 5, 13, 0, tzinfo=PARIS),
+                        duration_minutes=60,
+                    ),
+                    PunishmentSlot(
+                        start=dt.datetime(2026, 3, 13, 13, 0, tzinfo=PARIS),
+                        duration_minutes=30,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    attributes = _punishment_attributes(facts, _Clock(now))  # type: ignore[arg-type]
+
+    assert attributes["start"] == "2026-03-13T13:00:00+01:00"
+    assert attributes["duration"] == 30
+    assert attributes["nature"] == "Retenue"
+    assert attributes["exclusion"] is False
+
+
+def test_a_punishment_wholly_in_the_past_publishes_nothing() -> None:
+    """Served is not pending, and the block must not resurrect it."""
+    from custom_components.pronote_ng.binary_sensor import _punishment_attributes
+
+    now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
+    facts = AttendanceFacts(
+        period_id="P1",
+        absences=(),
+        delays=(),
+        punishments=(
+            Punishment(
+                id="PUNISHMENT-1",
+                nature="Retenue",
+                reasons=(),
+                giver=None,
+                given_at=None,
+                exclusion=False,
+                during_lesson=False,
+                homework=None,
+                schedule=(
+                    PunishmentSlot(
+                        start=dt.datetime(2026, 3, 5, 13, 0, tzinfo=PARIS),
+                        duration_minutes=60,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    assert _punishment_attributes(facts, _Clock(now)) == {}  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# The platform, and the clock the yes/no facts are re-read on
+# ---------------------------------------------------------------------------
+
+
+@REQUIRES_HASS
+class TestWhatThePlatformBuilds:
+    """Two separate questions, asked in the right order and both asked."""
+
+    @staticmethod
+    def _keys(built: list[object]) -> set[str]:
+        return {
+            entity.entity_description.key  # type: ignore[attr-defined]
+            for entity in built
+            if hasattr(entity, "entity_description")
+        }
+
+    async def test_a_source_without_a_tier_gets_none_of_its_sensors(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """§8.3: a flag its source cannot feed must not be created.
+
+        Six of the nine binary sensors read the timetable and two read
+        attendance. Built against a source that publishes neither, they would
+        sit ``unavailable`` for ever -- and an unavailable entity breaks the
+        automations pointing at it rather than merely looking empty (§2.5).
+        """
+        built: list[object] = []
+
+        def collect(entities: object, *_args: object, **_kwargs: object) -> None:
+            built.extend(entities)  # type: ignore[arg-type]
+
+        narrow = ConnectorCapabilities(
+            source=Source.PRONOTE,
+            tiers=frozenset({Tier.SESSION, Tier.HOMEWORK}),
+            writes=frozenset(),
+            services=frozenset(),
+        )
+        connector = account.connector
+        original = type(connector).CAPABILITIES
+        try:
+            type(connector).CAPABILITIES = narrow  # type: ignore[misc]
+            await binary_sensor.async_setup_entry(
+                hass,
+                mock_entry,  # type: ignore[arg-type]
+                collect,  # type: ignore[arg-type]
+            )
+        finally:
+            type(connector).CAPABILITIES = original  # type: ignore[misc]
+
+        assert self._keys(built) == {"homework_overdue"}
+
+    async def test_a_tier_with_no_coordinator_gets_no_sensor_either(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """Announced by the source is not the same as enabled on this entry.
+
+        A tier can be a capability and still have no coordinator -- switched
+        off in the options is the ordinary way. Reading the capability alone
+        would hand the entity a ``None`` coordinator, and the ``AttributeError``
+        would come out of the platform forward: the whole entry fails to load
+        over one flag that should simply not exist.
+        """
+        built: list[object] = []
+
+        def collect(entities: object, *_args: object, **_kwargs: object) -> None:
+            built.extend(entities)  # type: ignore[arg-type]
+
+        removed = account.coordinators.pop(Tier.ATTENDANCE)
+        try:
+            await binary_sensor.async_setup_entry(
+                hass,
+                mock_entry,  # type: ignore[arg-type]
+                collect,  # type: ignore[arg-type]
+            )
+        finally:
+            account.coordinators[Tier.ATTENDANCE] = removed
+
+        keys = self._keys(built)
+        assert "absence_in_progress" not in keys
+        assert "punishment_upcoming" not in keys
+        assert "school_day" in keys
+
+
+@REQUIRES_HASS
+class TestTheClockTheseFlagsAreReReadOn:
+    """A yes/no fact about *now* is wrong the moment the boundary passes."""
+
+    @staticmethod
+    def _sensor(
+        account: PronoteAccount,
+        key: str,
+        coordinator: PronoteTierCoordinator | None = None,
+    ) -> binary_sensor.PronoteBinarySensor:
+        description = next(
+            item for item in binary_sensor.BINARY_SENSORS if item.key == key
+        )
+        return binary_sensor.PronoteBinarySensor(
+            account,
+            coordinator
+            if coordinator is not None
+            else account.coordinators[description.tier],
+            account.students[0],
+            description,
+        )
+
+    async def test_before_any_collection_the_answer_is_unknown_and_not_no(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """``None``, never ``False``: "no data" is not "no school".
+
+        An automation reading "not in class" would fire during set-up, before
+        the first collection, if the absence of data were answered with a
+        ``False`` -- and the ``holidays`` flag answering ``False`` on an empty
+        snapshot would say term time on the second of August. ``None`` renders
+        as ``unknown``, which no state trigger on ``off`` matches.
+        """
+        empty = PronoteTierCoordinator(hass, mock_entry, Tier.TIMETABLE)  # type: ignore[arg-type]
+        sensor = self._sensor(account, "in_class", empty)
+
+        assert sensor.is_on is None
+        assert "fetched_at" not in sensor.extra_state_attributes
+
+    async def test_a_boundary_already_behind_us_is_not_scheduled(
+        self,
+        hass: HomeAssistant,
+        account: PronoteAccount,
+    ) -> None:
+        """A point in the past fires at once, and this one re-arms itself.
+
+        ``async_track_point_in_time`` called with a moment already gone runs
+        its callback immediately; the callback ends by arming the next
+        transition, which would be computed from the same unchanged snapshot
+        and be in the past again. That is not a slow loop -- it is a spin
+        inside the event loop. And the case is reachable: the boundary is
+        computed from a snapshot, which outlives the day it was collected on.
+        """
+        del hass
+        from dataclasses import replace
+
+        sensor = self._sensor(account, "in_class")
+        sensor.entity_description = replace(
+            sensor.entity_description,
+            transition_fn=lambda _facts, acc: acc.now() - dt.timedelta(minutes=1),
+        )
+
+        sensor._arm()
+
+        assert sensor._clock_unsub is None, (
+            "a transition in the past was armed, which fires immediately"
+        )
+
+    async def test_the_flag_is_rewritten_when_its_own_boundary_passes(
+        self,
+        hass: HomeAssistant,
+        account: PronoteAccount,
+        parent_client: FakeClient,
+        school_day: FrozenDateTimeFactory,
+    ) -> None:
+        """The state changes with no new data, which is the whole point.
+
+        "In class" depends on the time and not on the timetable: between the
+        end of one lesson and the start of the next, nothing is collected and
+        the answer still has to change. Without the armed transition the flag
+        would be up to a full tier interval late -- fifteen minutes, which is
+        most of a break.
+
+        The master tick is unsubscribed before the clock moves, and that is
+        not tidiness. A collection republishes the tier, which re-arms every
+        clock-driven entity from scratch: the first draft of this test let the
+        tick run, watched the state be rewritten by that collection, and
+        passed -- while the transition it claimed to exercise had been
+        cancelled before it could fire. Asserting that PRONOTE was not asked
+        is what closes that hole: the rewrite can then only have come from the
+        clock.
+        """
+        entity_id = "binary_sensor.enfant_un_in_class"
+        before = hass.states.get(entity_id)
+        assert before is not None, "no in-class flag"
+
+        facts = account.snapshot(Tier.TIMETABLE, CHILDREN[0][0])
+        assert facts is not None
+        moment = binary_sensor._in_class_transition(facts.data, account)
+        assert moment is not None, "the fixture day has no boundary left to cross"
+
+        # Unsubscribed rather than patched: `async_track_time_interval` took a
+        # bound method at set-up, so replacing the attribute afterwards leaves
+        # the registered callback exactly where it was.
+        unsub = account._unsub_tick
+        assert unsub is not None
+        unsub()
+        account._unsub_tick = None
+
+        posts = len(parent_client.posts)
+        ahead = moment + dt.timedelta(seconds=2) - account.now()
+        school_day.tick(ahead)
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+
+        after = hass.states.get(entity_id)
+        assert after is not None
+        assert after.last_reported > before.last_reported, (
+            "the boundary passed and the flag was never re-read"
+        )
+        assert len(parent_client.posts) == posts, (
+            "the rewrite came from a collection, not from the armed transition"
+        )

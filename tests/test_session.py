@@ -902,3 +902,112 @@ async def test_the_diagnostics_report_the_strategy_and_never_a_credential(
     assert "not-a-real-password" not in payload
     assert "rotating-sentinel-1" not in payload
     assert diagnostics
+
+
+async def test_an_os_error_on_a_call_marks_the_server_unreachable_and_re_raises(
+    harness: Harness,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``requests`` failures are ``OSError``, not ``PronoteAPIError``.
+
+    ``requests.Timeout`` inherits from ``OSError``, so a transport failure
+    during a *call* -- not during the login -- arrives here and nowhere else.
+    Two things have to happen and neither is optional: the backoff has to
+    engage, or the next tick retries against a server that is down at the
+    tier's cadence; and the exception has to keep travelling, or the tier
+    records a success it did not have.
+    """
+    caplog.set_level(logging.INFO, logger="custom_components.pronote_ng.session")
+
+    with pytest.raises(OSError, match="network is down"):
+        await harness.manager.run(
+            "timetable",
+            Priority.HIGH,
+            _work(raises=OSError("network is down")),
+        )
+
+    assert "PRONOTE is unavailable: network is down" in caplog.text
+    # And the failure is recorded, so the next attempt is held off rather than
+    # made at the tier's cadence against a server that is down.
+    assert harness.limiter.retry_delay() > 0
+
+
+async def test_a_client_that_will_not_release_cleanly_does_not_break_the_unload(
+    harness: Harness,
+) -> None:
+    """Teardown must not be able to fail.
+
+    Releasing goes through the single worker, which may already be shutting
+    down or wedged on a socket. Letting that raise would leave
+    ``async_unload_entry`` reporting failure for an entry that is, as far as
+    Home Assistant is concerned, gone -- and the user cannot retry a reload
+    that already removed the account.
+    """
+    await harness.manager.run("timetable", Priority.HIGH, _work())
+    assert harness.manager.is_open
+
+    with patch(
+        "custom_components.pronote_ng.session.release_client",
+        side_effect=RuntimeError("the worker is gone"),
+    ):
+        await harness.manager.close()
+
+    assert not harness.manager.is_open
+
+
+def test_a_non_ent_login_resolves_no_provider() -> None:
+    """Credentials and QR code modes must not reach into ``pronotepy.ent``."""
+    from custom_components.pronote_ng.session import _resolve_ent
+
+    assert _resolve_ent(_credentials()) is None
+
+
+def test_an_ent_provider_nobody_recognises_is_refused_rather_than_guessed() -> None:
+    """A stale provider name must not become a login attempt.
+
+    ENT provider functions are named after the regional portals and upstream
+    renames them between releases. Passing ``None`` on to the client would
+    make ``pronotepy`` log in without the federation step, which the portal
+    answers as bad credentials -- and two of those count against the IP guard,
+    whose sanction is the expensive one.
+    """
+    from custom_components.pronote_ng.session import _resolve_ent
+
+    credentials = SessionCredentials(
+        login_mode=LoginMode.ENT,
+        pronote_url="https://demo.example.invalid/pronote/parent.html",
+        username="parent-under-test",
+        password="not-a-real-password",
+        ent_provider="a_portal_that_upstream_has_renamed",
+    )
+
+    assert _resolve_ent(credentials) is None
+
+
+def test_an_ent_provider_upstream_still_ships_is_resolved_to_its_callable() -> None:
+    """The counterpart, so the refusal above cannot be "always refuses".
+
+    The provider is looked up by name rather than imported, so this asserts
+    against whatever the pinned ``pronotepy`` actually exposes instead of
+    hard-coding a regional portal that a version bump may rename.
+    """
+    from pronotepy import ent as ent_module
+
+    from custom_components.pronote_ng.session import _resolve_ent
+
+    name = next(
+        attribute
+        for attribute in dir(ent_module)
+        if not attribute.startswith("_")
+        and callable(getattr(ent_module, attribute))
+        and getattr(ent_module, attribute).__module__.startswith("pronotepy")
+    )
+    credentials = SessionCredentials(
+        login_mode=LoginMode.ENT,
+        pronote_url="https://demo.example.invalid/pronote/parent.html",
+        username="parent-under-test",
+        password="not-a-real-password",
+        ent_provider=name,
+    )
+
+    assert _resolve_ent(credentials) is getattr(ent_module, name)

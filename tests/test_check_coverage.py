@@ -12,7 +12,11 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import TYPE_CHECKING
 from xml.etree.ElementTree import Element, ElementTree, SubElement, tostring
+
+if TYPE_CHECKING:
+    import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 _SPEC = importlib.util.spec_from_file_location(
@@ -157,3 +161,95 @@ def test_main_says_absent_when_a_critical_module_is_missing(
     assert code == 1
     assert "pronote_ng/delta.py is absent from the coverage report" in captured.err
     assert "more than one file" not in captured.err
+
+
+def _all_critical_at_100() -> tuple[tuple[str, str], ...]:
+    """Every gated module fully covered, so only the new floor can fail."""
+    return tuple(
+        (f"custom_components/{module}", "1")
+        for module in check_coverage.CRITICAL_MODULES
+    )
+
+
+def test_a_module_below_the_per_module_floor_fails_the_gate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Silver `test-coverage` asks for 95 % on *every* module, not on average.
+
+    A global floor hides exactly what matters here: this package carries four
+    modules above five hundred statements, so a module of forty can fall to
+    nothing without moving the global figure by a point. The global rate in
+    this fixture is a perfect 1.0 and the gate must still fail.
+    """
+    report = tmp_path / "coverage.xml"
+    _write_report(
+        report,
+        _report(
+            *_all_critical_at_100(),
+            ("custom_components/pronote_ng/image.py", "0"),
+        ),
+    )
+
+    code = check_coverage.main(["check_coverage.py", str(report)])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert (
+        "pronote_ng/image.py coverage 0.00% is below the required 95%" in captured.err
+    )
+
+
+def test_a_module_nobody_registered_is_still_held_to_the_floor(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The floor is read off the report, never off a list in the script.
+
+    A list would have been the quieter failure of the two: a module added
+    tomorrow with no tests at all would sit outside it, and the gate would
+    stay green over the one file most likely to be wrong.
+    """
+    report = tmp_path / "coverage.xml"
+    _write_report(
+        report,
+        _report(
+            *_all_critical_at_100(),
+            ("custom_components/pronote_ng/a_module_invented_for_this_test.py", "0"),
+        ),
+    )
+
+    code = check_coverage.main(["check_coverage.py", str(report)])
+
+    assert code == 1
+    assert "a_module_invented_for_this_test.py" in capsys.readouterr().err
+
+
+def test_a_critical_module_is_reported_once_and_not_twice(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One regression, one line.
+
+    The seven gated modules are held at 100 %, which is above the 95 % floor,
+    so an uncovered one satisfies both rules' failure condition. Printing it
+    twice would make a CI reader count two problems and look for a second
+    cause that does not exist.
+    """
+    report = tmp_path / "coverage.xml"
+    _write_report(
+        report,
+        _report(
+            *(
+                (f"custom_components/{module}", "0" if "delta" in module else "1")
+                for module in check_coverage.CRITICAL_MODULES
+            ),
+        ),
+    )
+
+    code = check_coverage.main(["check_coverage.py", str(report)])
+    errors = [
+        line
+        for line in capsys.readouterr().err.splitlines()
+        if "pronote_ng/delta.py" in line
+    ]
+
+    assert code == 1
+    assert len(errors) == 1
