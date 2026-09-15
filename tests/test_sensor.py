@@ -792,3 +792,104 @@ class TestTheSubjectColourReachesTheStateMachine:
 
         assert items
         assert items[0]["background_color"] == "#AA3366"
+
+
+# ---------------------------------------------------------------------------
+# The empty cases, which a card and an automation read together
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value_fn",
+    [
+        pytest.param("_history_grades", id="grades"),
+        pytest.param("_history_averages", id="averages"),
+        pytest.param("_history_overall", id="overall"),
+        pytest.param("_history_report", id="report"),
+        pytest.param("_history_absences", id="absences"),
+        pytest.param("_history_delays", id="delays"),
+        pytest.param("_history_punishments", id="punishments"),
+        pytest.param("_history_evaluations", id="evaluations"),
+    ],
+)
+def test_a_closed_period_the_history_holds_nothing_for_publishes_unknown(
+    value_fn: str,
+) -> None:
+    """``None``, never ``0``, and this is the difference that matters.
+
+    Eight per-period sensors share this shape, and every one of them counts
+    something -- absences, delays, grades. A period the snapshot holds no
+    record for is *unknown*, not zero: ``0`` is a perfectly valid
+    ``numeric_state``, so an automation asking "fewer than one absence"
+    would fire on a period that was never collected, which is the opposite of
+    what it was written to mean.
+
+    Parametrised over all eight because they are near-identical by design, and
+    a ninth added tomorrow that returned ``0`` would be the easy mistake.
+    """
+    from custom_components.pronote_ng import sensor as sensor_module
+    from custom_components.pronote_ng.models import HistoryFacts
+
+    empty = HistoryFacts(marks=(), attendance=(), evaluations=())
+
+    state, attributes = getattr(sensor_module, value_fn)(empty, "A-PERIOD-NEVER-SEEN")
+
+    assert state is None
+    assert attributes == {}
+
+
+def test_a_day_with_no_lesson_publishes_no_end_of_day_attributes() -> None:
+    """An empty block, not a block of nulls.
+
+    Home Assistant renders a missing attribute and an attribute holding
+    ``None`` differently in a template, and "no lessons today" is every
+    weekend and every holiday -- the commonest state this sensor has, not an
+    edge case. The attributes also carry ``canceled_after``, and publishing a
+    zero there on a day with no timetable at all would answer "nothing was
+    cancelled today" about a day that was never a school day.
+    """
+    from custom_components.pronote_ng.sensor import _end_of_day_attributes
+
+    from .test_delta import timetable
+
+    class _Day:
+        def today(self) -> object:
+            return datetime(2026, 3, 15, tzinfo=PARIS).date()
+
+        def now(self) -> datetime:
+            return datetime(2026, 3, 15, 10, 0, tzinfo=PARIS)
+
+    assert _end_of_day_attributes(timetable(), _Day()) == {}  # type: ignore[arg-type]
+
+
+def test_a_period_with_no_grade_publishes_unknown_and_no_context() -> None:
+    """The last grade is a number or nothing, never a word.
+
+    ``14,5`` and ``Absent`` in the same state would be usable neither by a
+    threshold nor by a graph (§4.3), so the sentinel lives in the attributes
+    and the state stays numeric. With no grade at all there is nothing to put
+    in either.
+    """
+    from custom_components.pronote_ng.sensor import (
+        _latest_grade_attributes,
+        _latest_grade_value,
+    )
+
+    from .test_delta import marks
+
+    empty = marks()
+
+    assert _latest_grade_value(empty, None) is None  # type: ignore[arg-type]
+    assert _latest_grade_attributes(empty, None) == {}  # type: ignore[arg-type]
+
+
+def test_a_period_with_no_report_card_publishes_no_report_attributes() -> None:
+    """Most of the year there is no report card, and that is not missing data."""
+    from custom_components.pronote_ng.sensor import _report_attributes
+
+    from .test_delta import marks
+
+    class _NoPeriods:
+        state = type("S", (), {"periods": ()})()
+
+    assert _report_attributes(marks(), _NoPeriods()) == {}  # type: ignore[arg-type]

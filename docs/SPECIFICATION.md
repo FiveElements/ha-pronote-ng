@@ -1490,10 +1490,11 @@ fusion :
   `dataClasses.py` importe `autoslot.Slots` sous `# type: ignore` et porte
   plusieurs annotations ignorées : sans cette dérogation, la première exécution
   de CI se battrait contre l'amont au lieu de notre code.
-- `pytest` sur `pytest-homeassistant-custom-component`, **couverture minimale
-  80 %**, et 100 % sur `ratelimit.py`, `scheduler.py`, `gateway.py` et
-  `delta.py` : ce sont les quatre modules où une erreur est invisible en
-  fonctionnement.
+- `pytest` sur `pytest-homeassistant-custom-component`, **95 % sur chaque
+  module** sans exception, 80 % en global, et 100 % sur `ratelimit.py`,
+  `scheduler.py`, `gateway.py`, `delta.py` et les trois
+  `connectors/ecoledirecte/ed_*.py` : ce sont les sept modules où une erreur
+  est invisible en fonctionnement.
 - `hassfest` et validation HACS.
 - `test_translations.py` (§10.10) : toute clé employée existe dans chaque
   langue livrée, et aucune traduction n'est orpheline.
@@ -1511,9 +1512,11 @@ déclencheur ni le même public :
 | `release.yml` | `push` d'une étiquette `v*` | archive `zip` de `custom_components/pronote_ng`, note de version, publication GitHub |
 | `pronotepy-watch.yml` | `schedule` hebdomadaire, `workflow_dispatch` | compare l'épingle `pronotepy` à PyPI et propose la montée de version en *pull request* (§11.1.1) |
 
-**Exigence.** `validate.yml` échoue si la couverture globale descend sous 80 %,
-ou si l'un des quatre modules critiques descend sous 100 %. Un seuil qui
-n'échoue pas n'est pas un seuil.
+**Exigence.** `validate.yml` échoue si **un seul module** descend sous 95 %, si
+la couverture globale descend sous 80 %, ou si l'un des sept modules critiques
+descend sous 100 %. Un seuil qui n'échoue pas n'est pas un seuil, et une
+moyenne globale seule n'en est pas un : elle absorbe la chute d'un petit module
+derrière la masse des gros.
 
 **Exigence.** La version dans `manifest.json` est vérifiée en CI comme égale à
 l'étiquette de publication. Une intégration HACS dont le manifeste diverge de

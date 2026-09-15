@@ -807,3 +807,53 @@ async def test_a_reply_is_billed_at_what_it_actually_costs(
     after = writes_on.limiter.snapshot_counters()["calls_today"]
     assert after - before == 3
     assert parent_client.threads[-1].replies == ["Merci"]
+
+
+async def test_a_one_child_account_need_not_say_which_child(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """The counterpart of the two-child refusal, and the commonest account.
+
+    A pupil's own account holds exactly one child, so naming it would be
+    ceremony: the account device is unambiguous there. Without this the
+    shorthand is only ever exercised on the ambiguous side, and a regression
+    that refused *every* account device would look like correct strictness.
+    """
+    with patch(
+        "custom_components.pronote_ng.session.build_client", return_value=client
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_GET_ICAL_URL,
+            {"device_id": _account_device(hass, mock_entry)},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert response is not None
+
+
+async def test_registering_the_services_twice_leaves_one_of_each(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """Two entries on one instance must not fight over the domain's actions.
+
+    The actions belong to the integration, not to an entry, so the second
+    entry's set-up calls the same registration. Re-registering would replace
+    the live handler mid-flight; the guard is the ``has_service`` check, and
+    nothing exercised it.
+    """
+    from custom_components.pronote_ng.services import async_setup_services
+
+    async_setup_services(hass)
+    async_setup_services(hass)
+
+    assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_ICAL_URL)

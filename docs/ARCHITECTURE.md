@@ -2035,17 +2035,27 @@ sa propre CI n'applique pas `no_implicit_reexport` contre eux.
 **`pytest`** avec `asyncio_mode = "auto"`, `--strict-markers`,
 `--strict-config`, et `filterwarnings = ["error::DeprecationWarning:custom_components.pronote_ng.*"]`
 — une dépréciation dans notre propre code est une erreur, une dépréciation
-ailleurs ne l'est pas. Plus de 400 tests, répartis sur treize fichiers.
+ailleurs ne l'est pas. Plus de 1200 tests, répartis sur trente-huit fichiers.
 
 **La couverture**, appliquée par `scripts/check_coverage.py`, qui sort en code
 non nul :
 
+* **95 % sur chaque module**, sans liste d'exceptions — la règle
+  `test-coverage` de l'échelle de qualité Home Assistant (palier argent) ;
+* **100 %** sur sept modules : `ratelimit.py`, `scheduler.py`, `gateway.py`,
+  `delta.py`, et les trois `connectors/ecoledirecte/ed_*.py` ;
 * **80 %** en global, lignes **et** branches — le script prend le minimum des
-  deux ;
-* **100 %** sur quatre modules : `ratelimit.py`, `scheduler.py`, `gateway.py`,
-  `delta.py`.
+  deux, et ce seuil ne reste qu'en garde-fou plus faible.
 
-Le choix de ces quatre est motivé, et le motif est le même pour chacun : ce
+Le seuil par module n'est pas une moyenne déguisée, et c'est tout son intérêt :
+quatre modules de ce paquet dépassent les cinq cents instructions, donc un
+module de quarante peut tomber à zéro sans faire bouger le chiffre global d'un
+point. La liste des modules tenus à 95 % est **lue dans le rapport de
+couverture**, jamais écrite dans le script — un module ajouté demain est tenu
+au seuil sans que personne ait à penser à l'inscrire, ce qui est la panne
+silencieuse qu'une liste aurait produite.
+
+Le choix des sept est motivé, et le motif est le même pour chacun : ce
 sont les modules où une erreur **ne produit aucun symptôme visible à
 l'exécution**. Un limiteur qui laisse passer un appel, un ordonnanceur qui saute
 un palier, une passerelle qui décode mal en silence, un détecteur qui rate un
@@ -2183,7 +2193,7 @@ d'historique indexées par période, les dix capteurs binaires — y compris le
 retrait des trois « jumeaux » — les neuf entités de diagnostic, les huit
 services et leurs quatre réponses `SupportsResponse.ONLY`, l'arithmétique de
 budget à environ 180 requêtes de données par jour, et les portails de qualité
-(80 % global, 100 % sur quatre modules).
+(95 % par module, 100 % sur sept, 80 % global).
 
 ### 12.1 Le domaine annoncé est `pronote`, le domaine réel est `pronote_ng`
 

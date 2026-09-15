@@ -448,3 +448,208 @@ async def test_a_refresh_action_calls_the_matching_service(
     await hass.async_block_till_done()
 
     assert [call["service"] for call in calls] == [expected_service]
+
+
+@pytest.mark.parametrize(
+    ("action_type", "required"),
+    [
+        pytest.param("refresh", set(), id="refresh"),
+        pytest.param("refresh_marks", set(), id="refresh-marks"),
+        pytest.param(
+            "mark_homework_done", {"homework_id", "done"}, id="mark-homework-done"
+        ),
+        pytest.param(
+            "mark_information_read", {"information_id"}, id="mark-information-read"
+        ),
+    ],
+)
+async def test_the_editor_asks_only_for_the_fields_an_action_needs(
+    hass: HomeAssistant, action_type: str, required: set[str]
+) -> None:
+    """An extra field in the editor is a question the user cannot answer.
+
+    A refresh needs nothing beyond the device, so asking for an identifier
+    there would make the commonest action look harder than it is. Conversely a
+    write action whose identifier was *not* asked for would be offered,
+    accepted, and then refused by the service at run time -- a failure the
+    automation editor had every chance to prevent.
+    """
+    from custom_components.pronote_ng.device_action import (
+        async_get_action_capabilities,
+    )
+
+    capabilities = await async_get_action_capabilities(
+        hass, {"domain": DOMAIN, "device_id": "unused", "type": action_type}
+    )
+
+    schema = capabilities["extra_fields"].schema
+    assert {str(key) for key in schema} == required
+
+
+@pytest.mark.parametrize(
+    ("action_type", "expected_service", "extra", "expected_data"),
+    [
+        pytest.param(
+            "mark_homework_done",
+            "mark_homework_done",
+            {"homework_id": "HOMEWORK-1"},
+            {"homework_id": "HOMEWORK-1", "done": True},
+            id="homework-defaults-to-done",
+        ),
+        pytest.param(
+            "mark_homework_done",
+            "mark_homework_done",
+            {"homework_id": "HOMEWORK-1", "done": False},
+            {"homework_id": "HOMEWORK-1", "done": False},
+            id="homework-can-be-un-done",
+        ),
+        pytest.param(
+            "mark_information_read",
+            "mark_information_read",
+            {"information_id": "NEWS-1"},
+            {"information_id": "NEWS-1"},
+            id="information-read",
+        ),
+    ],
+)
+async def test_a_write_action_carries_its_identifier_into_the_service_call(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    account: PronoteAccount,
+    action_type: str,
+    expected_service: str,
+    extra: dict[str, Any],
+    expected_data: dict[str, Any],
+) -> None:
+    """The action is a wrapper, so the trace must show the real service call.
+
+    ``done`` defaulting to ``True`` is the part worth pinning: an automation
+    that ticks a homework item off omits the field entirely, and a wrapper that
+    dropped it instead of defaulting would send ``done`` absent -- which the
+    service reads as a validation error on the commonest write there is.
+    """
+    from custom_components.pronote_ng.device_action import (
+        async_call_action_from_config,
+    )
+
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        options={**mock_entry.options, OPT_WRITE_OPERATIONS_ENABLED: True},
+    )
+    await hass.async_block_till_done()
+
+    calls: list[Any] = []
+    hass.bus.async_listen(
+        "call_service",
+        lambda event: calls.append(event.data)
+        if event.data.get("domain") == DOMAIN
+        else None,
+    )
+
+    await async_call_action_from_config(
+        hass,
+        {
+            "domain": DOMAIN,
+            "device_id": _child(hass, mock_entry, STUDENT_ONE),
+            "type": action_type,
+            **extra,
+        },
+        {},
+        None,
+    )
+    await hass.async_block_till_done()
+
+    assert [call["service"] for call in calls] == [expected_service]
+    sent = calls[0]["service_data"]
+    assert {key: sent[key] for key in expected_data} == expected_data
+
+
+async def test_a_device_of_another_integration_resolves_to_no_account(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """Not the same case as a device id that does not exist at all.
+
+    Home Assistant hands every integration's ``async_get_actions`` the device
+    the user clicked, whichever integration owns it. A resolver that looked
+    only for "no such device" would walk the identifiers of somebody else's
+    device and, since the loop's exit is the interesting branch, return
+    whatever the last iteration happened to leave behind.
+    """
+    other = dr.async_get(hass).async_get_or_create(
+        config_entry_id=mock_entry.entry_id,
+        identifiers={("some_other_integration", "a-device-we-do-not-own")},
+        name="Not ours",
+    )
+
+    assert await async_get_actions(hass, other.id) == []
+
+
+async def test_a_change_trigger_asks_the_editor_for_no_extra_field(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """A threshold belongs in the automation's condition, not in the trigger.
+
+    Baking "only grades under 10" into the trigger would make the decision to
+    fire invisible in the automation trace, which is the one place a user
+    looks when an automation did not run. The empty schema is the design, so
+    it is worth pinning rather than leaving to whatever the default happens to
+    be.
+    """
+    from custom_components.pronote_ng.device_trigger import (
+        async_get_trigger_capabilities,
+    )
+
+    capabilities = await async_get_trigger_capabilities(
+        hass, {"domain": DOMAIN, "device_id": "unused", "type": EVENT_GRADE_ADDED}
+    )
+
+    assert capabilities["extra_fields"].schema == {}
+
+
+async def test_a_device_this_integration_does_not_own_resolves_to_no_entry(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """Home Assistant offers every integration the device the user clicked.
+
+    A device belonging to someone else carries no identifier of ours, and both
+    resolvers must answer ``None`` rather than partition a string that is not
+    there -- ``"".partition("_")`` returns empty strings quite happily, and an
+    entry id of ``""`` looks up as a missing account instead of as a bug.
+    """
+    from custom_components.pronote_ng.device_trigger import _entry_id, _student_id
+
+    other = dr.async_get(hass).async_get_or_create(
+        config_entry_id=mock_entry.entry_id,
+        identifiers={("some_other_integration", "not-ours")},
+        name="Not ours",
+    )
+
+    assert _entry_id(hass, other.id) is None
+    assert _student_id(hass, other.id) is None
+
+
+async def test_a_child_device_of_an_unloaded_entry_still_reads_as_a_child(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """The automation editor must still list triggers for a disabled entry.
+
+    With the entry unloaded there is no account to translate the minted key
+    into the identifier PRONOTE announces this session, and returning ``None``
+    there would make the child device look like the account device -- so its
+    per-child triggers would vanish from the editor while the entry is simply
+    switched off. The untranslated key is enough to answer "this is a child",
+    which is all ``async_get_triggers`` asks; nothing can fire meanwhile.
+    """
+    from custom_components.pronote_ng.device_trigger import _student_id
+
+    device_id = _child(hass, mock_entry, STUDENT_ONE)
+    resolved = _student_id(hass, device_id)
+    assert resolved == STUDENT_ONE
+
+    await hass.config_entries.async_unload(mock_entry.entry_id)
+    await hass.async_block_till_done()
+
+    key = _student_id(hass, device_id)
+    assert key is not None
+    assert key != STUDENT_ONE
+    assert await async_get_triggers(hass, device_id) != []

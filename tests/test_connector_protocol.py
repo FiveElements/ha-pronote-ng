@@ -108,3 +108,27 @@ async def test_collecting_session_is_a_caller_bug() -> None:
     connector = FakeConnector()
     with pytest.raises(ConnectorUnsupportedError):
         await connector.async_collect(Tier.SESSION, "STUDENT-1", priority=Priority.HIGH)
+
+
+def test_a_source_the_factory_does_not_know_is_refused_loudly() -> None:
+    """Adding a third backend must break here, not default to PRONOTE.
+
+    ``Source`` has two members today, so this arm looks unreachable -- and
+    that is exactly why it needs a test. The day a third is added, the failure
+    to wire its arm has to be an exception at set-up, not an entry that
+    quietly builds a PRONOTE session against an Ecoledirecte address and
+    spends its login attempts discovering that.
+    """
+    from unittest.mock import patch
+
+    from custom_components.pronote_ng.connectors import factory
+
+    entry = SimpleNamespace(
+        entry_id="entry-under-test", data={"source": "pronote"}, options={}
+    )
+
+    with (
+        patch.object(factory, "source_from_entry_data", return_value="a-third-school"),
+        pytest.raises(ValueError, match="unsupported source"),
+    ):
+        factory.build_connector(None, entry)  # type: ignore[arg-type]

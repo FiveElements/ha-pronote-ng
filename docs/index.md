@@ -120,10 +120,11 @@ de commencer.
 
 ## Qualité
 
-`ruff`, `mypy --strict`, quelques centaines de tests, et un portail de
-couverture qui exige 80 % globalement et **100 %** sur le limiteur,
-l'ordonnanceur, la passerelle et le détecteur de changements — en prenant pour chacun le minimum de la couverture
-de lignes et de branches.
+`ruff`, `mypy --strict`, plus de mille tests, et un portail de
+couverture qui exige **95 % sur chaque module**, 80 % globalement, et
+**100 %** sur le limiteur, l'ordonnanceur, la passerelle, le détecteur de
+changements et les trois modules Ecoledirecte — en prenant pour chacun le
+minimum de la couverture de lignes et de branches.
 
 La suite ne tourne pas sous Windows : `pytest-homeassistant-custom-component`
 importe `fcntl`. La moitié sans dépendance à Home Assistant s'y exécute quand
