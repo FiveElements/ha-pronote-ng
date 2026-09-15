@@ -21,9 +21,11 @@ from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 
 from .account import PronoteAccount
 from .const import Tier
-from .entity import PronoteEntity
+from .entity import PronoteEntity, async_add_per_student
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -152,16 +154,17 @@ async def async_setup_entry(
     """Create the three calendars for every child."""
     account = entry.runtime_data
     supported = account.connector.capabilities.tiers
-    entities: list[CalendarEntity] = []
-    for student in account.students:
+
+    def _build(student: Student) -> Iterator[CalendarEntity]:
         for description in CALENDARS:
             if description.tier not in supported:
                 continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
-            entities.append(PronoteCalendar(account, coordinator, student, description))
-    async_add_entities(entities)
+            yield PronoteCalendar(account, coordinator, student, description)
+
+    async_add_per_student(entry, account, async_add_entities, _build)
 
 
 class PronoteCalendar(PronoteEntity, CalendarEntity):

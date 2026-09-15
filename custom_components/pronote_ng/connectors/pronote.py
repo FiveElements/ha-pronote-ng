@@ -105,6 +105,7 @@ class PronoteConnector:
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
             on_credentials_rotated=on_credentials_rotated,
+            on_children_announced=self._note_children,
         )
         self._history_periods = history_periods
         self._student_ids: tuple[str, ...] = ()
@@ -123,6 +124,17 @@ class PronoteConnector:
     def today(self) -> date:
         """Return today's date in the establishment timezone."""
         return self.gateway.today()
+
+    def _note_children(self, student_ids: tuple[str, ...]) -> None:
+        """Keep the cached roster level with what the last login announced.
+
+        Without this the cache is written once, by ``async_open`` at set-up,
+        and a child enrolled later stays invisible however many times the
+        session is re-opened. Cheap and synchronous on purpose: it runs under
+        the session lock, where awaiting anything that needs that same lock
+        would deadlock the account.
+        """
+        self._student_ids = student_ids
 
     async def async_open(self) -> None:
         """Open the session and discover its children without reading their facts."""

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -27,11 +28,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, UNRECORDED_LIST_ATTRIBUTES, Tier
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from datetime import datetime
 
     from homeassistant.core import CALLBACK_TYPE
+    from homeassistant.helpers.entity import Entity
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+    from . import PronoteConfigEntry
     from .account import PronoteAccount
     from .coordinator import PronoteTierCoordinator, TierData
     from .models import Snapshot, Student
@@ -279,3 +283,52 @@ def _account_device(account: PronoteAccount) -> DeviceInfo:
 def student_data(coordinator: PronoteTierCoordinator) -> TierData:
     """The coordinator's data, or an empty mapping."""
     return coordinator.data or {}
+
+
+@callback
+def async_add_per_student(
+    entry: PronoteConfigEntry,
+    account: PronoteAccount,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+    build: Callable[[Student], Iterable[Entity]],
+) -> None:
+    """Create a platform's entities for every child, now and later.
+
+    The seven platforms all used to iterate ``account.students`` once inside
+    ``async_setup_entry`` and let ``async_add_entities`` go out of scope, so a
+    pupil enrolled on a parent account mid-year had no entities until somebody
+    reloaded the entry -- and reloading drops every snapshot the account
+    holds. This keeps the callback alive and re-runs the difference whenever
+    the ``SESSION`` coordinator publishes, which is what
+    ``PronoteAccount._async_load_session_facts`` does for a newcomer.
+
+    The difference is taken on the **minted key**, never on the PRONOTE
+    resource identifier: that identifier rotates between sessions, so a diff
+    against it would read a rotation as an arrival and build a second device
+    for a child that already has one -- the defect ``child_keys`` exists to
+    prevent.
+
+    ``build`` may legitimately yield nothing for a child, as the photo
+    platform does for one with no picture. The child still counts as served,
+    or every publication would ask again.
+    """
+    known: set[str] = set()
+
+    @callback
+    def _add_missing() -> None:
+        arrived = [
+            student
+            for student in account.students
+            if account.stable_key(student.id) not in known
+        ]
+        if not arrived:
+            return
+        known.update(account.stable_key(student.id) for student in arrived)
+        entities = [entity for student in arrived for entity in build(student)]
+        if entities:
+            async_add_entities(entities)
+
+    _add_missing()
+    session = account.coordinators.get(Tier.SESSION)
+    if session is not None:
+        entry.async_on_unload(session.async_add_listener(_add_missing))

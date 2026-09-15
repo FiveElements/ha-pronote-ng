@@ -25,10 +25,12 @@ from homeassistant.components.todo import (
 from homeassistant.exceptions import ServiceValidationError
 
 from .const import DOMAIN, Priority, Tier
-from .entity import PronoteEntity
+from .entity import PronoteEntity, async_add_per_student
 from .ratelimit import TierDeferred
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -57,10 +59,11 @@ async def async_setup_entry(
     coordinator = account.coordinators.get(Tier.HOMEWORK)
     if coordinator is None:
         return
-    async_add_entities(
-        PronoteHomeworkTodoList(account, coordinator, student)
-        for student in account.students
-    )
+
+    def _build(student: Student) -> Iterator[TodoListEntity]:
+        yield PronoteHomeworkTodoList(account, coordinator, student)
+
+    async_add_per_student(entry, account, async_add_entities, _build)
 
 
 class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):

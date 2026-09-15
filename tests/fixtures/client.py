@@ -377,6 +377,48 @@ class FakeClient:
 
     # -- the session's surface --------------------------------------------
 
+    def enrol_child(self, child_id: str, child_name: str) -> None:
+        """Add a child to the account, as an establishment does mid-year.
+
+        Places **no** request, and that is the point rather than a shortcut:
+        the roster arrives inside the payload of `Authentification`, so the
+        real client learns a new child at its next login and never by asking.
+        A helper that charged one here would let a test pass against an
+        implementation that polls -- the one behaviour the limiter forbids.
+        """
+        self._child_payloads[child_id] = protocol.parametres_utilisateur(
+            student_id=child_id,
+            name=child_name,
+            has_photo=False,
+        )
+        self._children = tuple(
+            FakeInfo(payload["dataSec"]["data"]["ressource"], photo=False)
+            for payload in self._child_payloads.values()
+        )
+
+    def rotate_identifiers(self) -> None:
+        """Re-announce the same children under fresh resource identifiers.
+
+        This is what PRONOTE actually does between sessions -- the signature
+        in `46#<signature>` changed three times in one day for one pupil --
+        and it is the single event a newcomer check must not mistake for an
+        arrival. Places no request, for the same reason `enrol_child` does
+        not: the roster comes with the handshake.
+        """
+        rotated: dict[str, dict[str, Any]] = {}
+        for index, (child_id, payload) in enumerate(self._child_payloads.items(), 1):
+            resource = payload["dataSec"]["data"]["ressource"]
+            fresh = f"{child_id}#rotation-{index}"
+            resource["N"] = fresh
+            rotated[fresh] = payload
+        self._child_payloads = rotated
+        self._children = tuple(
+            FakeInfo(payload["dataSec"]["data"]["ressource"], photo=False)
+            for payload in self._child_payloads.values()
+        )
+        if self._children:
+            self.set_child(str(self._children[0].id))
+
     @property
     def is_parent_account(self) -> bool:
         """Whether this account holds children rather than being one."""

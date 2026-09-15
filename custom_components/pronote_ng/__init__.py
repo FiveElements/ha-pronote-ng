@@ -263,5 +263,13 @@ async def async_reload_entry(hass: HomeAssistant, entry: PronoteConfigEntry) -> 
     recomputed from its last collection, so shortening an interval does not fire
     an immediate batch. Otherwise tuning the cadence would cost a full round of
     requests every time the options page is saved.
+
+    A write to ``entry.data`` is not an options change and must not reload.
+    Home Assistant fires this listener on *any* update, so the guard is here:
+    pairing a child that appeared mid-tick persists the key table, and
+    reloading on that write would restart the account instead of adding the
+    child's entities in place.
     """
+    if dict(entry.options) == entry.runtime_data.applied_options:
+        return
     await hass.config_entries.async_reload(entry.entry_id)
