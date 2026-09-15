@@ -1183,15 +1183,15 @@ n'est pas un correctif : cela jette tous les instantanés que le compte
 détient.
 
 La liste est relue **au moment où une connexion a lieu**, jamais par une sonde
-à elle. `SessionManager._announce_children` (`session.py`) prévient le
-connecteur après chaque connexion réussie, et `PronoteConnector._note_children`
-(`pronote.py`) met son cache à niveau. Cela ne coûte aucune requête : les enfants arrivent
+à elle. (`SessionManager._announce_children`, `session.py`) prévient le
+connecteur après chaque connexion réussie, et son cache est mis à niveau par
+(`PronoteConnector._note_children`, `pronote.py`). Cela ne coûte aucune requête : les enfants arrivent
 dans la charge utile de l'`Authentification` que la connexion a déjà payée. Une
 règle qui serait allée regarder à intervalle régulier aurait dépensé une
 connexion — cinq à sept requêtes sur un plafond de vingt-quatre par jour —
 pour un évènement qui survient une ou deux fois dans une scolarité.
 
-`PronoteAccount._async_adopt_announced_children` (`account.py`) compare en fin
+(`PronoteAccount._async_adopt_announced_children`, `account.py`) compare en fin
 de lot, hors du verrou de session que le lot tenait. Trois choix méritent d'être énoncés :
 
 * **Le repère est la liste annoncée au démarrage**, ni les enfants suivis ni les
@@ -1203,12 +1203,12 @@ de lot, hors du verrou de session que le lot tenait. Trois choix méritent d'êt
   serait inatteignable. Mais cette liste a été choisie parmi les enfants qui
   existaient *alors* : celui qui n'existait pas n'a jamais été décliné. Il est
   donc ajouté à la sélection, qui est réécrite dans l'entrée.
-* **Une écriture de donnée ne recharge plus.** `async_reload_entry` (`__init__.py`)
-  ne réagit qu'à un changement d'options, comparé à
+* **Une écriture de donnée ne recharge plus.**
+  (`async_reload_entry`, `__init__.py`) ne réagit qu'à un changement d'options, comparé à
   `PronoteAccount.applied_options`. Sans cette garde, appairer l'enfant
   rechargeait l'entrée — exactement ce que la manœuvre cherche à éviter.
 
-Côté entités, `async_add_per_student` (`entity.py`) garde le rappel
+Côté entités, (`async_add_per_student`, `entity.py`) garde le rappel
 `async_add_entities` vivant et rejoue la différence à chaque publication du
 coordinateur `SESSION`. La différence porte sur la **clé frappée**, jamais sur
 l'identifiant PRONOTE : comparer des identifiants ferait lire chaque rotation
