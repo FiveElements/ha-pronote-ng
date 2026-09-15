@@ -50,12 +50,13 @@ from .entity import (
     LocallyPolledMixin,
     PronoteAccountEntity,
     PronoteEntity,
+    async_add_per_student,
 )
 from .models import HistoryFacts
 from .options import bounded_option
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -1522,9 +1523,8 @@ async def async_setup_entry(
     """Create every sensor for every child, plus the account diagnostics."""
     account = entry.runtime_data
     supported = account.connector.capabilities.tiers
-    entities: list[SensorEntity] = []
 
-    for student in account.students:
+    def _build(student: Student) -> Iterator[SensorEntity]:
         for description in (*PRIMITIVE_SENSORS, *LIST_SENSORS):
             if (
                 description.tier is not Tier.SESSION
@@ -1544,12 +1544,14 @@ async def async_setup_entry(
                 if description.key in CLOCK_DRIVEN_KEYS
                 else PronoteSensor
             )
-            entities.append(cls(account, coordinator, student, description))
+            yield cls(account, coordinator, student, description)
 
-        entities.extend(_history_sensors(account, student))
+        yield from _history_sensors(account, student)
 
-    entities.extend(_diagnostic_sensors(account))
-    async_add_entities(entities)
+    # The account's own sensors belong to no child, so they are added once and
+    # stay out of the per-child difference.
+    async_add_entities(_diagnostic_sensors(account))
+    async_add_per_student(entry, account, async_add_entities, _build)
 
 
 def _history_sensors(account: PronoteAccount, student: Student) -> list[SensorEntity]:

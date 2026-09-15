@@ -17,9 +17,11 @@ from typing import TYPE_CHECKING, Final
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 
 from .const import Tier
-from .entity import PronoteEntity
+from .entity import PronoteEntity, async_add_per_student
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -66,18 +68,17 @@ async def async_setup_entry(
     """Create the refresh buttons for every child."""
     account = entry.runtime_data
     supported = account.connector.capabilities.tiers
-    entities: list[ButtonEntity] = []
-    for student in account.students:
+
+    def _build(student: Student) -> Iterator[ButtonEntity]:
         for description in BUTTONS:
             if description.tier not in supported:
                 continue
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
-            entities.append(
-                PronoteRefreshButton(account, coordinator, student, description)
-            )
-    async_add_entities(entities)
+            yield PronoteRefreshButton(account, coordinator, student, description)
+
+    async_add_per_student(entry, account, async_add_entities, _build)
 
 
 class PronoteRefreshButton(PronoteEntity, ButtonEntity):

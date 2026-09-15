@@ -211,6 +211,12 @@ class PronoteAccount:
         self.state = AccountState()
 
         options = entry.options
+        #: The options this account was built from, so the update listener can
+        #: tell an options save -- which must reload -- from a write to
+        #: ``entry.data``, which must not. Pairing a child discovered mid-tick
+        #: writes the key table, and a reload there would undo the very thing
+        #: that write exists to make possible.
+        self.applied_options: dict[str, Any] = dict(options)
         # Clamped, like everything else read out of the options mapping. A
         # stored read timeout of 0 makes every request time out before it is
         # sent, which presents as a total outage with a healthy server, and
@@ -294,6 +300,9 @@ class PronoteAccount:
         )
 
         self._selected_children = _selected_children_from_entry(entry.data)
+        #: Every child the account has announced so far, followed or not. The
+        #: baseline `_async_adopt_announced_children` compares against.
+        self._announced_children: tuple[str, ...] = ()
         #: PRONOTE resource identifier -> the key this integration minted for
         #: that child. Filled by `_async_pair_children` during set-up, before
         #: any platform is forwarded, because `entity.py` reads it to build
@@ -496,6 +505,7 @@ class PronoteAccount:
         current: Period | None = None
 
         await self.connector.async_open()
+        self._announced_children = self.connector.student_ids()
         student_ids = self._student_ids()
         await self.connector.async_load_session_facts(student_ids)
         for student_id in student_ids:
@@ -974,7 +984,50 @@ class PronoteAccount:
                 await self._async_collect(tier)
         finally:
             self.limiter.end_batch()
+        await self._async_adopt_announced_children()
         self._async_sync_issues()
+
+    async def _async_adopt_announced_children(self) -> None:
+        """Bring in a child the account gained while Home Assistant ran.
+
+        After the batch rather than before it: the roster is refreshed by the
+        login, so the newcomer can only be there once something has actually
+        logged in, and re-reading the session facts needs the session lock the
+        batch was holding.
+
+        Re-reading costs nothing -- ``async_open`` and
+        ``async_load_session_facts`` both declare ``cost=0`` because they read
+        what the handshake already put in memory -- but it is still done only
+        when the roster grew, so an ordinary batch pays no executor round trip
+        for a child that arrives once or twice in a school career.
+        """
+        newcomers = set(self.connector.student_ids()) - set(self._announced_children)
+        if not newcomers:
+            return
+
+        # Unknown is not refused. `_student_ids` keeps only the children the
+        # user selected, and every real entry carries a selection -- so on the
+        # face of it a child enrolled later is filtered out and this rule could
+        # never be satisfied. But that list was chosen among the children that
+        # existed *then*: one that did not exist was never declined.
+        #
+        # The baseline is the roster this account was *announced* at set-up,
+        # not the children it follows and not the keys it has minted. Both of
+        # those exclude a child the user deliberately unticked in the flow,
+        # which would make it a newcomer at the first batch and undo their
+        # choice. A restart re-reads the whole announced roster, so an
+        # exclusion survives one.
+        self._selected_children = (*self._selected_children, *sorted(newcomers))
+        self.hass.config_entries.async_update_entry(
+            self.entry,
+            data={**self.entry.data, CONF_CHILDREN: list(self._selected_children)},
+        )
+        _LOGGER.info(
+            "the account now announces %d child(ren) it never announced "
+            "before; following them from this batch on",
+            len(newcomers),
+        )
+        await self._async_load_session_facts()
 
     async def async_request_tick(self) -> None:
         """Serve what is due now, without waiting for the next heartbeat.

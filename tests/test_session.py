@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
 import random
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -61,7 +62,7 @@ from custom_components.pronote_ng.session import (
 from .clock import FakeClock, RecordingSleeper
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AsyncIterator, Callable, Sequence
 
 
 # ---------------------------------------------------------------------------
@@ -87,12 +88,18 @@ class StubClient:
         # literally, not anything resembling a credential.
         token: str = "rotating-sentinel-1",  # noqa: S107 -- a sentinel, not a secret
         is_parent: bool = False,
+        children: Sequence[str] = (),
     ) -> None:
         self.logged_in = logged_in
-        self.is_parent_account = is_parent
+        self.is_parent_account = is_parent or bool(children)
         self.selected: list[str] = []
         self.closed = False
         self._token = token
+        # What the login itself put in memory. Reading it costs nothing: the
+        # real client fills `children` from the payload of the handshake, so a
+        # test that charged a request here would model the wrong thing.
+        self.children = tuple(SimpleNamespace(id=child) for child in children)
+        self.info = SimpleNamespace(id=children[0] if children else "SOLO-1")
 
     def set_child(self, student_id: str) -> None:
         """Record the selection, as the real client mutates its own state."""
@@ -147,6 +154,11 @@ class Harness:
     executor: SerialExecutor
     clients: list[StubClient]
     builds: list[int]
+    #: Mutable on purpose: a test changes it between two logins to model a
+    #: child enrolled on the account while Home Assistant was running.
+    roster: list[str]
+    #: One entry per login, in order.
+    announced: list[tuple[str, ...]]
 
     def logins(self) -> int:
         """How many times a client was actually built."""
@@ -178,9 +190,12 @@ async def harness_fixture(
     clients: list[StubClient] = []
     builds: list[int] = []
 
+    roster: list[str] = []
+    announced: list[tuple[str, ...]] = []
+
     def build(**_kwargs: Any) -> StubClient:
         builds.append(1)
-        client = StubClient()
+        client = StubClient(children=tuple(roster))
         clients.append(client)
         return client
 
@@ -194,6 +209,7 @@ async def harness_fixture(
         clock=clock.monotonic,
         connect_timeout=10.0,
         read_timeout=30.0,
+        on_children_announced=announced.append,
     )
 
     with (
@@ -207,6 +223,8 @@ async def harness_fixture(
             executor=executor,
             clients=clients,
             builds=builds,
+            roster=roster,
+            announced=announced,
         )
         await manager.close()
 
@@ -240,6 +258,38 @@ async def test_the_first_call_opens_a_session_and_the_second_reuses_it(
 
     assert harness.logins() == 1
     assert harness.manager.is_open
+
+
+@pytest.mark.parametrize("harness", [SessionStrategy.PER_BATCH], indirect=True)
+async def test_a_login_announces_the_children_it_just_learned(
+    harness: Harness,
+) -> None:
+    """The session is the only object that knows a login just happened.
+
+    ``student_ids`` is a property read on demand, and the account reads it
+    exactly once, from ``_async_load_session_facts``. Nothing tells it that a
+    later login refreshed the roster, so a pupil enrolled on the parent
+    account while Home Assistant was running stays invisible until the entry
+    is reloaded -- which is what the ``dynamic-devices`` rule forbids.
+
+    Announcing costs no request: the roster arrives inside the handshake the
+    login already paid for. That is the whole reason this seam sits on the
+    login rather than on a tick of its own.
+    """
+    harness.roster[:] = ["STUDENT-1"]
+    await harness.manager.run("timetable", Priority.HIGH, _work())
+
+    assert harness.announced == [("STUDENT-1",)]
+
+    # A second child, learned by the next login and by nothing else. The
+    # per-batch strategy is only the cheapest way to make a second login
+    # happen here; the announcement belongs to the login, not to the strategy.
+    harness.roster[:] = ["STUDENT-1", "STUDENT-2"]
+    harness.manager.begin_batch()
+    await harness.manager.run("homework", Priority.NORMAL, _work())
+
+    assert harness.announced == [("STUDENT-1",), ("STUDENT-1", "STUDENT-2")]
+    assert harness.logins() == 2
 
 
 async def test_a_child_is_selected_inside_the_same_locked_unit_as_the_call(

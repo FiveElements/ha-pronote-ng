@@ -353,6 +353,7 @@ class SessionManager:
         read_timeout: float,
         on_credentials_rotated: Callable[[Mapping[str, Any]], Awaitable[None]]
         | None = None,
+        on_children_announced: Callable[[tuple[str, ...]], None] | None = None,
     ) -> None:
         self._entry_id = entry_id
         self._credentials = credentials
@@ -364,6 +365,7 @@ class SessionManager:
         self._connect_timeout = connect_timeout
         self._read_timeout = read_timeout
         self._on_rotated = on_credentials_rotated
+        self._on_children_announced = on_children_announced
 
         self._client: HardenedClient | None = None
         self._opened_at: float | None = None
@@ -876,6 +878,23 @@ class SessionManager:
             self._last_probe = self._clock()
 
         await self._persist_rotated_credentials(client)
+        self._announce_children()
+
+    def _announce_children(self) -> None:
+        """Say who the handshake just named, so the account can compare.
+
+        Called on the login and nowhere else, because that is the only moment
+        the roster changes and the only moment it is free: the children arrive
+        inside the payload the login already paid for, so reading them places
+        no request and the announcement cannot provoke one.
+
+        Synchronous by design. It runs under the session lock, between the
+        login and the call that triggered it, and an awaited callback there
+        would let a second caller reach a half-open session.
+        """
+        if self._on_children_announced is None:
+            return
+        self._on_children_announced(self.student_ids)
 
     async def _persist_rotated_credentials(self, client: HardenedClient) -> None:
         """Re-persist the credentials the login may have rotated.

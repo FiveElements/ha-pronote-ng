@@ -38,9 +38,12 @@ from .entity import (
     LocallyPolledMixin,
     PronoteAccountEntity,
     PronoteEntity,
+    async_add_per_student,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -491,9 +494,8 @@ async def async_setup_entry(
     """Create the per-child binary sensors, plus the account's throttle flag."""
     account = entry.runtime_data
     supported = account.connector.capabilities.tiers
-    entities: list[BinarySensorEntity] = []
 
-    for student in account.students:
+    def _build(student: Student) -> Iterator[BinarySensorEntity]:
         for description in BINARY_SENSORS:
             if description.tier not in supported:
                 continue
@@ -505,16 +507,17 @@ async def async_setup_entry(
             coordinator = account.coordinators.get(description.tier)
             if coordinator is None:
                 continue
-            entities.append(
-                PronoteBinarySensor(account, coordinator, student, description)
-            )
+            yield PronoteBinarySensor(account, coordinator, student, description)
 
-    entities.append(
-        PronoteThrottledBinarySensor(
-            account, account.coordinators[Tier.SESSION], "throttled"
-        )
+    # The throttle flag is the account's, not a child's: added once.
+    async_add_entities(
+        [
+            PronoteThrottledBinarySensor(
+                account, account.coordinators[Tier.SESSION], "throttled"
+            )
+        ]
     )
-    async_add_entities(entities)
+    async_add_per_student(entry, account, async_add_entities, _build)
 
 
 class PronoteBinarySensor(ClockDrivenMixin, PronoteEntity, BinarySensorEntity):

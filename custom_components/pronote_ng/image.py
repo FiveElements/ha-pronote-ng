@@ -15,10 +15,12 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.image import ImageEntity
 
 from .const import Priority, Tier
-from .entity import PronoteEntity
+from .entity import PronoteEntity, async_add_per_student
 from .ratelimit import TierDeferred
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -46,11 +48,13 @@ async def async_setup_entry(
     coordinator = account.coordinators.get(Tier.STATIC)
     if coordinator is None:
         return
-    async_add_entities(
-        PronoteProfileImage(hass, account, coordinator, student)
-        for student in account.students
-        if student.has_photo
-    )
+
+    def _build(student: Student) -> Iterator[ImageEntity]:
+        # A child with no picture yields nothing and still counts as served.
+        if student.has_photo:
+            yield PronoteProfileImage(hass, account, coordinator, student)
+
+    async_add_per_student(entry, account, async_add_entities, _build)
 
 
 class PronoteProfileImage(PronoteEntity, ImageEntity):

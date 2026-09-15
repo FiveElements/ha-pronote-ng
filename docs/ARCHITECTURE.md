@@ -1173,6 +1173,53 @@ laquelle un arrêt brutal entre la rotation côté serveur et l'écriture locale
 laisse un jeton mort. À soixante-quatre connexions par jour, il y en avait
 soixante-quatre.
 
+### 5.6 L'arrivée d'un enfant, sans rechargement
+
+Un élève inscrit sur un compte parent en cours d'année n'était visible
+qu'après un rechargement de l'entrée : la liste des enfants est lue une fois,
+par `PronoteAccount._async_load_session_facts`, et le palier `SESSION` est
+exclu des paliers collectés — aucun tick ne revenait donc la lire. Recharger
+n'est pas un correctif : cela jette tous les instantanés que le compte
+détient.
+
+La liste est relue **au moment où une connexion a lieu**, jamais par une sonde
+à elle. `SessionManager._announce_children` (`session.py`) prévient le
+connecteur après chaque connexion réussie, et `PronoteConnector._note_children`
+(`pronote.py`) met son cache à niveau. Cela ne coûte aucune requête : les enfants arrivent
+dans la charge utile de l'`Authentification` que la connexion a déjà payée. Une
+règle qui serait allée regarder à intervalle régulier aurait dépensé une
+connexion — cinq à sept requêtes sur un plafond de vingt-quatre par jour —
+pour un évènement qui survient une ou deux fois dans une scolarité.
+
+`PronoteAccount._async_adopt_announced_children` (`account.py`) compare en fin
+de lot, hors du verrou de session que le lot tenait. Trois choix méritent d'être énoncés :
+
+* **Le repère est la liste annoncée au démarrage**, ni les enfants suivis ni les
+  clés déjà frappées. Ces deux-là excluent un enfant que l'utilisateur a
+  décoché dans le flow, qui deviendrait alors un nouveau venu au premier lot et
+  verrait son choix défait.
+* **Inconnu n'est pas refusé.** Toute entrée réelle porte une sélection
+  d'enfants, donc un enfant inscrit plus tard en serait filtré et la règle
+  serait inatteignable. Mais cette liste a été choisie parmi les enfants qui
+  existaient *alors* : celui qui n'existait pas n'a jamais été décliné. Il est
+  donc ajouté à la sélection, qui est réécrite dans l'entrée.
+* **Une écriture de donnée ne recharge plus.** `async_reload_entry` (`__init__.py`)
+  ne réagit qu'à un changement d'options, comparé à
+  `PronoteAccount.applied_options`. Sans cette garde, appairer l'enfant
+  rechargeait l'entrée — exactement ce que la manœuvre cherche à éviter.
+
+Côté entités, `async_add_per_student` (`entity.py`) garde le rappel
+`async_add_entities` vivant et rejoue la différence à chaque publication du
+coordinateur `SESSION`. La différence porte sur la **clé frappée**, jamais sur
+l'identifiant PRONOTE : comparer des identifiants ferait lire chaque rotation
+(§5.5) comme une arrivée, et fabriquerait un second appareil pour un enfant qui
+en a déjà un. L'appareil n'est jamais créé explicitement — il apparaît parce
+qu'une entité porte le `DeviceInfo` qui le nomme.
+
+Le retrait automatique reste hors sujet : voir `stale-devices` dans
+`quality_scale.yaml`, et `async_remove_config_entry_device` pour la suppression
+manuelle d'un appareil périmé.
+
 ---
 
 ## 6. La passerelle

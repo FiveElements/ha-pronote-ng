@@ -65,11 +65,7 @@ rules:
   docs-supported-functions: done
   docs-troubleshooting: done
   docs-use-cases: done
-  dynamic-devices:
-    status: todo
-    comment: >
-      Children are learned at setup. A pupil added later on the parent
-      account appears after a reload, not during the running tick.
+  dynamic-devices: done
   entity-category: done
   entity-device-class: done
   entity-disabled-by-default:

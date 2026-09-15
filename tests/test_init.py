@@ -43,6 +43,7 @@ from custom_components.pronote_ng.account import (
     PronoteAccount,
     _establishment_timezone,
 )
+from custom_components.pronote_ng.child_keys import is_minted
 from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
     EcoledirecteConnector,
 )
@@ -82,6 +83,7 @@ from custom_components.pronote_ng.const import (
     ISSUE_BOOTSTRAP_FAILED,
     OPT_ESTABLISHMENT_TIMEZONE,
     OPT_READ_TIMEOUT,
+    OPT_SESSION_STRATEGY,
     OPT_TIER_ENABLED,
     OPT_TIER_INTERVAL,
     SERVICE_GENERATE_TIMETABLE_PDF,
@@ -90,6 +92,7 @@ from custom_components.pronote_ng.const import (
     SERVICE_REFRESH,
     TIER_PRIORITY,
     Priority,
+    SessionStrategy,
     Tier,
 )
 from custom_components.pronote_ng.hardened_client import BootstrapUnavailable
@@ -151,6 +154,220 @@ async def test_setup_loads_the_entry_and_every_platform(
     assert mock_entry.runtime_data is account
     assert [student.id for student in account.students] == [STUDENT_ONE, STUDENT_TWO]
     assert hass.data[DOMAIN][mock_entry.entry_id] is account
+
+
+#: A pupil nobody has ever heard of, enrolled while Home Assistant was running.
+THIRD_CHILD = "STUDENT-3"
+
+
+async def _enrol_a_third_child(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+) -> tuple[PronoteAccount, set[str]]:
+    """Set the account up, enrol a child, and run one more batch.
+
+    ``PER_BATCH`` is only the cheapest way to make a second login happen: the
+    announcement belongs to the login, not to the strategy.
+    """
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        options={
+            **mock_entry.options,
+            OPT_SESSION_STRATEGY: str(SessionStrategy.PER_BATCH),
+        },
+    )
+
+    with patch(
+        "custom_components.pronote_ng.session.build_client",
+        return_value=parent_client,
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+        account: PronoteAccount = mock_entry.runtime_data
+        known_before = {student.id for student in account.students}
+
+        parent_client.enrol_child(THIRD_CHILD, "Enfant Trois")
+        # Nothing is due right after the first batch, and an empty batch logs
+        # nothing in -- so there would be no announcement to react to. Asking
+        # for a tier is what the refresh button does.
+        account.scheduler.request([Tier.TIMETABLE])
+        await account.async_request_tick()
+        await hass.async_block_till_done()
+
+    return account, known_before
+
+
+async def test_a_child_enrolled_after_set_up_gets_its_entities(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """Knowing the child is not serving it.
+
+    ``dynamic-devices`` is about the *entities*: every platform builds its set
+    once, iterating ``account.students`` inside ``async_setup_entry`` and then
+    dropping ``async_add_entities`` on the floor. A child learned afterwards is
+    therefore in the account, in the registry's eyes nowhere, and the
+    automations the integration exists for have nothing to bind to.
+
+    The device is asserted through an entity on purpose: nothing creates a
+    child device explicitly, it appears because an entity carries the
+    ``DeviceInfo`` that names it.
+    """
+    account, _ = await _enrol_a_third_child(hass, mock_entry, parent_client)
+    key = account.stable_key(THIRD_CHILD)
+
+    registry = er.async_get(hass)
+    owned = [
+        entity
+        for entity in registry.entities.values()
+        if entity.config_entry_id == mock_entry.entry_id and key in entity.unique_id
+    ]
+
+    assert owned, f"no entity was created for the child keyed {key}"
+
+
+async def test_a_child_enrolled_after_set_up_arrives_without_a_reload(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """The ``dynamic-devices`` rule, in the only shape it can take here.
+
+    A pupil enrolled on the parent account mid-year was invisible until
+    somebody reloaded the entry: ``_async_load_session_facts`` reads the
+    roster once and ``Tier.SESSION`` is excluded from the collected tiers, so
+    no tick ever looked again. Reloading is not a fix -- it drops every
+    snapshot the account holds.
+
+    The child must therefore be learned from a login that was going to happen
+    anyway, at **no extra request**, and be given a minted key before any
+    entity is built: ``stable_key`` feeds every ``unique_id``, and a child
+    without one would take the rotating PRONOTE identifier into its identity.
+    """
+    account, known_before = await _enrol_a_third_child(hass, mock_entry, parent_client)
+
+    assert THIRD_CHILD not in known_before
+    assert THIRD_CHILD in {student.id for student in account.students}
+    # A minted key, not the rotating identifier: see `child_keys.py`.
+    assert is_minted(account.stable_key(THIRD_CHILD))
+    # The same account object: learning a child must not restart the entry.
+    assert mock_entry.runtime_data is account
+    assert mock_entry.state is ConfigEntryState.LOADED
+
+
+async def test_adopting_a_child_costs_no_login_of_its_own(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """The reason this seam sits on the login and not on a tick of its own.
+
+    PRONOTE publishes no rate limit and sanctions instead, so a rule that made
+    the integration look for children on a schedule would spend a login --
+    five to seven requests against a cap of 24 a day -- on an event that
+    happens once or twice in a school career. Reacting to a login that was
+    going to happen anyway costs nothing, because the roster arrives inside
+    the handshake that login already paid for.
+
+    Measured as a difference between two batches of the same account rather
+    than as an absolute, because the absolute is not the interesting number:
+    ``PER_BATCH`` spends one login per batch whatever happens, so what has to
+    be shown is that the batch which adopts a child spends no more than the
+    batch which does not.
+    """
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        options={
+            **mock_entry.options,
+            OPT_SESSION_STRATEGY: str(SessionStrategy.PER_BATCH),
+        },
+    )
+
+    with patch(
+        "custom_components.pronote_ng.session.build_client",
+        return_value=parent_client,
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+        account: PronoteAccount = mock_entry.runtime_data
+
+        # A batch with nothing new, for the baseline.
+        quiet_before = account.limiter.snapshot_counters()["logins_today"]
+        account.scheduler.request([Tier.HOMEWORK])
+        await account.async_request_tick()
+        await hass.async_block_till_done()
+        quiet_cost = account.limiter.snapshot_counters()["logins_today"] - quiet_before
+
+        # The same batch, with a child that has just appeared.
+        parent_client.enrol_child(THIRD_CHILD, "Enfant Trois")
+        busy_before = account.limiter.snapshot_counters()["logins_today"]
+        account.scheduler.request([Tier.TIMETABLE])
+        await account.async_request_tick()
+        await hass.async_block_till_done()
+        busy_cost = account.limiter.snapshot_counters()["logins_today"] - busy_before
+
+    assert THIRD_CHILD in {student.id for student in account.students}
+    # Pinned, so the comparison cannot pass by both batches costing nothing:
+    # a login is what carries the roster, so there has to be one.
+    assert quiet_cost == 1
+    assert busy_cost == quiet_cost
+
+
+async def test_a_rotated_identifier_is_not_read_as_a_new_child(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    parent_client: FakeClient,
+    school_day: Any,
+    no_spacing: None,
+) -> None:
+    """The defect this whole mechanism could have re-introduced.
+
+    A PRONOTE resource identifier is written ``46#<signature>`` and the
+    signature is not stable between sessions -- three values were observed for
+    one pupil in one day. A newcomer check that compared identifiers would
+    read every rotation as an arrival, mint a second key, and build a second
+    device and a full set of entities while the first generation was orphaned
+    in the registry with every dashboard and automation pointing at it dead.
+
+    So the account must end this batch with the children it started with, and
+    each of them keeping the key it already had.
+    """
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        options={
+            **mock_entry.options,
+            OPT_SESSION_STRATEGY: str(SessionStrategy.PER_BATCH),
+        },
+    )
+
+    with patch(
+        "custom_components.pronote_ng.session.build_client",
+        return_value=parent_client,
+    ):
+        assert await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+        account: PronoteAccount = mock_entry.runtime_data
+        keys_before = {
+            student.name: account.stable_key(student.id) for student in account.students
+        }
+
+        parent_client.rotate_identifiers()
+        account.scheduler.request([Tier.TIMETABLE])
+        await account.async_request_tick()
+        await hass.async_block_till_done()
+
+    assert len(account.students) == len(keys_before)
+    assert {
+        student.name: account.stable_key(student.id) for student in account.students
+    } == keys_before
 
 
 async def test_setup_uses_the_pronote_connector(account: PronoteAccount) -> None:
@@ -397,6 +614,42 @@ async def test_an_options_change_reloads_without_recollecting(
     assert mock_entry.state is ConfigEntryState.LOADED
     assert len(parent_client.posts) == before
     assert mock_entry.runtime_data is not account
+
+
+async def test_a_data_only_write_does_not_reload_the_entry(
+    hass: HomeAssistant,
+    mock_entry: MockConfigEntry,
+    account: PronoteAccount,
+) -> None:
+    """Minting a child key at runtime must not restart the account.
+
+    ``_async_pair_children`` persists its table with ``async_update_entry``,
+    which wakes the update listener. That listener exists to apply an
+    *options* change -- its own docstring says so -- yet it reloads on any
+    write at all. Pairing a child discovered during a tick would therefore
+    reload the very entry whose entities we are adding without a reload, and
+    the ``dynamic-devices`` rule would be unreachable by construction.
+    """
+    stored = list(mock_entry.data.get(CONF_CHILD_KEYS) or ())
+
+    hass.config_entries.async_update_entry(
+        mock_entry,
+        data={
+            **mock_entry.data,
+            CONF_CHILD_KEYS: [
+                *stored,
+                {
+                    CHILD_KEY: "child-9",
+                    CHILD_RESOURCE_ID: "STUDENT-9",
+                    CHILD_NAME: "Enfant Neuf",
+                },
+            ],
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert mock_entry.state is ConfigEntryState.LOADED
+    assert mock_entry.runtime_data is account
 
 
 async def test_unloading_stops_the_heartbeat_and_releases_the_client(
@@ -895,6 +1148,10 @@ async def test_an_ed_batch_and_diagnostics_never_touch_session_manager() -> None
             "limiter": limiter.snapshot_counters(),
             "session": {"authenticated": True},
         },
+        # Part of the connector protocol, and read at the end of every batch
+        # to see whether the account gained a child. Announcing the two it
+        # already has is what a connector with a stable roster does.
+        student_ids=lambda: (STUDENT_ONE, STUDENT_TWO),
     )
     account = object.__new__(PronoteAccount)
     account.connector = connector  # type: ignore[assignment]
@@ -903,6 +1160,7 @@ async def test_an_ed_batch_and_diagnostics_never_touch_session_manager() -> None
         diagnostics=dict,
     )
     account._shutting_down = False
+    account._announced_children = (STUDENT_ONE, STUDENT_TWO)
     account._completed_ticks = 0
     account.state = SimpleNamespace(students=(), periods=())
     account.stale_after = 3
