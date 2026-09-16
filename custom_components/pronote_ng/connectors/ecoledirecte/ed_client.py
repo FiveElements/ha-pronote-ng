@@ -23,7 +23,7 @@ from ..errors import (  # noqa: TID252
 from ..protocol import ChallengeKind  # noqa: TID252
 
 API_BASE = "https://api.ecoledirecte.com/v3"
-ECOLEDIRECTE_API_VERSION = "4.101.3"
+ECOLEDIRECTE_API_VERSION = "4.101.4"
 DEFAULT_READ_TIMEOUT = 60.0
 
 _BASE_HEADERS = {
