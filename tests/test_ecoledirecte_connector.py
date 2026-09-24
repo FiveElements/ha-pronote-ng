@@ -627,6 +627,9 @@ async def test_critical_calls_cross_quiet_hours_but_normal_hits_eighty_percent()
     with pytest.raises(TierDeferred) as deferred:
         await limiter.call("marks", Priority.NORMAL, lambda: asyncio.sleep(0))
     assert deferred.value.reason is DeferReason.QUIET_HOURS
+    # A person's click crosses quiet hours on this connector too: the two
+    # limiters must not disagree about what quiet hours are for.
+    await limiter.call("homework", Priority.GESTURE, lambda: asyncio.sleep(0))
 
     daytime = ManualClock()
     limiter = EdRateLimiter(

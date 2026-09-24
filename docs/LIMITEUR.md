@@ -82,7 +82,7 @@ l'arrêter restait à zéro.
 flowchart TD
     A[Un palier demande à partir] --> B{Une pause<br/>est-elle active ?}
     B -- oui --> P[Reporté : la pause]
-    B -- non --> C{Heures calmes,<br/>et priorité ≠ CRITICAL ?}
+    B -- non --> C{Heures calmes,<br/>et priorité ni CRITICAL<br/>ni GESTURE ?}
     C -- oui --> Q[Reporté : quiet_hours]
     C -- non --> D{Plafond du jour au-delà<br/>du seuil de cette priorité ?}
     D -- oui --> R[Reporté : daily_cap]
@@ -221,6 +221,15 @@ Quatre choses valent d'être sues :
 
 - **La priorité `CRITICAL` en est exempte.** Le palier `session` continue, et une
   connexion n'est pas soumise aux heures calmes du tout.
+- **Un geste en est exempt aussi.** La priorité `GESTURE` couvre tout ce qu'une
+  personne déclenche : ouvrir une pièce jointe, cocher un devoir, appeler un
+  service, et la collecte qu'un bouton d'actualisation arme. Les heures calmes
+  protègent l'adresse contre les collectes *automatiques*, et un parent qui
+  ouvre le travail de son enfant à 22 h 30 n'en est pas une. Le reste ne change
+  pas : `GESTURE` est sacrifiée au plafond du jour exactement comme `HIGH`, et
+  reste soumise à l'espacement et au seau de jetons. Un bouton n'arme qu'un
+  passage par intervalle, désarmé dès la première issue, donc l'exemption ne
+  peut pas devenir permanente.
 - **La toute première collecte d'une catégorie passe aussi.** Une catégorie qui
   n'a **jamais** produit d'instantané pour un enfant collecte en `CRITICAL` et
   franchit donc les heures calmes. Sans cette dispense, une instance installée —

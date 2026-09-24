@@ -503,7 +503,7 @@ async def test_unticking_an_item_sends_the_negative_and_not_nothing(
 
 
 @writes_on
-async def test_a_tick_is_billed_to_the_right_child_at_high_priority(
+async def test_a_tick_is_billed_to_the_right_child_as_a_gesture(
     hass: HomeAssistant, account: PronoteAccount, parent_client: FakeClient
 ) -> None:
     """Four things about the call, each with its own failure mode.
@@ -511,9 +511,9 @@ async def test_a_tick_is_billed_to_the_right_child_at_high_priority(
     It goes through the session manager at all -- a write placed beside the
     limiter is a write outside the budget that protects the account. It is
     billed to the ``homework`` tier and costs one, because a write that
-    under-reports corrupts the very budget it spends. It is ``HIGH`` and never
-    ``CRITICAL``: a human tapping a checkbox outranks a scheduled collection,
-    but nothing done by hand may pre-empt the session tier (annexe B §2.4). And
+    under-reports corrupts the very budget it spends. It is ``GESTURE`` and
+    never ``CRITICAL``: a human tapping a checkbox crosses quiet hours, but
+    nothing done by hand escapes the daily cap (annexe B §2.4). And
     it names the child, because ``ParentClient`` keeps the first child selected
     by default -- a write that forgot to say which child would tick the
     *sibling's* homework and raise nothing at all.
@@ -555,7 +555,7 @@ async def test_a_tick_is_billed_to_the_right_child_at_high_priority(
     assert recorded == [
         {
             "tier": str(Tier.HOMEWORK),
-            "priority": Priority.HIGH,
+            "priority": Priority.GESTURE,
             "student_id": STUDENT_TWO,
             "cost": 1,
         }
