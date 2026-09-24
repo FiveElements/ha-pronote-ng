@@ -379,44 +379,40 @@ source de vérité sur le calendrier scolaire.
 | **Devoirs** *(liste de tâches)* | Un élément par devoir : matière en titre, énoncé en description, échéance. Cochable **seulement si vous avez activé l'écriture** (§ [7](#7-écrire-dans-pronote)). | — |
 
 Chaque élément de `items` contient `id`, `subject`, `description`,
-`description_text`, `due`, `done`, `attachments` et `attachment_links`. Le
-champ `id` est celui à fournir au service « Cocher un devoir ».
+`description_text`, `due`, `done`, `attachments`, `attachment_refs` et, pour
+une version encore, `attachment_links`. Le champ `id` est celui à fournir au
+service « Cocher un devoir ».
 
 **Les pièces jointes s'ouvrent, et ce n'est pas PRONOTE qui vous les sert.**
-`attachments` donne les **noms** de toutes les pièces. `attachment_links` donne,
-sous forme `{ name, url }`, celles qu'on peut ouvrir — c'est-à-dire, en
-pratique, toutes.
+`attachments` donne les **noms** de toutes les pièces. `attachment_refs` dit
+lesquelles on peut ouvrir, et comment : un **lien** y figure avec son adresse,
+un **fichier** avec une clé qu'on donne au service « Obtenir l'adresse d'une
+pièce jointe ».
 
-Les deux adresses n'ont pourtant rien à voir. Un professeur qui joint un
-**lien** colle une adresse ordinaire : elle est publiée telle quelle. Un
-professeur qui joint un **fichier** ne produit pas d'adresse durable — celle
-que PRONOTE fabrique est signée par la session en cours, elle ouvre le document
-**sans demander d'identifiant**, et elle cesse de fonctionner à la connexion
-suivante. L'écrire dans un attribut reviendrait à mettre un mot de passe dans
-l'historique et dans tout diagnostic que vous partageriez pour du support, pour
-un lien mort dans l'heure. C'est le même raisonnement que pour l'URL iCal,
-cf. § [5.1](#51-les-quatre-services-qui-renvoient-une-réponse).
+Les deux n'ont rien à voir. Un professeur qui joint un **lien** colle une
+adresse ordinaire : elle est publiée telle quelle. Un professeur qui joint un
+**fichier** ne produit pas d'adresse durable — celle que PRONOTE fabrique est
+signée par la session en cours, elle ouvre le document **sans demander
+d'identifiant**, et elle cesse de fonctionner à la connexion suivante. C'est le
+même raisonnement que pour l'URL iCal, cf. § [5.1](#51-les-services-qui-renvoient-une-réponse).
 
-Ce que vous recevez pour un fichier est donc une adresse **de votre propre Home
-Assistant**, signée et valable une demi-journée. Quand vous l'ouvrez, c'est
-l'intégration qui va chercher le document, dans la session déjà en place, et qui
-vous le renvoie. Trois conséquences pratiques :
+L'adresse d'un fichier n'est donc écrite **nulle part** dans l'état de vos
+entités. Quand vous cliquez, la carte demande au service une adresse **de votre
+propre Home Assistant**, valable **cinq minutes**, et l'ouvre aussitôt. C'est
+alors l'intégration qui va chercher le document, dans la session déjà en place,
+et qui vous le renvoie. Quatre conséquences pratiques :
 
-- **Ça coûte une requête, une seule fois par document.** Le document est ensuite
-  gardé en mémoire jusqu'au prochain redémarrage, donc le rouvrir est gratuit.
-  Si aucune session n'est ouverte — typiquement le soir — la première ouverture
-  ajoute une connexion, sur les vingt-quatre autorisées par jour.
-- **Une adresse recopiée ailleurs finit par ne plus rien ouvrir.** C'est voulu,
-  et c'est la protection principale : au bout d'une demi-journée, une capture
-  d'écran ou un lien collé dans une conversation ne mène plus à rien. Ces
-  adresses ne sont par ailleurs **pas enregistrées dans l'historique**, donc
-  elles ne partent pas dans la base de données que contiennent vos sauvegardes,
-  ni dans un fichier de diagnostic que vous joindriez à un rapport de bogue.
-  Deux réserves à connaître, parce qu'elles ne sont pas couvertes par cette
-  exclusion : une **trace d'automatisation** déclenchée sur ce capteur conserve
-  l'attribut, et la fenêtre « plus d'infos » d'un tableau de bord affiche les
-  attributs — donc une capture de cette fenêtre-là publie une adresse encore
-  valide.
+- **Ça coûte une requête, une seule fois par document.** Demander l'adresse ne
+  coûte rien ; c'est l'ouverture qui va chercher le document, qui est ensuite
+  gardé en mémoire jusqu'au prochain redémarrage — le rouvrir est gratuit. Si
+  aucune session n'est ouverte, la première ouverture ajoute une connexion, sur
+  les vingt-quatre autorisées par jour.
+- **Une adresse recopiée ailleurs ne mène plus à rien au bout de cinq
+  minutes.** Une capture d'écran de la barre d'adresse ou un lien collé dans une
+  conversation par erreur ne reste pas une clé vers les devoirs de votre
+  enfant. Et comme l'adresse n'est dans aucun attribut, elle n'est ni dans
+  l'historique, ni dans vos sauvegardes, ni dans une trace d'automatisation, ni
+  dans la fenêtre « plus d'infos » d'un tableau de bord.
 - **Entre 22h00 et 6h00, un document pas encore ouvert ne s'ouvre pas.** Les
   heures calmes écartent tout appel réseau à la demande, pas seulement les
   collectes — c'est la même règle pour les services de l'intégration. Un
@@ -730,12 +726,12 @@ silencieusement remis à plus tard :
 
 > Reporté par le limiteur (daily_cap). Réessayez dans environ 240 secondes.
 
-### 5.1 Les quatre services qui renvoient une réponse
+### 5.1 Les services qui renvoient une réponse
 
-Quatre services ne remplissent aucune entité : ils **renvoient un résultat**,
-disponible pendant l'exécution du script et nulle part ailleurs. Trois d'entre
-eux le font pour une raison de sécurité, et c'est le point le plus important de
-cette section.
+Ces services ne remplissent aucune entité : ils **renvoient un résultat**,
+disponible pendant l'exécution du script et nulle part ailleurs. La plupart le
+font pour une raison de sécurité, et c'est le point le plus important de cette
+section.
 
 | Service | Pourquoi une réponse plutôt qu'une entité |
 | --- | --- |
@@ -743,6 +739,7 @@ cette section.
 | **Obtenir l'identité** | Adresse, téléphone, courriel, numéro INE, responsables légaux. Des données personnelles qui n'ont rien à faire dans un état d'entité enregistré et sauvegardé. |
 | **Générer un PDF de l'emploi du temps** | Le lien renvoyé porte sa propre autorisation, exactement comme l'URL iCal. |
 | **Obtenir l'état du limiteur** | Ici la raison est différente : ce service ne coûte **aucune requête** — il lit des compteurs déjà en mémoire — et son résultat est un bloc de diagnostic trop volumineux pour un attribut. |
+| **Obtenir l'adresse d'une pièce jointe** | L'adresse renvoyée ouvre un fichier de devoir **sans identifiant**, comme l'URL iCal ouvre l'emploi du temps. Elle vit cinq minutes et ne coûte **aucune requête** : c'est son ouverture qui va chercher le document. Une carte l'appelle à votre place quand vous cliquez ; vous n'avez normalement pas à le faire vous-même. |
 
 Si vous récupérez l'URL iCal pour l'abonner dans un agenda, traitez-la comme un
 mot de passe : ne la collez pas dans un tableau de bord partagé, ne la mettez

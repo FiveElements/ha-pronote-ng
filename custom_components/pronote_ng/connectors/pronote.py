@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Final, cast
 
 from ..const import (  # noqa: TID252
     SERVICE_GENERATE_TIMETABLE_PDF,
+    SERVICE_GET_ATTACHMENT_URL,
     SERVICE_GET_ICAL_URL,
     SERVICE_GET_IDENTITY,
     SERVICE_MARK_HOMEWORK_DONE,
@@ -51,6 +52,10 @@ _SUPPORTED_SERVICES: Final = frozenset(
         SERVICE_MARK_INFORMATION_READ,
         SERVICE_SEND_MESSAGE,
         SERVICE_GENERATE_TIMETABLE_PDF,
+        # PRONOTE only: the relay it signs a path to is PRONOTE's attachment
+        # download. A connector with no relay must refuse it rather than mint
+        # an address that 404s.
+        SERVICE_GET_ATTACHMENT_URL,
     }
 )
 _SUPPORTED_WRITES: Final = frozenset(

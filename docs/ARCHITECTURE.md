@@ -2199,8 +2199,10 @@ budget à environ 180 requêtes de données par jour, et les portails de qualit�
 
 `SPECIFICATION.md` déclare en en-tête le domaine **`pronote`** et présente le
 renommage comme « une décision de fin de parcours, pas de début », puisqu'il
-changerait tous les `entity_id`. L'annexe A nomme d'ailleurs les services
-`pronote.refresh`, `pronote.get_ical_url`, etc. Le §1.3 de la spécification est
+changerait tous les `entity_id`. L'annexe A nommait d'ailleurs les services
+`pronote.refresh`, `pronote.get_ical_url`, etc., jusqu'à ce que son tableau soit
+corrigé — un lecteur qui en recopiait une ligne appelait le domaine d'une autre
+intégration. Le §1.3 de la spécification est
 par ailleurs autocontradictoire sur ce point — « domaine `pronote` et non
 `pronote` » — ce qui a tout l'air d'un artefact de recherche-remplacement.
 

@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.const import GradeStatus
+from custom_components.pronote_ng.const import AttachmentKind, GradeStatus
 from custom_components.pronote_ng.gateway import (
     MAX_DISCUSSION_EXPANSIONS,
     DiscussionIsClosed,
@@ -37,7 +37,9 @@ from custom_components.pronote_ng.gateway import (
     PronoteGateway,
     ProtocolChanged,
     RecipientNotFound,
+    _attachment,
     _color_census,
+    _establishment_host,
     _field_names,
     _food_names,
     _get,
@@ -996,7 +998,9 @@ def test_a_file_attachment_carries_its_name_and_no_address(
     item = gateway.homework(client).facts.homework[0]
 
     assert item.attachments == (
-        HomeworkAttachment(name="enonce.pdf", id="ATTACHMENT-1"),
+        HomeworkAttachment(
+            name="enonce.pdf", id="ATTACHMENT-1", kind=AttachmentKind.FILE
+        ),
     )
     assert item.attachments[0].url is None
     # Kept, and never published: it is what the encrypted path segment is built
@@ -1029,6 +1033,7 @@ def test_a_link_attachment_publishes_the_address_it_was_given(
             name="Le sujet en ligne",
             url="https://exemple.invalid/sujet",
             id="ATTACHMENT-1",
+            kind=AttachmentKind.LINK,
         ),
     )
 
@@ -1085,6 +1090,146 @@ def test_only_an_http_address_is_published(
     item = gateway.homework(client).facts.homework[0]
 
     assert item.attachments == (HomeworkAttachment(name="Le sujet", id="ATTACHMENT-1"),)
+
+
+def test_an_unusable_link_is_opaque_and_not_mistaken_for_a_file(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """The defect the declared kind exists to end.
+
+    A link whose address is unusable carries no ``url`` -- exactly like a file.
+    Consumers used to tell the two apart by that absence, so an unusable link
+    was handed a signed path and the relay fetched it through the school's
+    session as though it were a document. ``kind`` is decided here, once, and
+    an unusable link is ``OPAQUE``: named, and openable by nobody.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [protocol.homework(attachments=(("Le sujet en ligne", None),))]
+    )
+    attachment = gateway.homework(client).facts.homework[0].attachments[0]
+
+    assert attachment.kind is AttachmentKind.OPAQUE
+    assert attachment.kind is not AttachmentKind.FILE
+
+
+def test_a_link_on_the_establishments_own_server_is_not_published(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """Served from PRONOTE's host, an address is served with a session's authority.
+
+    A teacher can paste one: a document on the establishment's own server, or
+    a copy of what the browser showed. Published as an ordinary link it would
+    open that document with no credentials -- the hazard files are kept out of
+    attributes for. The host is the one the client logged in to, which the
+    card does not know and must not be given.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [
+            protocol.homework(
+                attachments=(
+                    ("Le document", "https://demo.example.invalid/pronote/doc.pdf"),
+                )
+            )
+        ]
+    )
+    attachment = gateway.homework(client).facts.homework[0].attachments[0]
+
+    assert attachment == HomeworkAttachment(name="Le document", id="ATTACHMENT-1")
+    assert attachment.kind is AttachmentKind.OPAQUE
+    assert attachment.url is None
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        pytest.param("https://exemple.invalid/x?Session=42", id="a session number"),
+        pytest.param(
+            "https://exemple.invalid/x?page=1&SESSION=42", id="any case, any position"
+        ),
+        pytest.param(
+            "https://proxy.exemple.invalid/pronote/FichiersExternes/abc/doc.pdf",
+            id="PRONOTE's file route behind another host",
+        ),
+    ],
+)
+def test_a_session_bearing_link_is_not_published_whatever_its_host(
+    gateway: PronoteGateway, client: FakeClient, address: str
+) -> None:
+    """Two signatures of a PRONOTE session, read off the address itself.
+
+    The host test alone misses both: a reverse proxy or an ENT puts another
+    name in front of the same server. A ``Session`` parameter is how PRONOTE
+    numbers a session, and ``FichiersExternes`` is its route for a file --
+    either one means the address authorises whoever holds it.
+    """
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [protocol.homework(attachments=(("Le document", address),))]
+    )
+    attachment = gateway.homework(client).facts.homework[0].attachments[0]
+
+    assert attachment.kind is AttachmentKind.OPAQUE
+    assert attachment.url is None
+
+
+def test_an_ordinary_query_string_does_not_make_a_link_suspect(
+    gateway: PronoteGateway, client: FakeClient
+) -> None:
+    """The session test reads parameter *names*, not the query as a string.
+
+    Otherwise a publisher's ``?resource=session-3`` would be refused, and a
+    legitimate exercise link would stop opening for a reason nobody could see.
+    """
+    address = "https://exemple.invalid/sujet?resource=session-3"
+    client.responses["PageCahierDeTexte"] = protocol.homework_response(
+        [protocol.homework(attachments=(("Le sujet", address),))]
+    )
+    attachment = gateway.homework(client).facts.homework[0].attachments[0]
+
+    assert attachment.kind is AttachmentKind.LINK
+    assert attachment.url == address
+
+
+def test_a_file_with_no_identifier_opens_nothing() -> None:
+    """A file is fetched *by* its ``N``, so without one there is nothing to relay.
+
+    PRONOTE does publish documents that way. Classified ``FILE`` it would be
+    offered to a card, which would call the service, which would mint an
+    address, which would 404 -- a button that cannot work, offered as though
+    it could.
+    """
+    attachment = _attachment({"L": "sans_n.pdf", "G": 1}, None)
+
+    assert attachment == HomeworkAttachment(name="sans_n.pdf")
+    assert attachment.kind is AttachmentKind.OPAQUE
+
+
+def test_an_unknown_server_host_disables_only_the_host_test() -> None:
+    """Without the host, the two signatures on the address itself still run.
+
+    ``None`` is what `_establishment_host` answers when the client exposes no
+    usable ``root_site``. Guessing a host would be worse than not knowing it:
+    a wrong guess refuses a third party's link, or waves PRONOTE's through.
+    """
+    ordinary = {"L": "x", "G": 0, "N": "1", "url": "https://demo.example.invalid/x"}
+    session = {**ordinary, "url": "https://demo.example.invalid/x?Session=1"}
+
+    assert _attachment(ordinary, None).kind is AttachmentKind.LINK
+    assert _attachment(session, None).kind is AttachmentKind.OPAQUE
+
+
+def test_the_server_host_is_read_off_the_login_and_costs_nothing() -> None:
+    """``communication.root_site`` is a plain attribute set at login.
+
+    Lower-cased, because a host is case-insensitive and a link typed with
+    capitals must still be recognised as the establishment's own. Anything that
+    is not a string answers ``None`` rather than raising in the middle of a
+    collection.
+    """
+    assert _establishment_host("https://Demo.Example.Invalid/pronote/") == (
+        "demo.example.invalid"
+    )
+    assert _establishment_host(None) is None
+    assert _establishment_host(42) is None
 
 
 def test_a_renamed_homework_key_fails_the_tier(

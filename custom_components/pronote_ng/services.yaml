@@ -117,3 +117,15 @@ get_rate_limit_status:
       selector:
         device:
           integration: pronote_ng
+
+get_attachment_url:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: pronote_ng
+    key:
+      required: true
+      selector:
+        text:

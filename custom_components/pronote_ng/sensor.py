@@ -32,7 +32,7 @@ from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import callback
 
 from .account import PronoteAccount
-from .attachment import fingerprint, signed_path
+from .attachment import fingerprint
 from .connectors.protocol import Source, has_pronote_extras
 from .const import (
     DEFAULT_HOMEWORK_HORIZON,
@@ -42,6 +42,7 @@ from .const import (
     MIDDAY_BREAK_MIN_MINUTES,
     OPT_HOMEWORK_HORIZON,
     OPT_WAKE_MARGIN,
+    AttachmentKind,
     LimiterState,
     Tier,
 )
@@ -572,27 +573,31 @@ def _visible_homework(facts: HomeworkFacts, account: PronoteAccount) -> list[Hom
     return [item for item in facts.homework if item.due <= limit]
 
 
-def _attachment_address(
-    account: PronoteAccount, item: Homework, attachment: HomeworkAttachment
-) -> str:
-    """Where a dashboard should send somebody who wants to open this document.
+def _attachment_ref(item: Homework, attachment: HomeworkAttachment) -> dict[str, str]:
+    """What a card needs to offer one openable document, and nothing that opens it.
 
-    A link keeps the address it was given -- it is a third party's, and
-    proxying it through Home Assistant would mean fetching an unrelated site
-    with the school's session. A file gets an address Home Assistant serves,
-    because PRONOTE's own is signed by the session and must never be published
-    (see :mod:`.attachment`).
+    A link carries its address, because it is a third party's and already
+    public -- the student sees it in PRONOTE -- and because a card that has it
+    can name the destination before anybody clicks. A file carries a ``key``:
+    the fingerprint `pronote_ng.get_attachment_url` resolves, which names a
+    document and authorises nothing. The address that *does* authorise is
+    minted by that service at the instant of the click and never written into
+    an attribute.
+
+    The published ``kind`` answers how to open, not what the thing is --
+    ``external`` goes in an `href`, ``local`` goes through the service -- so a
+    card needs no knowledge of PRONOTE's two payload kinds.
     """
-    if attachment.url is not None:
-        return attachment.url
-    return signed_path(
-        account.hass,
-        account.entry.entry_id,
-        fingerprint(item.id, attachment.id),
-    )
+    if attachment.kind is AttachmentKind.LINK and attachment.url is not None:
+        return {"name": attachment.name, "kind": "external", "url": attachment.url}
+    return {
+        "name": attachment.name,
+        "kind": "local",
+        "key": fingerprint(item.id, attachment.id),
+    }
 
 
-def _homework_dict(account: PronoteAccount, item: Homework) -> dict[str, Any]:
+def _homework_dict(item: Homework) -> dict[str, Any]:
     """One homework item, flattened for a card."""
     return {
         "id": item.id,
@@ -610,30 +615,34 @@ def _homework_dict(account: PronoteAccount, item: Homework) -> dict[str, Any]:
         # upstream saying the server always sends it on a homework entry -- so
         # this is the tier where a colour is most likely to be there.
         "background_color": item.background_color,
-        # Two projections of one field, and the shapes are not
-        # interchangeable. `attachments` keeps carrying plain names, unchanged,
-        # because a template doing `| join(', ')` on it must go on working --
-        # the shape is older than the addresses. `attachment_links` answers a
-        # different question: which documents can actually be *opened*, and at
-        # what address.
-        #
-        # Both kinds are in it, and neither address is PRONOTE's. A link
-        # carries its own; a file carries a signed, expiring path to this
-        # integration's own view, which relays the bytes. So the key means what
-        # its name says -- the attachments you can open -- and a consumer needs
-        # to know nothing about the two kinds.
-        #
-        # An attachment is absent from it only when it is a link whose address
-        # was unusable: no `http`/`https` scheme, or none at all in the payload
-        # (upstream falls back to the *name* there, which is the trap).
+        # `attachments` keeps carrying plain names, unchanged, because a
+        # template doing `| join(', ')` on it must go on working -- the shape
+        # is older than any of the others. Every attachment is named here,
+        # openable or not.
         "attachments": [attachment.name for attachment in item.attachments],
-        "attachment_links": [
-            {
-                "name": attachment.name,
-                "url": _attachment_address(account, item, attachment),
-            }
+        # Which documents can be *opened*, and how. No entry carries an address
+        # that authorises anything: a link's is a third party's, and a file
+        # gets a key the service resolves. An `OPAQUE` attachment is absent --
+        # a link with no usable address, one PRONOTE itself would authenticate,
+        # a file with no identifier -- and still named in `attachments`.
+        "attachment_refs": [
+            _attachment_ref(item, attachment)
             for attachment in item.attachments
-            if attachment.url is not None or attachment.id
+            if attachment.kind is not AttachmentKind.OPAQUE
+        ],
+        # Deprecated, kept for one release so a card already installed keeps
+        # opening links while it updates, then removed.
+        #
+        # It no longer carries files. It used to give each one a signed path,
+        # and a signed path is a bearer token -- readable by every account in
+        # `/api/states`, kept by automation traces in `.storage`, shown in the
+        # more-info dialog. Keeping them "for one more release" would have been
+        # keeping open the exact hole this release closes, so a card that has
+        # not updated loses file opening, not the other way round.
+        "attachment_links": [
+            {"name": attachment.name, "url": attachment.url}
+            for attachment in item.attachments
+            if attachment.kind is AttachmentKind.LINK and attachment.url is not None
         ],
     }
 
@@ -649,7 +658,7 @@ def _homework_todo_attributes(
     """Outstanding homework, and the next deadline."""
     pending = [item for item in _visible_homework(facts, account) if not item.done]
     return {
-        "items": [_homework_dict(account, item) for item in pending],
+        "items": [_homework_dict(item) for item in pending],
         "next_due": min((item.due for item in pending), default=None),
     }
 
@@ -669,9 +678,7 @@ def _homework_tomorrow_attributes(
     tomorrow = account.today() + timedelta(days=1)
     return {
         "items": [
-            _homework_dict(account, item)
-            for item in facts.homework
-            if item.due == tomorrow
+            _homework_dict(item) for item in facts.homework if item.due == tomorrow
         ]
     }
 
@@ -686,9 +693,7 @@ def _homework_all_attributes(
 ) -> dict[str, Any]:
     """Every homework item inside the horizon."""
     return {
-        "items": [
-            _homework_dict(account, item) for item in _visible_homework(facts, account)
-        ]
+        "items": [_homework_dict(item) for item in _visible_homework(facts, account)]
     }
 
 
