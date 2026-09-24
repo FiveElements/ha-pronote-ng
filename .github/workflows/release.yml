@@ -15,9 +15,9 @@ jobs:
     name: Publish ${{ github.ref_name }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -32,7 +32,7 @@ jobs:
           zip -r ../../pronote_ng.zip . -x '*__pycache__*' -x '*.pyc'
 
       - name: Publish the GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: pronote_ng.zip
           generate_release_notes: true
