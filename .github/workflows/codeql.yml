@@ -1,0 +1,48 @@
+name: CodeQL
+
+# Static security analysis, native to GitHub: no third-party account, no
+# repository secret. Alerts land in the repository's Security tab, which only
+# maintainers can see.
+#
+# What the README badge says, and what it does not: it tracks this workflow's
+# status, so it means "the analysis ran to completion". It stays green while
+# alerts are open -- the analyze step does not fail on an alert. A badge that
+# read as "no vulnerabilities" would be plausible and false; this one only
+# claims what it knows.
+#
+# The weekly schedule re-runs the analysis without a new commit: CodeQL's
+# queries evolve, and a newly described flaw should be looked for in code that
+# is already released, not only in the next change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # `actions` analyzes the workflows themselves: releases and the
+        # dependency-watch jobs that open pull requests all run through them.
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
