@@ -1,0 +1,47 @@
+version: 2
+
+# Version updates, alongside the security alerts and security updates enabled
+# in the repository settings.
+#
+# Two pins are deliberately left out, for two different reasons:
+#
+# - `pronotepy` is pinned twice: in requirements_test.txt, which Dependabot
+#   reads, AND in custom_components/pronote_ng/manifest.json, which it does
+#   not. `pronotepy-watch.yml` raises both together. A Dependabot bump would
+#   move only the first, and the tests would run against a version the
+#   integration does not install.
+# - `pytest-homeassistant-custom-component` is pinned to the declared floor:
+#   the release carrying Home Assistant 2026.9.0, hacs.json's minimum. Raising
+#   it would silently stop testing that floor -- see requirements_test.txt.
+#
+# Ignoring them here only stops version-update pull requests: a security
+# advisory against either still raises a Dependabot alert.
+#
+# Weekly and grouped: one pull request per family, not one per package.
+
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)
+    ignore:
+      - dependency-name: pronotepy
+      - dependency-name: pytest-homeassistant-custom-component
+    groups:
+      tooling:
+        patterns: ['*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      actions:
+        patterns: ['*']
