@@ -305,7 +305,7 @@ async def _run(
     fn: Any,
     *,
     cost: int,
-    priority: Priority = Priority.HIGH,
+    priority: Priority = Priority.GESTURE,
 ) -> Any:
     """Run one gateway call, translating a deferral into a clear error.
 
@@ -554,8 +554,7 @@ async def _async_get_attachment_url(call: ServiceCall) -> ServiceResponse:
     already in memory and signs a path with a key Home Assistant already holds;
     nothing leaves this process. The request happens later, when the returned
     address is opened and the relay fetches the bytes -- so a card calling this
-    still triggers no collection, and during quiet hours it still answers
-    (the relay, being ``Priority.HIGH``, is what then says 503).
+    triggers no collection, and the relay's own admission decides the rest.
 
     Two refusals, and their ``translation_key`` values are a **contract**: a
     card reads them off the error to decide what to tell the user.

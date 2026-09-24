@@ -1682,6 +1682,30 @@ async def test_the_account_device_cannot_be_deleted(
     assert await async_remove_config_entry_device(hass, mock_entry, parent) is False
 
 
+async def test_a_boosted_tier_is_collected_as_a_gesture(
+    account: PronoteAccount,
+) -> None:
+    """A refresh pressed at 23:00 must not wait for 06:00.
+
+    Every boost is armed by a person -- the button, the refresh service, or a
+    write re-reading its own tier -- so the collection it asks for is a gesture
+    and crosses quiet hours. Asserted on the shared fixture, which has already
+    collected every tier: the first-collection ``CRITICAL`` branch is out of
+    the way, so what is observed is the boost and nothing else. The second half
+    matters as much as the first: once the boost is served the tier returns to
+    its declared priority, or a single press would become a standing
+    exemption.
+    """
+    tier = Tier.MARKS
+    assert _priority_for(account, tier, "STUDENT-1") is TIER_PRIORITY[tier]
+
+    account.scheduler.request([tier])
+    assert _priority_for(account, tier, "STUDENT-1") is Priority.GESTURE
+
+    account.scheduler.mark_collected(tier)
+    assert _priority_for(account, tier, "STUDENT-1") is TIER_PRIORITY[tier]
+
+
 class TestHowLongAFirstCollectionOutranksQuietHours:
     """The dispensation, and the exit it was missing.
 

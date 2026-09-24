@@ -309,14 +309,43 @@ def test_the_bucket_is_untouched_by_the_date(clock: FakeClock) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_quiet_hours_defer_everything_but_critical(clock: FakeClock) -> None:
-    """The session tier still runs at night; nothing else does."""
+def test_quiet_hours_defer_everything_but_critical_and_gestures(
+    clock: FakeClock,
+) -> None:
+    """At night the session tier runs, and so does whatever a person asked for.
+
+    Quiet hours protect the address against *automatic* collection. A parent
+    opening a homework sheet at 23:30 is one request started by a hand, and
+    refusing it read as "disconnected" -- the integration is not, it is being
+    polite to the school's server, and a click is not what that politeness is
+    about. A timer-driven ``HIGH`` call still waits.
+    """
     clock.set_wall(datetime(2026, 3, 12, 23, 30, tzinfo=PARIS))
     limiter = build(clock)
 
     verdict = limiter.check("timetable", Priority.HIGH)
     assert not verdict.allowed
     assert verdict.reason is DeferReason.QUIET_HOURS
+    assert limiter.check("session", Priority.CRITICAL).allowed
+    assert limiter.check("homework", Priority.GESTURE).allowed
+
+
+def test_a_gesture_is_shed_at_the_daily_cap_like_high(clock: FakeClock) -> None:
+    """Crossing quiet hours is the whole dispensation; the budget is not part of it.
+
+    A gesture that also escaped the cap would let a dashboard -- or an
+    automation calling a service in a loop -- spend without bound, which is
+    the one thing the cap exists to prevent. It is shed exactly where ``HIGH``
+    is, and never promoted to ``CRITICAL``'s infinite threshold.
+    """
+    limiter = build(clock, max_requests_per_day=10)
+    for _ in range(10):
+        limiter.commit("timetable")
+
+    verdict = limiter.check("homework", Priority.GESTURE)
+
+    assert not verdict.allowed
+    assert verdict.reason is DeferReason.DAILY_CAP
     assert limiter.check("session", Priority.CRITICAL).allowed
 
 

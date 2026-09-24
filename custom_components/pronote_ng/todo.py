@@ -144,11 +144,11 @@ class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):
         try:
             await extras.session.run(
                 str(Tier.HOMEWORK),
-                # A human just tapped a checkbox, so this outranks a scheduled
-                # collection -- but it still goes through the limiter, and it
-                # is never CRITICAL: nothing done by hand may pre-empt the
-                # session tier (annexe B §2.4).
-                Priority.HIGH,
+                # A human just tapped a checkbox: a gesture, so it crosses quiet
+                # hours -- but it still goes through the limiter, and it is
+                # never CRITICAL: nothing done by hand may pre-empt the session
+                # tier (annexe B §2.4).
+                Priority.GESTURE,
                 work,
                 student_id=self.student.id,
                 cost=1,

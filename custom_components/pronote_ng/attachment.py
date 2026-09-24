@@ -350,17 +350,13 @@ async def _fetch(
     content, declared, _cost = await extras.session.run(
         str(Tier.HOMEWORK),
         # The priority every other human-initiated call in this integration
-        # uses (`services.py`), and the same for a reason: somebody is waiting
-        # for this, so it should outrank a routine collection under the daily
-        # cap -- but it is not CRITICAL, which is the *only* priority that
-        # crosses quiet hours and is reserved for a tier that has never
-        # collected at all.
-        #
-        # So between 22:00 and 06:00 this is refused, and that is the
-        # integration's uniform policy rather than a property of documents:
-        # every network-touching service is refused there too. The refusal says
-        # so, and says when to come back.
-        Priority.HIGH,
+        # uses (`services.py`, the to-do tick, a refresh button): somebody is
+        # looking at the screen. It crosses quiet hours -- a parent checking
+        # their child's homework at 22:30 is not the automatic collection those
+        # hours protect the address against -- and nothing else: the daily
+        # cap, the hold, the spacing and the bucket still apply, and the cache
+        # above means a document already opened does not go back out.
+        Priority.GESTURE,
         work,
         student_id=student_id,
         cost=1,

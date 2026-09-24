@@ -47,6 +47,7 @@ from custom_components.pronote_ng.const import (
     SERVICE_MARK_INFORMATION_READ,
     SERVICE_REFRESH,
     SERVICE_SEND_MESSAGE,
+    Priority,
     Tier,
 )
 from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
@@ -358,7 +359,7 @@ async def test_a_deferred_service_is_not_a_validation_error(
     """
 
     async def _deferred(*_args: Any, **_kwargs: Any) -> Any:
-        raise TierDeferred(DeferReason.QUIET_HOURS, 900.0)
+        raise TierDeferred(DeferReason.HOURLY_BUDGET, 900.0)
 
     with (
         patch.object(account.extras.session, "run", _deferred),
@@ -373,6 +374,35 @@ async def test_a_deferred_service_is_not_a_validation_error(
         )
 
     assert not isinstance(raised.value, ServiceValidationError)
+
+
+async def test_a_service_reaches_pronote_as_a_gesture(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, account: PronoteAccount
+) -> None:
+    """Observed at the session, not read off the default argument.
+
+    A service is somebody waiting -- a card, a dashboard button, a voice
+    request -- so it crosses quiet hours like a click on a document. Before
+    this it ran at ``HIGH`` and was refused from 22:00 to 06:00 with
+    ``quiet_hours``, which read as "the integration is disconnected".
+    """
+    seen: list[Priority] = []
+    original = account.extras.session.run
+
+    async def _spy(tier: str, priority: Priority, fn: Any, **kwargs: Any) -> Any:
+        seen.append(priority)
+        return await original(tier, priority, fn, **kwargs)
+
+    with patch.object(account.extras.session, "run", _spy):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_GET_ICAL_URL,
+            {"device_id": _child_device(hass, mock_entry, STUDENT_ONE)},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert seen == [Priority.GESTURE]
 
 
 # ---------------------------------------------------------------------------
@@ -989,8 +1019,8 @@ class TestTheAttachmentAddressIsMintedOnClick:
         """The service signs locally; only *opening* the address fetches anything.
 
         This is what lets a card promise it triggers no collection: pressing
-        the button costs the school's server nothing, and during quiet hours
-        the service still answers -- it is the relay, later, that says 503.
+        the button costs the school's server nothing: the one request happens
+        when the relay opens the address, and nowhere before it.
         """
         key = self._key(hass, "sensor.enfant_un_homework_to_do", "local")
         posts = len(parent_client.posted_names)

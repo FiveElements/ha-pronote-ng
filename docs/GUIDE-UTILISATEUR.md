@@ -413,11 +413,11 @@ et qui vous le renvoie. Quatre conséquences pratiques :
   enfant. Et comme l'adresse n'est dans aucun attribut, elle n'est ni dans
   l'historique, ni dans vos sauvegardes, ni dans une trace d'automatisation, ni
   dans la fenêtre « plus d'infos » d'un tableau de bord.
-- **Entre 22h00 et 6h00, un document pas encore ouvert ne s'ouvre pas.** Les
-  heures calmes écartent tout appel réseau à la demande, pas seulement les
-  collectes — c'est la même règle pour les services de l'intégration. Un
-  document déjà ouvert dans la journée reste consultable, puisqu'il est en
-  mémoire. Si ça vous gêne, le levier est le réglage des heures calmes.
+- **Un document s'ouvre aussi la nuit.** Les heures calmes retiennent les
+  collectes *automatiques* ; un clic sur un document est un geste, et il passe
+  entre 22h00 et 6h00 comme en journée. Il reste en revanche soumis au plafond
+  journalier et à l'espacement des requêtes, et un document déjà ouvert est
+  resservi depuis la mémoire sans repartir vers l'établissement.
 - **Un document qui a quitté l'horizon d'affichage n'est plus servi.**
   L'intégration ne va chercher que ce qu'elle a effectivement collecté, donc une
   adresse ne peut pas être bricolée pour demander autre chose.
@@ -1222,6 +1222,13 @@ sauf si quelqu'un de la maison consulte PRONOTE la nuit. Notez qu'elles n'ont pa
 d'effet de bord fâcheux : l'intégration exclut la nuit du calcul de péremption,
 donc vos entités ne se déclarent pas « périmées » à 6 h du matin sous prétexte
 que rien n'a été collecté depuis 22 h.
+
+**Elles ne retiennent que ce qui part tout seul.** Tout ce qui part d'un geste
+les traverse : ouvrir une pièce jointe, cocher un devoir, appeler un service,
+appuyer sur un bouton d'actualisation. Ces appels restent soumis au plafond
+journalier et à l'espacement des requêtes. Attention à un cas : une
+automatisation qui appelle un service pendant la nuit compte, elle aussi, comme
+un geste.
 
 **Le plafond journalier est un filet, pas un objectif.** Le défaut de 2000 appels
 par jour est environ dix fois la consommation normale d'un enfant : il est là pour

@@ -76,6 +76,12 @@ class Priority(StrEnum):
     """Sacrifice order when the budget tightens (annexe B §2.4)."""
 
     CRITICAL = "critical"
+    #: A person is waiting on this call: a service, a checkbox, a document
+    #: opened, a refresh button. Shed like ``HIGH``, but it crosses quiet
+    #: hours -- which protect the address against *automatic* collection, and
+    #: a parent opening their child's homework at 22:30 is not that. Still
+    #: under the daily cap, the hold, the spacing and the bucket.
+    GESTURE = "gesture"
     HIGH = "high"
     NORMAL = "normal"
     LOW = "low"
@@ -84,10 +90,19 @@ class Priority(StrEnum):
 #: Rank used to compare priorities. Lower sheds later.
 PRIORITY_RANK: Final[dict[Priority, int]] = {
     Priority.CRITICAL: 0,
+    Priority.GESTURE: 1,
     Priority.HIGH: 1,
     Priority.NORMAL: 2,
     Priority.LOW: 3,
 }
+
+#: The priorities quiet hours let through. ``CRITICAL`` because a login, or a
+#: tier that has never collected, cannot wait until 06:00 without breaking
+#: automations (§2.5); ``GESTURE`` because somebody is looking at the screen.
+#: Everything a timer starts waits.
+QUIET_HOURS_EXEMPT: Final[frozenset[Priority]] = frozenset(
+    {Priority.CRITICAL, Priority.GESTURE}
+)
 
 TIER_PRIORITY: Final[dict[Tier, Priority]] = {
     Tier.SESSION: Priority.CRITICAL,

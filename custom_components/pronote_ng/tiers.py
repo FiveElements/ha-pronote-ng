@@ -65,12 +65,23 @@ def _priority_for(account: PronoteAccount, tier: Tier, student_id: str) -> Prior
     given up -- it keeps its deadline, ``mark_failed`` still floors its retry at
     a quarter of its interval, and the first success resets the counter and
     restores the dispensation for any future gap.
+
+    A tier carrying an armed boost is collected as ``GESTURE``: every boost is
+    armed by a person -- a refresh button, the refresh service, or a write that
+    asks for its own tier to be re-read -- and a person pressing refresh at
+    23:00 is not the automatic collection quiet hours hold back. It cannot
+    become a standing exemption either: the scheduler disarms a boost on the
+    first outcome, served, deferred or failed, and serves at most one per
+    interval. The price is stated rather than hidden: a boosted ``LOW`` tier is
+    shed at the daily cap like ``HIGH`` for that one collection.
     """
     if (
         not account.has_data(tier, student_id)
         and account.scheduler.failures(tier) < _FIRST_COLLECTION_ATTEMPTS
     ):
         return Priority.CRITICAL
+    if str(tier) in account.scheduler.boosted_tiers():
+        return Priority.GESTURE
     return TIER_PRIORITY[tier]
 
 

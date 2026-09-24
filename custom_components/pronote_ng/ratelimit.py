@@ -81,6 +81,7 @@ from .const import (
     DEFAULT_QUIET_END,
     DEFAULT_QUIET_HOURS_ENABLED,
     DEFAULT_QUIET_START,
+    QUIET_HOURS_EXEMPT,
     LimiterState,
     Priority,
 )
@@ -96,6 +97,7 @@ T = TypeVar("T")
 #: (annexe B §2.4). The order of sacrifice is decided, not arbitrary.
 _SHED_THRESHOLD: Final[dict[Priority, float]] = {
     Priority.CRITICAL: float("inf"),  # never shed -- see the module docstring
+    Priority.GESTURE: 1.0,  # quiet hours differ, the budget does not
     Priority.HIGH: 1.0,
     Priority.NORMAL: 0.8,
     Priority.LOW: 0.6,
@@ -923,7 +925,7 @@ class RateLimiter:
             )
 
         if (
-            priority is not Priority.CRITICAL
+            priority not in QUIET_HOURS_EXEMPT
             and self._in_quiet_hours()
             and not self._batch_may_finish()
         ):

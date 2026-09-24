@@ -667,11 +667,11 @@ class TestHowARefusalIsAnswered:
     ) -> None:
         """Observed, not read off the source.
 
-        `services.py` runs human-initiated calls at `HIGH`, and a click is one:
-        somebody is waiting, so it should outrank a routine collection once the
-        daily cap starts shedding. It is deliberately **not** `CRITICAL`, the
-        only priority that crosses quiet hours, which is reserved for a tier
-        that has never collected at all.
+        A click is a gesture, like every human-initiated call in `services.py`:
+        somebody is waiting, so it crosses quiet hours and is shed at the cap
+        like `HIGH`. It is deliberately **not** `CRITICAL`, which is never shed
+        at all and is reserved for the login and a tier that has never
+        collected.
         """
         del hass
         from custom_components.pronote_ng.attachment import _fetch
@@ -688,17 +688,41 @@ class TestHowARefusalIsAnswered:
         with patch.object(account.extras.session, "run", spy):
             await _fetch(account, document, CHILDREN[0][0])
 
-        assert seen == [Priority.HIGH]
+        assert seen == [Priority.GESTURE]
+
+    async def test_a_document_opens_during_quiet_hours(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The defect a parent hit at 22:30: "deferred by the rate limiter".
+
+        Through the real limiter, with only the clock's verdict forced. The
+        control half is what makes the first half mean anything: a ``HIGH``
+        call on the same limiter in the same instant is still refused, so the
+        window really is closed and the click is what crosses it.
+        """
+        del hass
+        from custom_components.pronote_ng.attachment import _fetch
+        from custom_components.pronote_ng.const import Priority
+        from custom_components.pronote_ng.ratelimit import DeferReason
+
+        _print, document = self._document(account)
+
+        with patch.object(account.limiter, "_in_quiet_hours", return_value=True):
+            refused = account.limiter.check("marks", Priority.HIGH)
+            content, _content_type = await _fetch(account, document, CHILDREN[0][0])
+
+        assert refused.reason is DeferReason.QUIET_HOURS
+        assert content
 
     async def test_a_deferral_answers_with_the_limiters_own_delay(
         self, hass: HomeAssistant, account: PronoteAccount
     ) -> None:
         """A hard-coded minute would invite a client to retry all night.
 
-        Quiet hours defer for hours, not for a minute, and this endpoint is
-        reachable by a browser that honours `Retry-After`. Sending the
-        limiter's own figure is what keeps an automatic retry from hammering a
-        school server between 22:00 and 06:00.
+        The daily cap defers until midnight, not for a minute, and this
+        endpoint is reachable by a browser that honours `Retry-After`. Sending
+        the limiter's own figure is what keeps an automatic retry from
+        hammering a school server that has already been asked enough today.
         """
         from custom_components.pronote_ng.attachment import PronoteAttachmentView
         from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
@@ -708,7 +732,7 @@ class TestHowARefusalIsAnswered:
 
         with patch(
             "custom_components.pronote_ng.attachment._fetch",
-            side_effect=TierDeferred(DeferReason.QUIET_HOURS, 7200.0),
+            side_effect=TierDeferred(DeferReason.DAILY_CAP, 7200.0),
         ):
             response = await PronoteAttachmentView().get(
                 request,  # type: ignore[arg-type]

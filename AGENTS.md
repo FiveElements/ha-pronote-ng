@@ -282,9 +282,18 @@ standing exemption, became the only tier awake at night, and turned one broken
 page into an account-wide `backoff`. The dispensation is also not a budget
 dispensation: the daily request cap and the cap of `max_logins_per_day` still
 apply, so a midnight restart spends a login and one full round out of the day's
-allowance. And it says nothing about *on-demand* calls — `services.py`, the
-buttons and the attachment view all use `Priority.HIGH`, which quiet hours
-refuse; only a collection that has never happened is exempt.
+allowance.
+
+On-demand calls have their own exemption, `Priority.GESTURE`, and it is the
+only other one. Services, the to-do tick, the attachment relay and the
+collection a refresh button arms (`_priority_for` returns it for a boosted
+tier) all run at it; `QUIET_HOURS_EXEMPT` in `const.py` is the single list both
+limiters read. Quiet hours hold back what a timer starts, not what a person
+asks for — the owner's words: a parent must be able to open their child's
+homework at night. `GESTURE` is shed at the daily cap exactly like `HIGH`, and
+a boost is disarmed on its first outcome, so it cannot become a standing
+exemption. Consequence worth stating: an automation calling a service at night
+counts as a gesture.
 
 ### The design objective, and what it implies
 
@@ -313,8 +322,8 @@ several choices that otherwise look redundant:
   there is one implementation of "is it a school day", and the automation trace
   shows the service call that really happened.
 - `button.py` presses raise tier priority and wake the tick; they never call
-  PRONOTE and get no dispensation from the limiter, so ten impatient presses
-  cost one batch.
+  PRONOTE themselves, so ten impatient presses cost one batch. The collection
+  they arm runs as `GESTURE` — through quiet hours, never past the cap.
 
 ### Secrets by construction, not by redaction
 

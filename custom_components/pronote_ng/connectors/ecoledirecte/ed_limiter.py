@@ -8,7 +8,7 @@ import random
 import time
 from typing import TYPE_CHECKING, Final, TypeVar
 
-from ...const import LimiterState, Priority  # noqa: TID252
+from ...const import QUIET_HOURS_EXEMPT, LimiterState, Priority  # noqa: TID252
 from ...ratelimit import (  # noqa: TID252
     CAP_WARNING_FRACTION,
     DeferReason,
@@ -30,6 +30,7 @@ ED_LOGIN_COST_KEY: Final = "login"
 _SECONDS_PER_HOUR: Final = 3600.0
 _SHED_THRESHOLD: Final = {
     Priority.CRITICAL: float("inf"),
+    Priority.GESTURE: 1.0,
     Priority.HIGH: 1.0,
     Priority.NORMAL: CAP_WARNING_FRACTION,
     Priority.LOW: 0.6,
@@ -277,7 +278,7 @@ class EdRateLimiter:
                 reason=self._hold_reason or DeferReason.BACKOFF,
             )
         if (
-            priority is not Priority.CRITICAL
+            priority not in QUIET_HOURS_EXEMPT
             and self._in_quiet_hours()
             and not self._batch_may_finish()
         ):
