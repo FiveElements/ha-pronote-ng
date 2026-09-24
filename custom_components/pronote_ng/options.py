@@ -145,7 +145,7 @@ def _as_time(raw: Any, fallback: str) -> time:
         return raw
     try:
         return time.fromisoformat(str(raw))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return time.fromisoformat(fallback)
 
 
@@ -172,7 +172,7 @@ def bounded_option(
     """
     try:
         value = float(options.get(key, default))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
     if bounds is None:
         bounds = OPTION_RANGES.get(key)

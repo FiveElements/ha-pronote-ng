@@ -315,7 +315,7 @@ def _log_identification(
     """
     try:
         data = response["dataSec"]["data"]
-    except (KeyError, TypeError):
+    except KeyError, TypeError:
         _LOGGER.debug("the identification response had no data section")
         return
 

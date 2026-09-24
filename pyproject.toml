@@ -81,6 +81,8 @@ ignore = [
 # Tests may assert on private helpers, use asserts, and hardcode fake secrets.
 # FBT001/FBT002: pytest passes parametrised values positionally, so a boolean
 # expectation column is unavoidable and harmless.
+# PLR0917: pytest injects fixtures by name, so a test's positional-argument
+# count is the number of fixtures it needs, not a call site anyone can misorder.
 "tests/*" = [
   "S101",
   "SLF001",
@@ -92,6 +94,7 @@ ignore = [
   "S106",
   "FBT001",
   "FBT002",
+  "PLR0917",
 ]
 # The gateway is the one place allowed to reach into pronotepy internals; that
 # is the whole point of concentrating the upstream surface in a single file

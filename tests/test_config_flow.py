@@ -22,6 +22,7 @@ framework rather than in the handler.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import Iterator  # noqa: TC003 -- a pytest fixture annotation
 import json
@@ -990,8 +991,9 @@ async def test_the_first_screen_supplies_every_placeholder_its_text_uses(
     the flow supplies each one, rather than asserting a hard-coded name.
     """
     strings = json.loads(
-        (pathlib.Path("custom_components/pronote_ng/strings.json")).read_text(
-            encoding="utf-8"
+        await asyncio.to_thread(
+            pathlib.Path("custom_components/pronote_ng/strings.json").read_text,
+            encoding="utf-8",
         )
     )
     description = strings["config"]["step"]["user"]["description"]

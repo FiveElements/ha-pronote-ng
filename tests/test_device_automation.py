@@ -429,9 +429,9 @@ async def test_a_refresh_action_calls_the_matching_service(
     calls: list[Any] = []
     hass.bus.async_listen(
         "call_service",
-        lambda event: calls.append(event.data)
-        if event.data.get("domain") == DOMAIN
-        else None,
+        lambda event: (
+            calls.append(event.data) if event.data.get("domain") == DOMAIN else None
+        ),
     )
 
     await async_call_action_from_config(
@@ -541,9 +541,9 @@ async def test_a_write_action_carries_its_identifier_into_the_service_call(
     calls: list[Any] = []
     hass.bus.async_listen(
         "call_service",
-        lambda event: calls.append(event.data)
-        if event.data.get("domain") == DOMAIN
-        else None,
+        lambda event: (
+            calls.append(event.data) if event.data.get("domain") == DOMAIN else None
+        ),
     )
 
     await async_call_action_from_config(

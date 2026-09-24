@@ -1905,10 +1905,10 @@ class PronoteLimiterSensor(LocallyPolledMixin, PronoteAccountEntity, SensorEntit
         self._key = key
         if key in ("last_collection", "next_collection"):
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
-        elif key in ("session_age",):
+        elif key == "session_age":
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
             self._attr_state_class = SensorStateClass.MEASUREMENT
-        elif key in ("session_lifetime",):
+        elif key == "session_lifetime":
             self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
             self._attr_state_class = SensorStateClass.MEASUREMENT
         elif key == "limiter_state":

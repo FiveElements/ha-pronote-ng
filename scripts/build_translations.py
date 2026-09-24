@@ -651,80 +651,108 @@ GENERAL_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "master_tick",
         "Heartbeat interval",
         "Intervalle du battement",
-        "How often the integration checks which tiers are due. Not how often "
-        "it calls PRONOTE.",
-        "Fréquence à laquelle l'intégration regarde quels paliers sont dus. "
-        "Ce n'est pas la fréquence des appels à PRONOTE.",
+        (
+            "How often the integration checks which tiers are due. Not how often "
+            "it calls PRONOTE."
+        ),
+        (
+            "Fréquence à laquelle l'intégration regarde quels paliers sont dus. "
+            "Ce n'est pas la fréquence des appels à PRONOTE."
+        ),
     ),
     (
         "homework_horizon",
         "Homework horizon",
         "Horizon des devoirs",
-        "How many days of homework to display. This does not change the "
-        "number of requests: PRONOTE returns a week range either way.",
-        "Nombre de jours de devoirs affichés. Cela ne change pas le nombre "
-        "d'appels : PRONOTE renvoie une plage de semaines dans tous les cas.",
+        (
+            "How many days of homework to display. This does not change the "
+            "number of requests: PRONOTE returns a week range either way."
+        ),
+        (
+            "Nombre de jours de devoirs affichés. Cela ne change pas le nombre "
+            "d'appels : PRONOTE renvoie une plage de semaines dans tous les cas."
+        ),
     ),
     (
         "wake_margin",
         "Wake-up margin",
         "Marge de réveil",
-        "Minutes subtracted from the first lesson of the day to produce the "
-        "wake-up sensor.",
-        "Minutes retirées au premier cours de la journée pour calculer le "
-        "capteur de réveil.",
+        (
+            "Minutes subtracted from the first lesson of the day to produce the "
+            "wake-up sensor."
+        ),
+        (
+            "Minutes retirées au premier cours de la journée pour calculer le "
+            "capteur de réveil."
+        ),
     ),
     (
         "stale_after",
         "Mark data stale after",
         "Marquer périmé après",
-        "Multiples of a tier's interval after which its entities are marked "
-        "stale. They keep their last value rather than going unavailable, "
-        "because an entity that flickers unavailable fires automations "
-        "spuriously.",
-        "Multiples de l'intervalle d'un palier au-delà desquels ses entités "
-        "sont marquées périmées. Elles conservent leur dernière valeur au "
-        "lieu de devenir indisponibles : une entité qui clignote en "
-        "indisponible déclenche des automatisations à tort.",
+        (
+            "Multiples of a tier's interval after which its entities are marked "
+            "stale. They keep their last value rather than going unavailable, "
+            "because an entity that flickers unavailable fires automations "
+            "spuriously."
+        ),
+        (
+            "Multiples de l'intervalle d'un palier au-delà desquels ses entités "
+            "sont marquées périmées. Elles conservent leur dernière valeur au "
+            "lieu de devenir indisponibles : une entité qui clignote en "
+            "indisponible déclenche des automatisations à tort."
+        ),
     ),
     (
         "establishment_timezone",
         "Establishment timezone",
         "Fuseau de l'établissement",
-        "PRONOTE returns local times with no timezone. This is the timezone "
-        "they are interpreted in. Leave it empty to follow Home Assistant's "
-        "own timezone, which is what you want unless the establishment is in "
-        "a different one from you. Written as Region/City, for example "
-        "Europe/Paris.",
-        "PRONOTE renvoie des heures locales sans fuseau. C'est le fuseau dans "
-        "lequel elles sont interprétées. Laissez la case vide pour suivre le "
-        "fuseau de Home Assistant, ce qui est le bon choix sauf si "
-        "l'établissement est dans un autre fuseau que vous. S'écrit "
-        "Région/Ville, par exemple Europe/Paris.",
+        (
+            "PRONOTE returns local times with no timezone. This is the timezone "
+            "they are interpreted in. Leave it empty to follow Home Assistant's "
+            "own timezone, which is what you want unless the establishment is in "
+            "a different one from you. Written as Region/City, for example "
+            "Europe/Paris."
+        ),
+        (
+            "PRONOTE renvoie des heures locales sans fuseau. C'est le fuseau dans "
+            "lequel elles sont interprétées. Laissez la case vide pour suivre le "
+            "fuseau de Home Assistant, ce qui est le bon choix sauf si "
+            "l'établissement est dans un autre fuseau que vous. S'écrit "
+            "Région/Ville, par exemple Europe/Paris."
+        ),
     ),
     (
         "session_strategy",
         "Session strategy",
         "Stratégie de session",
-        "Whether to keep one session alive between collections (lazy) or open "
-        "a new one for each batch. Lazy starts cautious and switches by "
-        "itself if the server turns out to expire sessions quickly, so it is "
-        "never worse than the alternative.",
-        "Conserver une session entre les collectes (lazy) ou en ouvrir une "
-        "par lot. Le mode lazy démarre prudemment et basculera de lui-même si "
-        "le serveur expire vite les sessions : il n'est jamais moins bon que "
-        "l'autre.",
+        (
+            "Whether to keep one session alive between collections (lazy) or open "
+            "a new one for each batch. Lazy starts cautious and switches by "
+            "itself if the server turns out to expire sessions quickly, so it is "
+            "never worse than the alternative."
+        ),
+        (
+            "Conserver une session entre les collectes (lazy) ou en ouvrir une "
+            "par lot. Le mode lazy démarre prudemment et basculera de lui-même si "
+            "le serveur expire vite les sessions : il n'est jamais moins bon que "
+            "l'autre."
+        ),
     ),
     (
         "write_operations_enabled",
         "Allow writing to PRONOTE",
         "Autoriser l'écriture dans PRONOTE",
-        "Off by default. When on, ticking a homework item, marking news read "
-        "and sending messages become possible, and the establishment sees "
-        "those actions.",
-        "Désactivé par défaut. Une fois activé, cocher un devoir, marquer une "
-        "actualité comme lue et envoyer des messages deviennent possibles, et "
-        "l'établissement voit ces actions.",
+        (
+            "Off by default. When on, ticking a homework item, marking news read "
+            "and sending messages become possible, and the establishment sees "
+            "those actions."
+        ),
+        (
+            "Désactivé par défaut. Une fois activé, cocher un devoir, marquer une "
+            "actualité comme lue et envoyer des messages deviennent possibles, et "
+            "l'établissement voit ces actions."
+        ),
     ),
 ]
 
@@ -748,27 +776,37 @@ RATE_LIMIT_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "Burst size",
         "Taille de la rafale",
         "How many requests may go out back to back before the hourly rate applies.",
-        "Nombre d'appels pouvant partir d'affilée avant que le débit horaire "
-        "s'applique.",
+        (
+            "Nombre d'appels pouvant partir d'affilée avant que le débit horaire "
+            "s'applique."
+        ),
     ),
     (
         "max_requests_per_day",
         "Requests per day",
         "Appels par jour",
-        "Hard ceiling. Low-priority tiers stop being served well before it is "
-        "reached, so the cap protects the account rather than surprising you.",
-        "Plafond absolu. Les paliers de faible priorité cessent d'être servis "
-        "bien avant qu'il soit atteint : le plafond protège le compte au lieu "
-        "de vous surprendre.",
+        (
+            "Hard ceiling. Low-priority tiers stop being served well before it is "
+            "reached, so the cap protects the account rather than surprising you."
+        ),
+        (
+            "Plafond absolu. Les paliers de faible priorité cessent d'être servis "
+            "bien avant qu'il soit atteint : le plafond protège le compte au lieu "
+            "de vous surprendre."
+        ),
     ),
     (
         "max_wait",
         "Maximum wait before postponing",
         "Attente maximale avant report",
-        "If a tier would have to wait longer than this for its budget, it is "
-        "postponed instead. Its entities keep their values.",
-        "Si un palier devait attendre plus longtemps que cela pour son budget, "
-        "il est reporté. Ses entités conservent leurs valeurs.",
+        (
+            "If a tier would have to wait longer than this for its budget, it is "
+            "postponed instead. Its entities keep their values."
+        ),
+        (
+            "Si un palier devait attendre plus longtemps que cela pour son budget, "
+            "il est reporté. Ses entités conservent leurs valeurs."
+        ),
     ),
     (
         "max_logins_per_day",
@@ -781,40 +819,56 @@ RATE_LIMIT_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "max_failed_logins_per_hour",
         "Failed logins before pausing",
         "Échecs de connexion avant pause",
-        "The single most important setting here. PRONOTE sanctions repeated "
-        "failed logins by blocking the address, and that sanction is "
-        "undocumented and costly. Keep this low.",
-        "Le réglage le plus important de cette page. PRONOTE sanctionne les "
-        "échecs de connexion répétés en bloquant l'adresse, et cette sanction "
-        "n'est pas documentée et coûte cher. Gardez une valeur basse.",
+        (
+            "The single most important setting here. PRONOTE sanctions repeated "
+            "failed logins by blocking the address, and that sanction is "
+            "undocumented and costly. Keep this low."
+        ),
+        (
+            "Le réglage le plus important de cette page. PRONOTE sanctionne les "
+            "échecs de connexion répétés en bloquant l'adresse, et cette sanction "
+            "n'est pas documentée et coûte cher. Gardez une valeur basse."
+        ),
     ),
     (
         "credentials_hold",
         "Pause after too many failures",
         "Pause après trop d'échecs",
-        "How long to stop trying once the failed-login limit is reached. A "
-        "manual reconnection clears it immediately.",
-        "Durée pendant laquelle on arrête d'essayer une fois la limite "
-        "atteinte. Une reconnexion manuelle la lève immédiatement.",
+        (
+            "How long to stop trying once the failed-login limit is reached. A "
+            "manual reconnection clears it immediately."
+        ),
+        (
+            "Durée pendant laquelle on arrête d'essayer une fois la limite "
+            "atteinte. Une reconnexion manuelle la lève immédiatement."
+        ),
     ),
     (
         "bootstrap_hold",
         "Pause when the session page is unreadable",
         "Pause si la page de session est illisible",
-        "Applied when the address answers without a PRONOTE session page. The "
-        "cause is not knowable from the response, so no cause is claimed.",
-        "Appliquée quand l'adresse répond sans page de session PRONOTE. La "
-        "cause n'est pas déductible de la réponse : aucune cause n'est donc "
-        "affirmée.",
+        (
+            "Applied when the address answers without a PRONOTE session page. The "
+            "cause is not knowable from the response, so no cause is claimed."
+        ),
+        (
+            "Appliquée quand l'adresse répond sans page de session PRONOTE. La "
+            "cause n'est pas déductible de la réponse : aucune cause n'est donc "
+            "affirmée."
+        ),
     ),
     (
         "backoff_base",
         "Backoff base",
         "Base de la temporisation",
-        "First wait after a server error. It doubles at each consecutive "
-        "failure, with jitter.",
-        "Première attente après une erreur serveur. Elle double à chaque échec "
-        "consécutif, avec une part d'aléatoire.",
+        (
+            "First wait after a server error. It doubles at each consecutive "
+            "failure, with jitter."
+        ),
+        (
+            "Première attente après une erreur serveur. Elle double à chaque échec "
+            "consécutif, avec une part d'aléatoire."
+        ),
     ),
     (
         "backoff_max",
@@ -827,10 +881,14 @@ RATE_LIMIT_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "connect_timeout",
         "Connection timeout",
         "Délai de connexion",
-        "The upstream library sets no timeout at all, so this is applied by "
-        "this integration.",
-        "La bibliothèque amont ne fixe aucun délai : celui-ci est appliqué par "
-        "cette intégration.",
+        (
+            "The upstream library sets no timeout at all, so this is applied by "
+            "this integration."
+        ),
+        (
+            "La bibliothèque amont ne fixe aucun délai : celui-ci est appliqué par "
+            "cette intégration."
+        ),
     ),
     (
         "read_timeout",
@@ -843,10 +901,14 @@ RATE_LIMIT_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "quiet_hours_enabled",
         "Quiet hours",
         "Heures calmes",
-        "Stop collecting overnight. Roughly a third of the daily budget, spent "
-        "on data nobody reads while asleep.",
-        "Arrêter de collecter la nuit. C'est environ un tiers du budget "
-        "quotidien, dépensé sur des données que personne ne lit en dormant.",
+        (
+            "Stop collecting overnight. Roughly a third of the daily budget, spent "
+            "on data nobody reads while asleep."
+        ),
+        (
+            "Arrêter de collecter la nuit. C'est environ un tiers du budget "
+            "quotidien, dépensé sur des données que personne ne lit en dormant."
+        ),
     ),
     (
         "quiet_start",
@@ -1008,10 +1070,14 @@ SERVICES: list[dict[str, Any]] = [
                 "recipients",
                 "Recipients",
                 "Destinataires",
-                "Names as PRONOTE publishes them. An unmatched name is "
-                "refused rather than silently dropped.",
-                "Noms tels que PRONOTE les publie. Un nom non trouvé est "
-                "refusé plutôt qu'ignoré silencieusement.",
+                (
+                    "Names as PRONOTE publishes them. An unmatched name is "
+                    "refused rather than silently dropped."
+                ),
+                (
+                    "Noms tels que PRONOTE les publie. Un nom non trouvé est "
+                    "refusé plutôt qu'ignoré silencieusement."
+                ),
             ),
         ],
     },
@@ -1080,18 +1146,26 @@ SERVICES: list[dict[str, Any]] = [
 EXCEPTIONS: list[tuple[str, str, str]] = [
     (
         "writes_disabled",
-        "Writing to PRONOTE is disabled. Turn on “Allow writing to "
-        "PRONOTE” in the integration options first.",
-        "L'écriture dans PRONOTE est désactivée. Activez d'abord "
-        "« Autoriser l'écriture dans PRONOTE » dans les options de "
-        "l'intégration.",
+        (
+            "Writing to PRONOTE is disabled. Turn on “Allow writing to "
+            "PRONOTE” in the integration options first."
+        ),
+        (
+            "L'écriture dans PRONOTE est désactivée. Activez d'abord "
+            "« Autoriser l'écriture dans PRONOTE » dans les options de "
+            "l'intégration."
+        ),
     ),
     (
         "service_deferred",
-        "Postponed by the rate limiter ({reason}). Try again in about "
-        "{seconds} seconds.",
-        "Reporté par le limiteur ({reason}). Réessayez dans environ {seconds} "
-        "secondes.",
+        (
+            "Postponed by the rate limiter ({reason}). Try again in about "
+            "{seconds} seconds."
+        ),
+        (
+            "Reporté par le limiteur ({reason}). Réessayez dans environ {seconds} "
+            "secondes."
+        ),
     ),
     (
         "unknown_device",
@@ -1105,23 +1179,33 @@ EXCEPTIONS: list[tuple[str, str, str]] = [
     ),
     (
         "student_required",
-        "This account follows several children ({children}). Target the "
-        "child's device rather than the account.",
-        "Ce compte suit plusieurs enfants ({children}). Ciblez l'appareil de "
-        "l'enfant plutôt que celui du compte.",
+        (
+            "This account follows several children ({children}). Target the "
+            "child's device rather than the account."
+        ),
+        (
+            "Ce compte suit plusieurs enfants ({children}). Ciblez l'appareil de "
+            "l'enfant plutôt que celui du compte."
+        ),
     ),
     (
         "attachment_not_collected",
         "Homework has not been collected for this child yet. Try again in a moment.",
-        "Les devoirs de cet enfant n'ont pas encore été collectés. Réessayez "
-        "dans un instant.",
+        (
+            "Les devoirs de cet enfant n'ont pas encore été collectés. Réessayez "
+            "dans un instant."
+        ),
     ),
     (
         "attachment_unknown",
-        "No homework file with this key is known for this child. Refresh the "
-        "dashboard: the homework may have changed.",
-        "Aucun fichier de devoir ne correspond à cette clé pour cet enfant. "
-        "Rafraîchissez le tableau de bord : le devoir a peut-être changé.",
+        (
+            "No homework file with this key is known for this child. Refresh the "
+            "dashboard: the homework may have changed."
+        ),
+        (
+            "Aucun fichier de devoir ne correspond à cette clé pour cet enfant. "
+            "Rafraîchissez le tableau de bord : le devoir a peut-être changé."
+        ),
     ),
     (
         "subject_required",
@@ -1131,8 +1215,10 @@ EXCEPTIONS: list[tuple[str, str, str]] = [
     (
         "discussion_not_found",
         "No discussion with identifier {discussion_id} is visible to this account.",
-        "Aucune discussion avec l'identifiant {discussion_id} n'est visible "
-        "depuis ce compte.",
+        (
+            "Aucune discussion avec l'identifiant {discussion_id} n'est visible "
+            "depuis ce compte."
+        ),
     ),
     (
         "discussion_closed",
@@ -1142,14 +1228,18 @@ EXCEPTIONS: list[tuple[str, str, str]] = [
     (
         "recipient_not_found",
         "Unknown recipients: {missing}. Reachable recipients are: {available}.",
-        "Destinataires inconnus : {missing}. Les destinataires joignables "
-        "sont : {available}.",
+        (
+            "Destinataires inconnus : {missing}. Les destinataires joignables "
+            "sont : {available}."
+        ),
     ),
     (
         "todo_item_unknown",
         "That to-do item has no PRONOTE identifier, so it cannot be updated.",
-        "Cet élément de liste n'a pas d'identifiant PRONOTE : il ne peut pas "
-        "être mis à jour.",
+        (
+            "Cet élément de liste n'a pas d'identifiant PRONOTE : il ne peut pas "
+            "être mis à jour."
+        ),
     ),
 ]
 
@@ -1163,69 +1253,89 @@ ISSUES: list[tuple[str, str, str, str, str]] = [
         "account_unreadable",
         "PRONOTE answered something this integration cannot read",
         "PRONOTE a répondu quelque chose d'illisible",
-        "The address {url} and the credentials are both fine: PRONOTE "
-        "answered, and the answer is outside what the pinned pronotepy "
-        "version can decode. This usually means the establishment's PRONOTE "
-        "changed something. There is nothing to correct on your side -- "
-        "please report it, ideally with the integration's diagnostics "
-        "attached.",
-        "L'adresse {url} et les identifiants sont corrects : PRONOTE a "
-        "répondu, mais sa réponse sort de ce que la version épinglée de "
-        "pronotepy sait décoder. Cela signifie généralement que le PRONOTE de "
-        "l'établissement a changé. Il n'y a rien à corriger de votre côté : "
-        "merci de le signaler, si possible avec le diagnostic de "
-        "l'intégration.",
+        (
+            "The address {url} and the credentials are both fine: PRONOTE "
+            "answered, and the answer is outside what the pinned pronotepy "
+            "version can decode. This usually means the establishment's PRONOTE "
+            "changed something. There is nothing to correct on your side -- "
+            "please report it, ideally with the integration's diagnostics "
+            "attached."
+        ),
+        (
+            "L'adresse {url} et les identifiants sont corrects : PRONOTE a "
+            "répondu, mais sa réponse sort de ce que la version épinglée de "
+            "pronotepy sait décoder. Cela signifie généralement que le PRONOTE de "
+            "l'établissement a changé. Il n'y a rien à corriger de votre côté : "
+            "merci de le signaler, si possible avec le diagnostic de "
+            "l'intégration."
+        ),
     ),
     (
         "invalid_credentials",
         "PRONOTE credentials refused",
         "Identifiants PRONOTE refusés",
-        "PRONOTE refused the credentials {attempts} times, so attempts have "
-        "been paused until {until}. Repeatedly retrying a wrong password is "
-        "what gets an address blocked. Reconfigure the integration to enter "
-        "corrected credentials.",
-        "PRONOTE a refusé les identifiants {attempts} fois : les tentatives "
-        "sont suspendues jusqu'à {until}. Réessayer en boucle un mot de passe "
-        "erroné est précisément ce qui fait bloquer une adresse. "
-        "Reconfigurez l'intégration pour saisir des identifiants corrigés.",
+        (
+            "PRONOTE refused the credentials {attempts} times, so attempts have "
+            "been paused until {until}. Repeatedly retrying a wrong password is "
+            "what gets an address blocked. Reconfigure the integration to enter "
+            "corrected credentials."
+        ),
+        (
+            "PRONOTE a refusé les identifiants {attempts} fois : les tentatives "
+            "sont suspendues jusqu'à {until}. Réessayer en boucle un mot de passe "
+            "erroné est précisément ce qui fait bloquer une adresse. "
+            "Reconfigurez l'intégration pour saisir des identifiants corrigés."
+        ),
     ),
     (
         "bootstrap_failed",
         "Cannot read the PRONOTE session page",
         "Page de session PRONOTE illisible",
-        "{url} answered, but the response contained no PRONOTE session block. "
-        "This can mean the address is wrong, the space is closed for "
-        "maintenance, the establishment changed its URL, or the server is "
-        "returning an error page. The response does not say which, so no "
-        "cause is claimed here. Retrying automatically until {until}.",
-        "{url} a répondu, mais la réponse ne contenait aucun bloc de session "
-        "PRONOTE. Cela peut signifier que l'adresse est erronée, que l'espace "
-        "est fermé pour maintenance, que l'établissement a changé son URL, ou "
-        "que le serveur renvoie une page d'erreur. La réponse ne permet pas de "
-        "trancher : aucune cause n'est donc affirmée ici. Nouvelle tentative "
-        "automatique jusqu'à {until}.",
+        (
+            "{url} answered, but the response contained no PRONOTE session block. "
+            "This can mean the address is wrong, the space is closed for "
+            "maintenance, the establishment changed its URL, or the server is "
+            "returning an error page. The response does not say which, so no "
+            "cause is claimed here. Retrying automatically until {until}."
+        ),
+        (
+            "{url} a répondu, mais la réponse ne contenait aucun bloc de session "
+            "PRONOTE. Cela peut signifier que l'adresse est erronée, que l'espace "
+            "est fermé pour maintenance, que l'établissement a changé son URL, ou "
+            "que le serveur renvoie une page d'erreur. La réponse ne permet pas de "
+            "trancher : aucune cause n'est donc affirmée ici. Nouvelle tentative "
+            "automatique jusqu'à {until}."
+        ),
     ),
     (
         "daily_cap_near",
         "Approaching the daily request limit",
         "Plafond d'appels quotidien bientôt atteint",
-        "{calls} of {cap} requests used today. Low-priority categories are "
-        "already being postponed. Lengthening the intervals of the categories "
-        "you care least about in the options is the usual fix.",
-        "{calls} appels sur {cap} utilisés aujourd'hui. Les catégories de "
-        "faible priorité sont déjà reportées. Allonger les intervalles des "
-        "catégories qui vous importent le moins dans les options est le "
-        "réglage habituel.",
+        (
+            "{calls} of {cap} requests used today. Low-priority categories are "
+            "already being postponed. Lengthening the intervals of the categories "
+            "you care least about in the options is the usual fix."
+        ),
+        (
+            "{calls} appels sur {cap} utilisés aujourd'hui. Les catégories de "
+            "faible priorité sont déjà reportées. Allonger les intervalles des "
+            "catégories qui vous importent le moins dans les options est le "
+            "réglage habituel."
+        ),
     ),
     (
         "mfa_required",
         "PRONOTE is asking for the two-factor PIN",
         "PRONOTE demande le code PIN à deux facteurs",
-        "This integration deliberately never stores the two-factor PIN, so it "
-        "has to be entered again. Reconfigure the integration to supply it.",
-        "Cette intégration ne conserve délibérément jamais le code PIN à deux "
-        "facteurs : il doit donc être saisi à nouveau. Reconfigurez "
-        "l'intégration pour le fournir.",
+        (
+            "This integration deliberately never stores the two-factor PIN, so it "
+            "has to be entered again. Reconfigure the integration to supply it."
+        ),
+        (
+            "Cette intégration ne conserve délibérément jamais le code PIN à deux "
+            "facteurs : il doit donc être saisi à nouveau. Reconfigurez "
+            "l'intégration pour le fournir."
+        ),
     ),
 ]
 
@@ -1407,29 +1517,39 @@ def _options(index: int) -> dict[str, Any]:
 
     tiers_description = (
         "One interval per category. The estimate above updates when you save.",
-        "Un intervalle par catégorie. L'estimation ci-dessus se met à jour à "
-        "l'enregistrement.",
+        (
+            "Un intervalle par catégorie. L'estimation ci-dessus se met à jour à "
+            "l'enregistrement."
+        ),
     )[pick]
 
     limit_description = (
-        "These defaults were chosen to stay well inside what a PRONOTE server "
-        "tolerates. Raising them raises the risk of a sanction, which is borne "
-        "by the account, not by the integration.",
-        "Ces valeurs par défaut ont été choisies pour rester largement dans ce "
-        "qu'un serveur PRONOTE tolère. Les augmenter augmente le risque de "
-        "sanction, et cette sanction pèse sur le compte, pas sur "
-        "l'intégration.",
+        (
+            "These defaults were chosen to stay well inside what a PRONOTE server "
+            "tolerates. Raising them raises the risk of a sanction, which is borne "
+            "by the account, not by the integration."
+        ),
+        (
+            "Ces valeurs par défaut ont été choisies pour rester largement dans ce "
+            "qu'un serveur PRONOTE tolère. Les augmenter augmente le risque de "
+            "sanction, et cette sanction pèse sur le compte, pas sur "
+            "l'intégration."
+        ),
     )[pick]
 
     timezone_error = (
-        "Not a timezone this system knows. It is written Region/City -- "
-        "Europe/Paris, not Paris -- and it has to match the zone database "
-        "exactly. Leave the box empty to follow Home Assistant's own "
-        "timezone.",
-        "Ce n'est pas un fuseau connu de ce système. Il s'écrit Région/Ville "
-        "-- Europe/Paris, et non Paris -- et doit correspondre exactement à "
-        "la base des fuseaux. Laissez la case vide pour suivre le fuseau de "
-        "Home Assistant.",
+        (
+            "Not a timezone this system knows. It is written Region/City -- "
+            "Europe/Paris, not Paris -- and it has to match the zone database "
+            "exactly. Leave the box empty to follow Home Assistant's own "
+            "timezone."
+        ),
+        (
+            "Ce n'est pas un fuseau connu de ce système. Il s'écrit Région/Ville "
+            "-- Europe/Paris, et non Paris -- et doit correspondre exactement à "
+            "la base des fuseaux. Laissez la case vide pour suivre le fuseau de "
+            "Home Assistant."
+        ),
     )[pick]
 
     return {

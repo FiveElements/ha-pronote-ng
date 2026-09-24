@@ -272,7 +272,7 @@ def _establishment(client: HardenedClient) -> str | None:
     try:
         options = client.func_options["dataSec"]["data"]
         name = options["ressource"]["L"]
-    except (KeyError, TypeError):
+    except KeyError, TypeError:
         return None
     return str(name) if name else None
 

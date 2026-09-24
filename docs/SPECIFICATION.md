@@ -418,7 +418,7 @@ classes d'amont**, puis correspondance vers les DTO gelés :
 raw = client.post("DernieresNotes", 198, {"donnees": {"Periode": period_ref}})
 data = raw["dataSec"]["data"]
 return MarksSnapshot(
-    grades=tuple(_grade_dto(g) for g in _list(data, "listeDevoirs")),   # cf. §3.3.2
+    grades=tuple(_grade_dto(g) for g in _list(data, "listeDevoirs")),  # cf. §3.3.2
     averages=tuple(_dto(pronotepy.Average(a)) for a in _list(data, "listeServices")),
     overall_average=_grade_value(_get(data, "moyGenerale", "V")),
     class_overall_average=_grade_value(_get(data, "moyGeneraleClasse", "V")),
@@ -618,8 +618,8 @@ class Lesson:
     teachers: tuple[str, ...]
     classrooms: tuple[str, ...]
     groups: tuple[str, ...]
-    start: datetime          # conscient du fuseau
-    end: datetime            # conscient du fuseau
+    start: datetime  # conscient du fuseau
+    end: datetime  # conscient du fuseau
     canceled: bool
     status: str | None
     detention: bool
@@ -629,10 +629,10 @@ class Lesson:
     memo: str | None
     background_color: str | None
     virtual_classrooms: tuple[str, ...]
-    num: int                 # départage les entrées d'un même créneau : max gagne
-    place: int               # index de créneau brut, clé de dédoublonnage
-    duration: int            # en créneaux
-    end_inferred: bool       # True si end a été calculé, non fourni
+    num: int  # départage les entrées d'un même créneau : max gagne
+    place: int  # index de créneau brut, clé de dédoublonnage
+    duration: int  # en créneaux
+    end_inferred: bool  # True si end a été calculé, non fourni
 ```
 
 Deux champs demandent une justification.
@@ -698,7 +698,7 @@ numériques arrivent avec une **virgule** décimale.
 **Exigence.** Le DTO `Grade` porte deux champs mutuellement exclusifs :
 
 ```python
-value: float | None         # None dès que la note n'est pas numérique
+value: float | None  # None dès que la note n'est pas numérique
 status: GradeStatus | None  # énumération, None quand value est renseigné
 ```
 
@@ -1274,9 +1274,11 @@ constante.
 # const.py -- le seul endroit où la liste des noms est écrite.
 UNRECORDED_LIST_ATTRIBUTES: Final = frozenset({"items", "lessons", ...})
 
+
 # entity.py -- déclaré sur les bases, et sur chaque *frère* d'une base.
 class PronoteEntity(CoordinatorEntity["PronoteTierCoordinator"]):
     _unrecorded_attributes = frozenset({*UNRECORDED_LIST_ATTRIBUTES, "fetched_at"})
+
 
 # Une sous-classe hérite, et ne déclare rien.
 class PronoteListSensor(PronoteEntity, SensorEntity): ...
