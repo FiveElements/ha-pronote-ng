@@ -955,7 +955,7 @@ class SessionManager:
         """
         try:
             await self._executor.run(lambda: release_client(client))
-        except (TimeoutError, RuntimeError):
+        except TimeoutError, RuntimeError:
             _LOGGER.debug("could not release the PRONOTE client cleanly")
 
     async def close(self) -> None:

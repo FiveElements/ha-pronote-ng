@@ -366,8 +366,10 @@ def commit_message(release: Release, pinned: str, subjects: list[str] | None) ->
     body = [
         pull_request_title(release),
         "",
-        f"{PACKAGE} {release.version} was published on {date}; this repository "
-        f"pinned {pinned}.",
+        (
+            f"{PACKAGE} {release.version} was published on {date}; this repository "
+            f"pinned {pinned}."
+        ),
         "",
         f"Upstream commits between v{pinned} and v{release.version}:",
         "",
@@ -380,10 +382,12 @@ def commit_message(release: Release, pinned: str, subjects: list[str] | None) ->
         body += [f"  - {subject}" for subject in subjects]
     body += [
         "",
-        "Opened by .github/workflows/pronotepy-watch.yml. Raising this pin "
-        "requires re-reading every divergence documented in "
-        "hardened_client.py (CONTRIBUTING.md §5), which is a human's job, so "
-        "this is a proposal and not a merge.",
+        (
+            "Opened by .github/workflows/pronotepy-watch.yml. Raising this pin "
+            "requires re-reading every divergence documented in "
+            "hardened_client.py (CONTRIBUTING.md §5), which is a human's job, so "
+            "this is a proposal and not a merge."
+        ),
     ]
     return "\n".join(body) + "\n"
 
@@ -458,46 +462,60 @@ def pull_request_body(
     lines = [
         f"<!-- {MARKER} -->",
         "",
-        f"Cette *pull request* porte l'épingle `{PACKAGE}` de **{pinned}** à "
-        f"**{release.version}**, dans les deux déclarations qui doivent bouger "
-        f"ensemble : `{REQUIREMENTS_NAME}` (ce que la suite teste) et "
-        f"`{MANIFEST_NAME}` (ce que Home Assistant installe chez "
-        "l'utilisateur). Elle existe pour que la question « est-ce que ça "
-        "marche ? » soit répondue par `Validate` plutôt que par quelqu'un qui "
-        "reproduit l'installation à la main.",
+        (
+            f"Cette *pull request* porte l'épingle `{PACKAGE}` de **{pinned}** à "
+            f"**{release.version}**, dans les deux déclarations qui doivent bouger "
+            f"ensemble : `{REQUIREMENTS_NAME}` (ce que la suite teste) et "
+            f"`{MANIFEST_NAME}` (ce que Home Assistant installe chez "
+            "l'utilisateur). Elle existe pour que la question « est-ce que ça "
+            "marche ? » soit répondue par `Validate` plutôt que par quelqu'un qui "
+            "reproduit l'installation à la main."
+        ),
         "",
         *_evidence(release, pinned, subjects, repo),
         "",
         "## À faire avant de fusionner",
         "",
-        "- [ ] relire **chaque** divergence documentée dans "
-        "`custom_components/pronote_ng/hardened_client.py` : laquelle cette "
-        "version rend inutile, laquelle elle rend fausse (`CONTRIBUTING.md` §5)",
-        "- [ ] lire les sujets de commit ci-dessus, et pas seulement le numéro "
-        "de version",
-        "- [ ] `Validate` au vert sur les deux socles — le plancher épinglé et "
-        "la ligne flottante",
+        (
+            "- [ ] relire **chaque** divergence documentée dans "
+            "`custom_components/pronote_ng/hardened_client.py` : laquelle cette "
+            "version rend inutile, laquelle elle rend fausse (`CONTRIBUTING.md` §5)"
+        ),
+        (
+            "- [ ] lire les sujets de commit ci-dessus, et pas seulement le numéro "
+            "de version"
+        ),
+        (
+            "- [ ] `Validate` au vert sur les deux socles — le plancher épinglé et "
+            "la ligne flottante"
+        ),
         "- [ ] mettre à jour `docs/` si une divergence documentée disparaît",
         "",
-        "**Rien ici ne se fusionne tout seul.** Aucune fusion automatique n'est "
-        "activée, et ce n'est pas une précaution de forme : la relecture des "
-        "divergences ci-dessus est la seule chose qui distingue une montée de "
-        "version d'une régression silencieuse, et aucun portail ne peut la "
-        "faire à la place d'un humain.",
+        (
+            "**Rien ici ne se fusionne tout seul.** Aucune fusion automatique n'est "
+            "activée, et ce n'est pas une précaution de forme : la relecture des "
+            "divergences ci-dessus est la seule chose qui distingue une montée de "
+            "version d'une régression silencieuse, et aucun portail ne peut la "
+            "faire à la place d'un humain."
+        ),
         "",
-        "> Les vérifications ne démarrent pas d'elles-mêmes sur une *pull "
-        "request* ouverte par `GITHUB_TOKEN` : GitHub ne déclenche aucun "
-        "workflow à partir des évènements d'un jeton d'Actions, pour éviter "
-        "les boucles. Le job demande donc `Validate` explicitement sur la "
-        "branche (`workflow_dispatch`). Si aucun résultat n'apparaît, fermer "
-        "puis réouvrir cette *pull request* relance les portails.",
+        (
+            "> Les vérifications ne démarrent pas d'elles-mêmes sur une *pull "
+            "request* ouverte par `GITHUB_TOKEN` : GitHub ne déclenche aucun "
+            "workflow à partir des évènements d'un jeton d'Actions, pour éviter "
+            "les boucles. Le job demande donc `Validate` explicitement sur la "
+            "branche (`workflow_dispatch`). Si aucun résultat n'apparaît, fermer "
+            "puis réouvrir cette *pull request* relance les portails."
+        ),
         "",
         "---",
         "",
-        "Ouverte automatiquement par `.github/workflows/pronotepy-watch.yml`, "
-        "qui existe parce qu'une panne totale de connexion a coûté une matinée "
-        "alors que le correctif amont était publié depuis six jours, et que ce "
-        "qui a permis de conclure était un sujet de commit.",
+        (
+            "Ouverte automatiquement par `.github/workflows/pronotepy-watch.yml`, "
+            "qui existe parce qu'une panne totale de connexion a coûté une matinée "
+            "alors que le correctif amont était publié depuis six jours, et que ce "
+            "qui a permis de conclure était un sujet de commit."
+        ),
     ]
     return "\n".join(lines) + "\n"
 
@@ -527,13 +545,17 @@ def fallback_issue_body(
     lines = [
         f"<!-- {MARKER} -->",
         "",
-        f"`{PACKAGE}` **{release.version}** est publié ; ce dépôt épingle "
-        f"**{pinned}**.",
+        (
+            f"`{PACKAGE}` **{release.version}** est publié ; ce dépôt épingle "
+            f"**{pinned}**."
+        ),
         "",
-        "La *pull request* qui aurait porté l'épingle n'a pas pu être créée — "
-        "Actions n'a peut-être pas le droit d'ouvrir une *pull request* dans ce "
-        "dépôt, ou la poussée de branche a été refusée. Le rapport arrive donc "
-        "sous cette forme, et la montée de version est à faire à la main.",
+        (
+            "La *pull request* qui aurait porté l'épingle n'a pas pu être créée — "
+            "Actions n'a peut-être pas le droit d'ouvrir une *pull request* dans ce "
+            "dépôt, ou la poussée de branche a été refusée. Le rapport arrive donc "
+            "sous cette forme, et la montée de version est à faire à la main."
+        ),
         "",
         *_evidence(release, pinned, subjects, repo),
         "",
@@ -541,8 +563,10 @@ def fallback_issue_body(
         "",
         _REREAD_RULE,
         "",
-        f"Les deux déclarations bougent ensemble : `{REQUIREMENTS_NAME}` et "
-        f"`{MANIFEST_NAME}`.",
+        (
+            f"Les deux déclarations bougent ensemble : `{REQUIREMENTS_NAME}` et "
+            f"`{MANIFEST_NAME}`."
+        ),
         "",
         "---",
         "",

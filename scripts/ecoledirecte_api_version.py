@@ -228,7 +228,7 @@ def apiversion_from_archive(payload: bytes, filename: str) -> str | None:
             members = _python_members_from_tar(payload, filename)
         else:
             return None
-    except (OSError, tarfile.TarError, zipfile.BadZipFile, UnicodeError):
+    except OSError, tarfile.TarError, zipfile.BadZipFile, UnicodeError:
         return None
     return _unique_apiversion(members)
 
@@ -392,9 +392,11 @@ def _evidence(release: Release, pinned: str) -> list[str]:
         f"| `APIVERSION` amont | `{release.apiversion}`, lu le {date} |",
         f"| Source | {origin} |",
         "",
-        "Cette intégration **n'installe pas** le paquet `ecoledirecte`. "
-        "Le handshake est le nôtre (spécification connecteurs §7.1) ; on "
-        "ne copie que le numéro `v=` que l'amont a bougé.",
+        (
+            "Cette intégration **n'installe pas** le paquet `ecoledirecte`. "
+            "Le handshake est le nôtre (spécification connecteurs §7.1) ; on "
+            "ne copie que le numéro `v=` que l'amont a bougé."
+        ),
     ]
 
 
@@ -403,40 +405,54 @@ def pull_request_body(release: Release, pinned: str) -> str:
     lines = [
         f"<!-- {MARKER} -->",
         "",
-        f"Cette *pull request* porte `ECOLEDIRECTE_API_VERSION` de "
-        f"**{pinned}** à **{release.apiversion}** dans `{ED_CLIENT_NAME}`. "
-        "Elle existe parce qu'un 517 Aplim n'est pas un incident transitoire "
-        ": c'est cette constante en retard.",
+        (
+            f"Cette *pull request* porte `ECOLEDIRECTE_API_VERSION` de "
+            f"**{pinned}** à **{release.apiversion}** dans `{ED_CLIENT_NAME}`. "
+            "Elle existe parce qu'un 517 Aplim n'est pas un incident transitoire "
+            ": c'est cette constante en retard."
+        ),
         "",
         *_evidence(release, pinned),
         "",
         "## À faire avant de fusionner",
         "",
-        "- [ ] relire le handshake dans "
-        "`custom_components/pronote_ng/connectors/ecoledirecte/ed_client.py` "
-        ": une nouvelle `APIVERSION` peut accompagner un changement de "
-        "GTK, de corps de login ou de codes (250 / 520 / 525 / 517)",
-        "- [ ] `Validate` au vert — le job le demande explicitement, parce "
-        "qu'une *pull request* ouverte par `GITHUB_TOKEN` n'a pas de "
-        "contrôles d'elle-même",
-        "- [ ] ne pas ajouter le paquet PyPI `ecoledirecte` aux "
-        "dépendances (son `backoff` relog hors limiteur ; son DEBUG fuit "
-        "le jeton)",
+        (
+            "- [ ] relire le handshake dans "
+            "`custom_components/pronote_ng/connectors/ecoledirecte/ed_client.py` "
+            ": une nouvelle `APIVERSION` peut accompagner un changement de "
+            "GTK, de corps de login ou de codes (250 / 520 / 525 / 517)"
+        ),
+        (
+            "- [ ] `Validate` au vert — le job le demande explicitement, parce "
+            "qu'une *pull request* ouverte par `GITHUB_TOKEN` n'a pas de "
+            "contrôles d'elle-même"
+        ),
+        (
+            "- [ ] ne pas ajouter le paquet PyPI `ecoledirecte` aux "
+            "dépendances (son `backoff` relog hors limiteur ; son DEBUG fuit "
+            "le jeton)"
+        ),
         "",
-        "**Rien ici ne se fusionne tout seul.** Aucune fusion automatique "
-        "n'est activée.",
+        (
+            "**Rien ici ne se fusionne tout seul.** Aucune fusion automatique "
+            "n'est activée."
+        ),
         "",
-        "> Les vérifications ne démarrent pas d'elles-mêmes sur une *pull "
-        "request* ouverte par `GITHUB_TOKEN`. Le job demande `Validate` "
-        "explicitement (`workflow_dispatch`). Si aucun résultat "
-        "n'apparaît, fermer puis réouvrir cette *pull request* relance "
-        "les portails.",
+        (
+            "> Les vérifications ne démarrent pas d'elles-mêmes sur une *pull "
+            "request* ouverte par `GITHUB_TOKEN`. Le job demande `Validate` "
+            "explicitement (`workflow_dispatch`). Si aucun résultat "
+            "n'apparaît, fermer puis réouvrir cette *pull request* relance "
+            "les portails."
+        ),
         "",
         "---",
         "",
-        "Ouverte automatiquement par "
-        "`.github/workflows/ecoledirecte-watch.yml` (spécification "
-        "connecteurs §7.1).",
+        (
+            "Ouverte automatiquement par "
+            "`.github/workflows/ecoledirecte-watch.yml` (spécification "
+            "connecteurs §7.1)."
+        ),
     ]
     return "\n".join(lines) + "\n"
 
@@ -453,14 +469,18 @@ def fallback_issue_body(release: Release, pinned: str) -> str:
     lines = [
         f"<!-- {MARKER} -->",
         "",
-        f"L'amont publie `APIVERSION` **{release.apiversion}** ; ce dépôt "
-        f"envoie encore **{pinned}**.",
+        (
+            f"L'amont publie `APIVERSION` **{release.apiversion}** ; ce dépôt "
+            f"envoie encore **{pinned}**."
+        ),
         "",
-        "La *pull request* qui aurait porté la constante n'a pas pu être "
-        "créée — Actions n'a peut-être pas le droit d'ouvrir une *pull "
-        "request* dans ce dépôt, ou la poussée de branche a été refusée. "
-        "Le rapport arrive donc sous cette forme, et la mise à jour est à "
-        "faire à la main.",
+        (
+            "La *pull request* qui aurait porté la constante n'a pas pu être "
+            "créée — Actions n'a peut-être pas le droit d'ouvrir une *pull "
+            "request* dans ce dépôt, ou la poussée de branche a été refusée. "
+            "Le rapport arrive donc sous cette forme, et la mise à jour est à "
+            "faire à la main."
+        ),
         "",
         *_evidence(release, pinned),
         "",

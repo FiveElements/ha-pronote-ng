@@ -1094,7 +1094,7 @@ class PronoteAccount:
                 self.scheduler.mark_failed(tier, self.limiter.retry_delay())
                 _LOGGER.debug("authentication blocked tier %s: %s", tier, error)
                 return
-            except Exception as error:  # noqa: BLE001 -- top of one cycle (§5.3)
+            except Exception as error:  # top of one cycle (§5.3)
                 record.consecutive_failures += 1
                 coordinator.note_failure(error)
                 self.scheduler.mark_failed(tier, self.limiter.retry_delay())

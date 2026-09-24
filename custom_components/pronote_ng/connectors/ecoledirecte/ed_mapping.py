@@ -33,7 +33,7 @@ def _parse_fr_decimal(text: str) -> float | None:
     """Parse either French or dotted decimal notation."""
     try:
         return float(text.strip().replace(",", "."))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

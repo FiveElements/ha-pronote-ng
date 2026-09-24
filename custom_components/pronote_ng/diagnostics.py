@@ -212,7 +212,7 @@ def _student_id(device: Any, entry_id: str) -> str | None:
     for domain_identifier in getattr(device, "identifiers", ()):
         try:
             _domain, identifier = domain_identifier
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if not identifier.startswith(entry_id):
             continue
