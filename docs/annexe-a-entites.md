@@ -183,33 +183,57 @@ peut s'ajouter, aucun ne sera renommé sans annonce.
 
 **`items[]` de devoirs** — `id`, `subject`, `description` (HTML tel que PRONOTE
 l'envoie), `description_text` (le même énoncé en texte simple), `due`, `done`,
-**`background_color`**, `attachments[]`, **`attachment_links[]`**.
+**`background_color`**, `attachments[]`, `attachment_refs[]`,
+**`attachment_links[]`** (déprécié).
 
-**`attachments[]` et `attachment_links[]`** — deux projections d'un seul
-champ, et l'une ne remplace pas l'autre. `attachments[]` porte les **noms**
-des pièces jointes, toutes, sous forme de chaînes : un gabarit qui fait
-`| join(', ')` dessus continue de fonctionner. `attachment_links[]` répond à
-une autre question — lesquelles peut-on **ouvrir**, et à quelle adresse —
-sous forme d'objets `{ name, url }`.
+**`attachments[]`, `attachment_refs[]` et `attachment_links[]`** — trois
+projections d'un seul champ.
 
-Les deux clés sont **le contrat, et il est arrêté** : les adresses ne
-rejoindront pas `attachments[]`. Une carte aurait besoin de l'adresse *dans*
-`attachments[]` pour transformer un nom en lien, donc la clé unique lui
-coûterait moins — mais y mettre des objets change la forme d'un attribut qui
-porte des chaînes depuis l'origine, et casse le gabarit `| join(', ')` qui est
-aussi la façon normale d'écrire « Pièces jointes : a.pdf, b.pdf » dans une
-notification. Une ligne dans une carte coûte moins que cette rupture-là.
+`attachments[]` porte les **noms** de toutes les pièces jointes, ouvrables ou
+non, sous forme de chaînes. Un gabarit qui fait `| join(', ')` dessus continue
+de fonctionner, et c'est la façon normale d'écrire « Pièces jointes : a.pdf,
+b.pdf » dans une notification. Sa forme ne change pas.
 
-Le rapprochement entre les deux listes se fait **par le nom**, qui est la même
-chaîne de part et d'autre. Cette clé de rapprochement a une limite qu'il faut
-connaître : si un même devoir porte deux pièces de même nom dont une seule est
-ouvrable, le nom ne les distingue plus, et un consommateur rendra les deux
-comme ouvrables. C'est le prix assumé de la compatibilité — rare, cosmétique,
-et à comparer à une forme d'attribut cassée pour tous les lecteurs.
+`attachment_refs[]` dit lesquelles on peut **ouvrir**, et comment. Deux formes,
+que distingue `kind` :
 
-**Les deux sortes y figurent, et aucune des deux adresses n'est celle de
-PRONOTE.** C'est le cœur du sujet, parce que PRONOTE range deux choses
-différentes sous une même clé.
+| `kind` | Champs | Comment l'ouvrir |
+| --- | --- | --- |
+| `external` | `name`, `url` | `url` est absolue, en `http` ou `https`, et va dans un `href` |
+| `local` | `name`, `key` | `key` se passe au service `pronote_ng.get_attachment_url`, qui rend l'adresse |
+
+Un consommateur traite tout autre `kind` comme **non ouvrable**, ce qui fait
+échouer fermé une valeur que cette intégration n'aurait pas encore inventée.
+Aucune entrée n'y porte d'adresse qui autorise quoi que ce soit : celle d'un
+lien appartient à un tiers et l'élève la voit déjà dans PRONOTE, et `key`
+désigne un document sans rien ouvrir. `key` est la sortie de
+`attachment.fingerprint` — seize caractères hexadécimaux **en minuscules**, et
+une carte qui filtre sur cette forme exacte est dans son droit.
+
+`attachment_links[]` est **déprécié** et disparaît à la version suivante. Il ne
+porte plus que les liens, sous leur ancienne forme `{ name, url }` : une carte
+qui n'a pas encore été mise à jour continue d'ouvrir les liens et perd les
+fichiers. L'inverse aurait été plus confortable et c'est un choix : ce champ
+donnait à chaque fichier une adresse signée, et le conserver « le temps d'une
+version » aurait gardé ouverte exactement la faille que cette version ferme.
+
+**Le discriminant est déclaré, pas déduit.** `kind` est décidé une fois, là où
+la charge utile est lue (`gateway._attachment`), et non inféré par le
+consommateur de la présence d'une adresse. Cette inférence était fausse sur le
+seul cas qui compte : un lien dont l'adresse est inutilisable n'a pas
+d'adresse non plus, et il a été pris pour un fichier — une adresse signée lui
+était frappée, et le relais allait le chercher avec la session de
+l'établissement comme s'il s'agissait d'un document. C'est la doctrine que ce
+projet applique déjà aux coûts : déclarés, jamais inférés.
+
+Le rapprochement entre `attachments[]` et `attachment_refs[]` se fait par le
+nom, et c'est `key` qui désigne un fichier sans ambiguïté — y compris quand
+deux pièces d'un même devoir portent le même nom, cas où l'ancien
+rapprochement par le nom rendait les deux ouvrables.
+
+**Pourquoi PRONOTE impose deux sortes.** PRONOTE range deux choses différentes
+sous une même clé, et la différence décide de ce qui peut sortir de ce
+processus.
 
 Un **lien** est une adresse qu'un professeur a collée. Elle est stable, elle
 n'authentifie personne, et elle est publiée telle quelle : la relayer
@@ -222,18 +246,62 @@ Un **fichier** n'a aucune adresse qui existe indépendamment de la session.
 n'identifie pas le document : c'est le couple `{"N": id, "Actif": true}`
 chiffré avec la clé **et** le vecteur d'initialisation de la session, tous deux
 tirés à chaque connexion. Deux liens vers le même document depuis deux sessions
-n'ont donc aucun octet commun. La publier écrirait une adresse porteuse d'un
-droit d'accès dans l'instantané, dans chaque ligne du *recorder* et dans le
-téléchargement de diagnostic — ce dont § 8.2 a retiré l'URL iCal — et elle
-serait morte dans l'heure de toute façon.
+n'ont donc aucun octet commun, et celle-ci ouvre le document sans aucun
+identifiant tant que la session vit.
 
-**Exigence.** Un fichier reçoit donc une adresse que **Home Assistant** sert :
-un chemin signé et expirant vers le point d'entrée
-`/api/pronote_ng/attachment/` de l'intégration, qui va chercher les octets par
-le chemin unique vers le réseau — une session, un verrou, une requête facturée
-— et les **relaie**.
+**Exigence.** L'adresse d'un fichier n'est dans **aucun** attribut. Le service
+`pronote_ng.get_attachment_url` la frappe à l'instant du clic : un chemin signé
+vers le point d'entrée `/api/pronote_ng/attachment/` de l'intégration, qui va
+chercher les octets par le chemin unique vers le réseau — une session, un
+verrou, une requête facturée — et les **relaie**.
 
-Quatre propriétés de ce chemin portent le raisonnement, et aucune n'est
+La raison est qu'une adresse signée est un **jeton porteur**, et qu'un attribut
+est la surface la plus largement lisible de Home Assistant. Tout compte,
+administrateur ou non, lit `/api/states` en entier ; une trace d'automatisation
+conserve l'état déclencheur avec ses attributs dans `.storage`, donc dans les
+sauvegardes ; la boîte de dialogue « plus d'infos » les affiche, donc une
+capture d'écran publie un jeton vivant. Jusqu'à la version 0.0.25 l'adresse
+signée était publiée dans l'attribut, et sa protection reposait sur son
+exclusion de l'enregistreur : il a fallu trois versions pour que cette
+exclusion porte réellement — § 9 de la spécification en garde les deux pièges
+— et même juste, elle ne retirait que le vecteur *durable*.
+
+**Exigence.** L'adresse frappée expire en **cinq minutes**. Elle a expiré en
+douze heures, et ce chiffre était dérivé d'une contrainte qui n'existe plus :
+publiée dans un attribut, elle devait survivre à l'intervalle du palier des
+devoirs sans quoi un parent rencontrait un 401 sur un lien que la page affichait
+encore. Frappée au clic et ouverte aussitôt, elle n'a qu'à survivre à
+l'aller-retour et à la seconde plage d'octets qu'une visionneuse PDF réclame —
+et chaque minute de plus est une minute pendant laquelle une adresse recopiée
+ouvre encore le document d'un enfant.
+
+**Exigence.** Le service ne place **aucune requête** vers PRONOTE. Il résout
+`key` contre l'instantané déjà en mémoire et signe avec une clé que Home
+Assistant détient déjà. La requête a lieu à l'ouverture de l'adresse, quand le
+relais va chercher les octets ; ce relais est en `Priority.HIGH`, donc refusé
+entre 22 h et 6 h avec un 503 et un `Retry-After` qui dit quand revenir. Une
+carte qui appelle le service ne déclenche donc toujours aucune collecte.
+
+**Exigence.** Le service ne résout une clé que pour l'enfant désigné par
+`device_id`. Sur un compte parent une carte détient les clés des deux enfants,
+et la clé de l'un présentée avec l'appareil de l'autre ne doit pas devenir une
+adresse. Elle rend `attachment_unknown` — la même réponse qu'une clé périmée,
+pour que le refus ne confirme même pas que la clé existe ailleurs.
+
+**Exigence.** Deux refus distincts, et leurs `translation_key` sont un
+**contrat** : une carte les lit sur l'erreur pour choisir sa phrase, et les
+renommer la ferait retomber, sans bruit, sur un message générique.
+
+| `translation_key` | Ce qu'il signifie | Ce que la carte en dit |
+| --- | --- | --- |
+| `attachment_not_collected` | le palier des devoirs n'a pas encore d'instantané pour cet enfant — typiquement dans les secondes qui suivent un redémarrage | patienter |
+| `attachment_unknown` | l'instantané existe et la clé n'y désigne aucun fichier : le devoir a quitté l'horizon, il a changé, ou la clé appartient à un autre enfant | rafraîchir |
+
+Une clé mal formée — mauvaise longueur, majuscules, chemin — est refusée par le
+schéma avant toute recherche, parce qu'une faute de frappe n'est pas une
+rotation et ne doit pas se dire comme telle.
+
+Quatre propriétés du chemin frappé portent le raisonnement, et aucune n'est
 cosmétique :
 
 - **Il relaie, il ne redirige pas.** Une redirection 302 mettrait l'adresse
@@ -242,70 +310,48 @@ cosmétique :
   d'accès qu'il s'agit de ne pas publier.
 - **Il est enraciné, pas absolu.** Une URL absolue obligerait l'intégration à
   deviner par quel hôte le navigateur est arrivé, et rendrait l'adresse interne
-  à quelqu'un connecté de l'extérieur.
+  à quelqu'un connecté de l'extérieur. Le consommateur le résout contre l'URL de
+  l'instance, jamais contre celle de la page qui l'héberge : un tableau de bord
+  servi depuis une autre origine enverrait sinon le jeton chez un tiers.
 - **Il nomme une empreinte, pas un identifiant.** Un identifiant PRONOTE réel
-  contient un `#`, délimiteur de fragment qui tronquerait le chemin ; et un
-  attribut part dans le *recorder*, donc y écrire un identifiant réel le rend
-  durable. L'empreinte est l'idiome que `diagnostics.py` emploie déjà pour les
-  identifiants d'enfant. Elle désigne un **document** et non un rang, donc un
-  réordonnancement entre deux collectes ne peut pas servir le mauvais fichier.
-- **Il expire** en douze heures, et il n'est **pas enregistré**. Ces deux
-  bornes vont ensemble : douze heures est défendable pour une adresse qui fuit
-  par l'historique d'un navigateur, et ne l'est pas pour une adresse écrite
-  dans la base d'historique à chaque collecte — une base est recopiée dans
-  chaque sauvegarde et parfois collée dans un rapport de bogue. L'exclusion qui
-  l'assure est celle de `items`, déclarée pour toutes les entités dans
-  `UNRECORDED_LIST_ATTRIBUTES` : le jeton existe dans l'état vivant et nulle
-  part de durable.
+  contient un `#`, délimiteur de fragment qui tronquerait le chemin, et l'écrire
+  dans un attribut le rendrait durable. L'empreinte est l'idiome que
+  `diagnostics.py` emploie déjà pour les identifiants d'enfant. Elle désigne un
+  **document** et non un rang, donc un réordonnancement entre deux collectes ne
+  peut pas servir le mauvais fichier.
+- **Il expire** en cinq minutes, vu plus haut.
 
-**Exigence.** L'exclusion porte sur la clé de **premier rang** qui contient les
-adresses, et une sous-classe n'a jamais le droit de la redéclarer. Ces deux
-points ont chacun coûté une version, et ils vont ensemble.
+**Exigence.** Le relais ne sert qu'un **fichier**. `attachment._locate` ne rend
+que des pièces de sorte `FILE`, et le relais refuse encore toute autre sorte
+qu'on lui tendrait : un lien est la page d'un tiers, et le relayer ferait de
+Home Assistant un mandataire ouvert pour tout ce qu'un professeur colle.
 
-Le *recorder* ne filtre que le premier rang —
-`recorder.db_schema.shared_attrs_bytes_from_event` est une compréhension sur
-`state.attributes.items()` — donc nommer `attachment_links`, qui vit *dans*
-`items`, n'exclut rien. Et Home Assistant ne réunit pas ces ensembles le long
-d'une hiérarchie : `Entity.__init_subclass__` calcule
-`_entity_component_unrecorded_attributes | cls._unrecorded_attributes`, où le
-terme de droite est résolu par recherche d'attribut ordinaire, si bien qu'une
-déclaration sur une sous-classe **remplace** celle du parent au lieu de
-l'étendre. La version 0.0.22 a déclaré `attachment_links` sur la classe des
-capteurs en croyant ajouter : elle a rendu au *recorder* les dix-huit attributs
-de liste de tous les capteurs, `items` compris, et les adresses signées ont été
-mesurées dans l'historique d'une instance vivante. La barrière est aujourd'hui
-double — un test passe l'état publié dans le filtre réel du *recorder*, un autre
-refuse toute déclaration qui ne couvre pas l'ensemble partagé.
-
-Le raisonnement qui a rendu l'exclusion nécessaire vaut aussi d'être retenu,
-parce qu'il s'est retourné. Le téléchargement de diagnostic était défendu par
-« ces valeurs ne sont jamais des attributs » — vrai jusqu'à ce que cet attribut
-existe. Le dump de cette intégration n'a d'ailleurs jamais porté d'attribut
-d'entité, et ne le porte toujours pas ; c'est l'enregistrement, pas le
-diagnostic, qui était le vecteur réel. **Une propriété vraie d'une architecture
-cesse de l'être quand l'architecture change**, et une exclusion argumentée par
-une architecture doit être revérifiée à chaque fois qu'on ajoute un attribut.
-
-**Ce que l'exclusion ne couvre pas.** `_unrecorded_attributes` ne parle qu'au
-*recorder*. Une **trace d'automatisation** capture l'état déclencheur avec ses
-attributs et vit dans `.storage`, donc dans les sauvegardes ; un tableau de bord
-affiche les attributs dans la boîte de dialogue « plus d'infos », donc une
-capture d'écran de cette boîte publie un jeton vivant ; et tout compte Home
-Assistant, administrateur ou non, lit `/api/states` en entier. La borne réelle
-est donc l'expiration, pas l'exclusion — celle-ci retire le vecteur *durable*,
-elle ne rend pas le jeton privé.
+**Exigence.** Un lien n'est publié que s'il n'est pas une adresse que PRONOTE
+authentifierait. Trois signatures suffisent chacune à le refuser : l'hôte de
+l'établissement, lu sur `communication.root_site` sans requête ; un paramètre
+`Session`, quelle que soit sa casse ; un segment `FichiersExternes`, route de
+PRONOTE pour un fichier quel que soit l'hôte qu'un mandataire met devant. Sur
+une instance réelle, onze liens mesurés, tous chez des tiers — ce qui est un
+fait sur une quinzaine de devoirs, pas une garantie. La carte ne peut pas faire
+ce contrôle elle-même : elle ne connaît pas l'hôte du serveur, et elle ne doit
+pas le connaître.
 
 **Exigence.** Le type de contenu annoncé au navigateur est une **liste
 blanche** — PDF, images matricielles, texte simple — et tout le reste est servi
 en `application/octet-stream`, donc téléchargé plutôt qu'affiché. La réponse
 sort de l'origine de Home Assistant : un document renvoyé en `text/html`
 exécuterait son propre script avec la session du lecteur, et `image/svg+xml`
-est le même danger sous un nom d'image.
+est le même danger sous un nom d'image. `X-Content-Type-Options: nosniff`
+empêche le navigateur de deviner un autre type que celui annoncé, et
+`Referrer-Policy: no-referrer` que l'adresse signée du relais parte chez un
+tiers quand un document contient un lien.
 
-Une liste `attachment_links[]` vide reste possible et n'est pas une lacune : la
-pièce est alors un lien dont l'adresse est inutilisable — pas de schéma
-`http`/`https`, ou pas d'adresse du tout dans la charge utile, cas où amont
-retombe sur le **nom**, ce qui est le piège.
+Une pièce absente de `attachment_refs[]` reste nommée dans `attachments[]`, et
+ce n'est pas une lacune : sa sorte est `OPAQUE`. C'est un lien dont l'adresse
+est inutilisable — pas de schéma `http`/`https`, ou pas d'adresse du tout dans
+la charge utile, cas où amont retombe sur le **nom**, ce qui est le piège —, un
+lien que PRONOTE authentifierait, ou un fichier publié sans identifiant, qu'on
+ne saurait pas demander.
 
 **Exigence.** L'adresse publiée est en `http` ou `https`, jamais autre chose.
 C'est une liste blanche et non un filtre, parce qu'un consommateur met cette
@@ -562,18 +608,21 @@ dans aucun état (§8.1 de la spécification).
 
 | Service | Cible | Effet | Réponse |
 | --- | --- | --- | --- |
-| `pronote.refresh` | entrée, palier optionnel | force une échéance | — |
-| `pronote.get_ical_url` | entrée | rend l'URL iCal | `SupportsResponse.ONLY` |
-| `pronote.get_identity` | entrée | rend l'identité et les responsables légaux | `SupportsResponse.ONLY` |
-| `pronote.mark_homework_done` | identifiant de devoir | `Homework.set_done()` | — |
-| `pronote.mark_information_read` | identifiant d'actualité | `Information.mark_as_read()` | — |
-| `pronote.send_message` | discussion ou destinataires | `Discussion.reply()` / `Client.new_discussion()` | — |
-| `pronote.generate_timetable_pdf` | entrée, jour, orientation | rend une URL de PDF | `SupportsResponse.ONLY` |
-| `pronote.get_rate_limit_status` | entrée | rend l'état complet du limiteur | `SupportsResponse.ONLY` |
+| `pronote_ng.refresh` | entrée, palier optionnel | force une échéance | — |
+| `pronote_ng.get_ical_url` | entrée | rend l'URL iCal | `SupportsResponse.ONLY` |
+| `pronote_ng.get_identity` | entrée | rend l'identité et les responsables légaux | `SupportsResponse.ONLY` |
+| `pronote_ng.mark_homework_done` | identifiant de devoir | `Homework.set_done()` | — |
+| `pronote_ng.mark_information_read` | identifiant d'actualité | `Information.mark_as_read()` | — |
+| `pronote_ng.send_message` | discussion ou destinataires | `Discussion.reply()` / `Client.new_discussion()` | — |
+| `pronote_ng.generate_timetable_pdf` | entrée, jour, orientation | rend une URL de PDF | `SupportsResponse.ONLY` |
+| `pronote_ng.get_rate_limit_status` | entrée | rend l'état complet du limiteur | `SupportsResponse.ONLY` |
+| `pronote_ng.get_attachment_url` | enfant, `key` | rend une adresse signée de cinq minutes vers un fichier de devoir | `SupportsResponse.ONLY` |
 
-**Exigence.** Les quatre services à réponse ne créent aucun état et ne
-journalisent pas leur réponse. `get_ical_url` et `get_identity` rendent des
-données que le §8 de la spécification interdit d'exposer autrement.
+**Exigence.** Les services à réponse ne créent aucun état et ne journalisent
+pas leur réponse. `get_ical_url`, `get_identity` et `get_attachment_url`
+rendent des données que le §8 de la spécification interdit d'exposer
+autrement : les deux premiers des données personnelles ou un accès à l'emploi
+du temps, le troisième un jeton porteur.
 
 **Exigence.** Les services d'écriture lèvent `HomeAssistantError` avec
 `translation_domain` et `translation_key` — jamais un message construit en

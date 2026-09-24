@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from .const import GradeStatus, Tier
+from .const import AttachmentKind, GradeStatus, Tier
 
 # ---------------------------------------------------------------------------
 # Timetable
@@ -157,7 +157,13 @@ class HomeworkAttachment:
     the iCal URL from the state machine for -- and it would be dead within the
     hour anyway, since a session with no successful call for that long is
     abandoned. Hence ``url`` is ``None`` for a file, and the only honest way to
-    open one is a service that mints an address at the instant of the click.
+    open one is a service that mints an address at the instant of the click --
+    ``pronote_ng.get_attachment_url``, see :mod:`.attachment`.
+
+    ``kind`` says which of these this is, and it is the field to read. The
+    presence of ``url`` does **not** tell a file from a link: an unusable link
+    has no ``url`` either, and for a while it was treated as a file because of
+    exactly that reading.
     """
 
     name: str
@@ -175,6 +181,9 @@ class HomeworkAttachment:
     #: identifier carries a ``#``, a fragment delimiter that would truncate a
     #: path -- and keeps a real identifier out of the recorder.
     id: str = ""
+    #: Decided in `gateway._attachment`. Defaults to the answer that opens
+    #: nothing, so a DTO built without deciding fails closed.
+    kind: AttachmentKind = AttachmentKind.OPAQUE
 
 
 @dataclass(frozen=True, slots=True)

@@ -664,6 +664,20 @@
           "description": "Compte ou enfant"
         }
       }
+    },
+    "get_attachment_url": {
+      "name": "Obtenir l'adresse d'une pièce jointe",
+      "description": "Renvoie dans la réponse une adresse de courte durée qui ouvre un fichier de devoir. Ne coûte aucun appel : le document n'est téléchargé qu'à l'ouverture de l'adresse.",
+      "fields": {
+        "device_id": {
+          "name": "Enfant",
+          "description": "Enfant"
+        },
+        "key": {
+          "name": "Clé de la pièce jointe",
+          "description": "La clé d'une entrée de l'attribut attachment_refs."
+        }
+      }
     }
   },
   "exceptions": {
@@ -681,6 +695,12 @@
     },
     "student_required": {
       "message": "Ce compte suit plusieurs enfants ({children}). Ciblez l'appareil de l'enfant plutôt que celui du compte."
+    },
+    "attachment_not_collected": {
+      "message": "Les devoirs de cet enfant n'ont pas encore été collectés. Réessayez dans un instant."
+    },
+    "attachment_unknown": {
+      "message": "Aucun fichier de devoir ne correspond à cette clé pour cet enfant. Rafraîchissez le tableau de bord : le devoir a peut-être changé."
     },
     "subject_required": {
       "message": "Un objet est obligatoire pour ouvrir une nouvelle discussion."

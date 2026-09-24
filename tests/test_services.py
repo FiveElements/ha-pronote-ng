@@ -39,6 +39,7 @@ from custom_components.pronote_ng.const import (
     DOMAIN,
     OPT_WRITE_OPERATIONS_ENABLED,
     SERVICE_GENERATE_TIMETABLE_PDF,
+    SERVICE_GET_ATTACHMENT_URL,
     SERVICE_GET_ICAL_URL,
     SERVICE_GET_IDENTITY,
     SERVICE_GET_RATE_LIMIT_STATUS,
@@ -51,15 +52,14 @@ from custom_components.pronote_ng.const import (
 from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
-from .fixtures.client import FakeThread
+from .fixtures import protocol
+from .fixtures.client import FakeClient, FakeThread
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.pronote_ng.account import PronoteAccount
-
-    from .fixtures.client import FakeClient
 
 pytestmark = REQUIRES_HASS
 
@@ -857,3 +857,256 @@ async def test_registering_the_services_twice_leaves_one_of_each(
 
     assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
     assert hass.services.has_service(DOMAIN, SERVICE_GET_ICAL_URL)
+
+
+# ---------------------------------------------------------------------------
+# get_attachment_url -- the address is minted at the click
+# ---------------------------------------------------------------------------
+
+
+class TestTheAttachmentAddressIsMintedOnClick:
+    """A file's address exists only in a service response, for five minutes.
+
+    Each child is served *different* homework here, and that is what makes the
+    cross-child test mean anything: with the shared fixture both children hold
+    the same homework, so one child's key would be equally valid for the other
+    and a lookup that ignored the device would still pass.
+    """
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """One file and one link for the first child, one file for the second."""
+        client = FakeClient(children=CHILDREN)
+
+        def per_child(_body: Any) -> dict[str, Any]:
+            if client.selected_child_id == STUDENT_ONE:
+                return protocol.homework_response(
+                    [
+                        protocol.homework(
+                            identifier="HOMEWORK-A",
+                            attachments=(
+                                "enonce.pdf",
+                                ("Le sujet", "https://exemple.invalid/sujet"),
+                            ),
+                        )
+                    ]
+                )
+            return protocol.homework_response(
+                [protocol.homework(identifier="HOMEWORK-B", attachments=("autre.pdf",))]
+            )
+
+        client.responses["PageCahierDeTexte"] = per_child
+        return client
+
+    @staticmethod
+    def _key(hass: HomeAssistant, entity_id: str, kind: str) -> str:
+        """The key a card would read off the first homework item."""
+        state = hass.states.get(entity_id)
+        assert state is not None
+        refs = state.attributes["items"][0]["attachment_refs"]
+        if kind == "external":
+            # A link carries no key; the fingerprint a card could compute from
+            # it is what a misbehaving caller would send.
+            from custom_components.pronote_ng.attachment import fingerprint
+
+            item_id = state.attributes["items"][0]["id"]
+            return fingerprint(item_id, "ATTACHMENT-2")
+        key: str = next(ref["key"] for ref in refs if ref["kind"] == kind)
+        return key
+
+    async def _call(
+        self, hass: HomeAssistant, mock_entry: MockConfigEntry, student: str, key: str
+    ) -> dict[str, Any]:
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_GET_ATTACHMENT_URL,
+            {"device_id": _child_device(hass, mock_entry, student), "key": key},
+            blocking=True,
+            return_response=True,
+        )
+        assert response is not None
+        return dict(response)
+
+    async def test_a_file_key_is_answered_with_a_signed_address(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """The address names the relay, the account and the document, and is signed.
+
+        Rooted rather than absolute, because it is Home Assistant's own route
+        and the card resolves it against the instance -- never against the page
+        it happens to be embedded in.
+        """
+        del account
+        key = self._key(hass, "sensor.enfant_un_homework_to_do", "local")
+
+        response = await self._call(hass, mock_entry, STUDENT_ONE, key)
+
+        assert response["url"].startswith(
+            f"/api/{DOMAIN}/attachment/{mock_entry.entry_id}/{key}?authSig="
+        )
+        assert "expires_at" in response
+
+    async def test_the_address_expires_in_minutes(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """What the response says about expiry is what the signature enforces.
+
+        Read back from the JWT itself rather than trusted from `expires_at`, so
+        a lifetime changed in one place and not the other is caught.
+        """
+        del account
+        import base64
+
+        from homeassistant.util import dt as dt_util
+
+        key = self._key(hass, "sensor.enfant_un_homework_to_do", "local")
+        before = dt_util.utcnow()
+        response = await self._call(hass, mock_entry, STUDENT_ONE, key)
+
+        token = response["url"].split("authSig=", 1)[1]
+        body = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+        lifetime = claims["exp"] - claims["iat"]
+
+        assert 30 <= lifetime <= 600
+        expires_at = dt_util.parse_datetime(response["expires_at"])
+        assert expires_at is not None
+        assert 0 < (expires_at - before).total_seconds() <= 600
+
+    async def test_minting_an_address_places_no_request_to_pronote(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+        parent_client: FakeClient,
+    ) -> None:
+        """The service signs locally; only *opening* the address fetches anything.
+
+        This is what lets a card promise it triggers no collection: pressing
+        the button costs the school's server nothing, and during quiet hours
+        the service still answers -- it is the relay, later, that says 503.
+        """
+        key = self._key(hass, "sensor.enfant_un_homework_to_do", "local")
+        posts = len(parent_client.posted_names)
+        downloads = len(parent_client.communication.session.gets)
+        charged = account.limiter.calls_today
+
+        await self._call(hass, mock_entry, STUDENT_ONE, key)
+
+        assert len(parent_client.posted_names) == posts
+        assert len(parent_client.communication.session.gets) == downloads
+        assert account.limiter.calls_today == charged
+
+    async def test_one_childs_key_with_the_other_childs_device_is_unknown(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """A key is only good for the child it was published under.
+
+        On a parent account a card holds both children's keys, and a bug there
+        -- or a hand-written call -- must not turn one child's key into a
+        working address under the sibling's device. The answer is the same
+        ``attachment_unknown`` as for a stale key, so the refusal does not even
+        confirm that the key exists elsewhere.
+        """
+        del account
+        first_childs = self._key(hass, "sensor.enfant_un_homework_to_do", "local")
+
+        with pytest.raises(ServiceValidationError) as raised:
+            await self._call(hass, mock_entry, STUDENT_TWO, first_childs)
+
+        assert raised.value.translation_key == "attachment_unknown"
+
+    async def test_a_link_is_not_minted_an_address(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """A link already carries its own address, and the relay would refuse it.
+
+        Minting one anyway would hand a card an address guaranteed to 404.
+        """
+        del account
+        link_key = self._key(hass, "sensor.enfant_un_homework_to_do", "external")
+
+        with pytest.raises(ServiceValidationError) as raised:
+            await self._call(hass, mock_entry, STUDENT_ONE, link_key)
+
+        assert raised.value.translation_key == "attachment_unknown"
+
+    async def test_before_the_first_collection_it_says_so_rather_than_unknown(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+    ) -> None:
+        """ "Not collected yet" and "no such document" are different things to say.
+
+        The first is temporary -- the seconds after a restart -- and the card
+        tells the user to wait. The second means the homework changed, and the
+        card tells them to refresh. Merged into one, the card would give the
+        wrong advice half the time.
+        """
+        key = self._key(hass, "sensor.enfant_un_homework_to_do", "local")
+
+        with (
+            patch.object(account, "has_data", return_value=False),
+            pytest.raises(ServiceValidationError) as raised,
+        ):
+            await self._call(hass, mock_entry, STUDENT_ONE, key)
+
+        assert raised.value.translation_key == "attachment_not_collected"
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            pytest.param("0123456789ABCDEF", id="upper case"),
+            pytest.param("0123456789abcde", id="one character short"),
+            pytest.param("0123456789abcdef0", id="one character long"),
+            pytest.param("../../auth/token", id="a path"),
+        ],
+    )
+    async def test_a_malformed_key_is_refused_before_any_lookup(
+        self,
+        hass: HomeAssistant,
+        mock_entry: MockConfigEntry,
+        account: PronoteAccount,
+        key: str,
+    ) -> None:
+        """Invalid input, not "unknown document" -- a typo is not a rotation.
+
+        And the value never reaches the path it would otherwise be signed into.
+        """
+        del account
+        with pytest.raises(vol.Invalid):
+            await self._call(hass, mock_entry, STUDENT_ONE, key)
+
+    async def test_the_translation_keys_are_a_published_contract(self) -> None:
+        """The card chooses its sentence by these two values.
+
+        Renaming one would not fail anything here -- the error would still be
+        raised, just with a key the card no longer recognises -- so it would
+        fall back to a generic message, silently. Pinned against the catalogue
+        so a rename has to be made on purpose.
+        """
+        strings = json.loads(
+            (
+                __import__("pathlib").Path(__file__).parent.parent
+                / "custom_components"
+                / DOMAIN
+                / "strings.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        assert {"attachment_not_collected", "attachment_unknown"} <= set(
+            strings["exceptions"]
+        )

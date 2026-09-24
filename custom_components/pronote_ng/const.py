@@ -381,6 +381,30 @@ class LimiterState(StrEnum):
     BOOTSTRAP_FAILED = "bootstrap_failed"
 
 
+class AttachmentKind(StrEnum):
+    """What one homework attachment *is*, decided once, where the payload is read.
+
+    Declared rather than inferred, for the reason costs are: a consumer that
+    tells a file from a link by looking at whether an address is present will
+    guess wrong on exactly the case that matters. A link whose address is
+    unusable carries no address either, and read that way it was classified as
+    a file -- given a signed path, and relayed through the school's session as
+    though it were one.
+
+    ``OPAQUE`` is the fail-closed answer: a name that can be shown and opens
+    nothing. It is also the default, so an attachment built without deciding
+    is never openable by accident.
+    """
+
+    #: ``G = 1`` with an identifier: bytes this integration can relay.
+    FILE = "file"
+    #: ``G = 0`` with a third party's ``http``/``https`` address, publishable.
+    LINK = "link"
+    #: Everything else: a link with no usable address, a link PRONOTE itself
+    #: would authenticate, a file with no identifier to fetch it by.
+    OPAQUE = "opaque"
+
+
 class GradeStatus(StrEnum):
     """The eight grade sentinels, plus one the protocol has not sent yet.
 
@@ -471,6 +495,7 @@ SERVICE_MARK_INFORMATION_READ: Final = "mark_information_read"
 SERVICE_SEND_MESSAGE: Final = "send_message"
 SERVICE_GENERATE_TIMETABLE_PDF: Final = "generate_timetable_pdf"
 SERVICE_GET_RATE_LIMIT_STATUS: Final = "get_rate_limit_status"
+SERVICE_GET_ATTACHMENT_URL: Final = "get_attachment_url"
 
 #: Services every source implements: they never touch a school backend.
 AGNOSTIC_SERVICES: Final = frozenset({SERVICE_REFRESH, SERVICE_GET_RATE_LIMIT_STATUS})

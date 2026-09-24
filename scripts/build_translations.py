@@ -1046,6 +1046,31 @@ SERVICES: list[dict[str, Any]] = [
         ),
         "fields": [("device_id", "Account or child", "Compte ou enfant", "", "")],
     },
+    {
+        "key": "get_attachment_url",
+        "name_en": "Get an attachment's address",
+        "name_fr": "Obtenir l'adresse d'une pièce jointe",
+        "description_en": (
+            "Returns, in the response, a short-lived address that opens one "
+            "homework file. Costs no request: the document is fetched only "
+            "when the address is opened."
+        ),
+        "description_fr": (
+            "Renvoie dans la réponse une adresse de courte durée qui ouvre un "
+            "fichier de devoir. Ne coûte aucun appel : le document n'est "
+            "téléchargé qu'à l'ouverture de l'adresse."
+        ),
+        "fields": [
+            ("device_id", "Child", "Enfant", "", ""),
+            (
+                "key",
+                "Attachment key",
+                "Clé de la pièce jointe",
+                "The key of an entry in the attachment_refs attribute.",
+                "La clé d'une entrée de l'attribut attachment_refs.",
+            ),
+        ],
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -1084,6 +1109,19 @@ EXCEPTIONS: list[tuple[str, str, str]] = [
         "child's device rather than the account.",
         "Ce compte suit plusieurs enfants ({children}). Ciblez l'appareil de "
         "l'enfant plutôt que celui du compte.",
+    ),
+    (
+        "attachment_not_collected",
+        "Homework has not been collected for this child yet. Try again in a moment.",
+        "Les devoirs de cet enfant n'ont pas encore été collectés. Réessayez "
+        "dans un instant.",
+    ),
+    (
+        "attachment_unknown",
+        "No homework file with this key is known for this child. Refresh the "
+        "dashboard: the homework may have changed.",
+        "Aucun fichier de devoir ne correspond à cette clé pour cet enfant. "
+        "Rafraîchissez le tableau de bord : le devoir a peut-être changé.",
     ),
     (
         "subject_required",
@@ -1519,6 +1557,7 @@ def _services_yaml() -> str:
             + "\n".join(f'          - "{key}"' for key, _en, _fr in TIERS)
         ),
         "homework_id": "      text:",
+        "key": "      text:",
         "information_id": "      text:",
         "discussion_id": "      text:",
         "subject": "      text:",
@@ -1537,6 +1576,7 @@ def _services_yaml() -> str:
     required = {
         "device_id",
         "homework_id",
+        "key",
         "information_id",
         "message",
     }

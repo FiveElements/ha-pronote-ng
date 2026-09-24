@@ -664,6 +664,20 @@
           "description": "Account or child"
         }
       }
+    },
+    "get_attachment_url": {
+      "name": "Get an attachment's address",
+      "description": "Returns, in the response, a short-lived address that opens one homework file. Costs no request: the document is fetched only when the address is opened.",
+      "fields": {
+        "device_id": {
+          "name": "Child",
+          "description": "Child"
+        },
+        "key": {
+          "name": "Attachment key",
+          "description": "The key of an entry in the attachment_refs attribute."
+        }
+      }
     }
   },
   "exceptions": {
@@ -681,6 +695,12 @@
     },
     "student_required": {
       "message": "This account follows several children ({children}). Target the child's device rather than the account."
+    },
+    "attachment_not_collected": {
+      "message": "Homework has not been collected for this child yet. Try again in a moment."
+    },
+    "attachment_unknown": {
+      "message": "No homework file with this key is known for this child. Refresh the dashboard: the homework may have changed."
     },
     "subject_required": {
       "message": "A subject is required to start a new discussion."

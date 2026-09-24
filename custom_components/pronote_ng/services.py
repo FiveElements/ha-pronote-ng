@@ -35,12 +35,15 @@ from homeassistant.core import (
 )
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .attachment import FINGERPRINT_PATTERN, SIGNATURE_LIFETIME, _locate, signed_path
 from .const import (
     AGNOSTIC_SERVICES,
     DOMAIN,
     SERVICE_GENERATE_TIMETABLE_PDF,
+    SERVICE_GET_ATTACHMENT_URL,
     SERVICE_GET_ICAL_URL,
     SERVICE_GET_IDENTITY,
     SERVICE_GET_RATE_LIMIT_STATUS,
@@ -72,6 +75,7 @@ ATTR_MESSAGE: Final = "message"
 ATTR_RECIPIENTS: Final = "recipients"
 ATTR_DAY: Final = "day"
 ATTR_ORIENTATION: Final = "orientation"
+ATTR_KEY: Final = "key"
 
 ORIENTATION_PORTRAIT: Final = "portrait"
 ORIENTATION_LANDSCAPE: Final = "landscape"
@@ -122,6 +126,16 @@ _DEVICE_ID: Final = _one_device
 
 
 _DEVICE_SCHEMA: Final = vol.Schema({vol.Required(ATTR_DEVICE_ID): _DEVICE_ID})
+
+#: A malformed key is refused before any lookup, so a typo reads as "invalid
+#: input" rather than as "document unknown" -- two different things to tell a
+#: user, and the second is what the card shows for a rotated homework.
+_ATTACHMENT_URL_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): _DEVICE_ID,
+        vol.Required(ATTR_KEY): vol.All(str, vol.Match(FINGERPRINT_PATTERN)),
+    }
+)
 
 _REFRESH_SCHEMA: Final = vol.Schema(
     {
@@ -533,6 +547,46 @@ async def _async_get_rate_limit_status(call: ServiceCall) -> ServiceResponse:
     }
 
 
+async def _async_get_attachment_url(call: ServiceCall) -> ServiceResponse:
+    """Mint the address that opens one homework file, at the instant of the click.
+
+    **Places no request to PRONOTE.** It resolves the key against the snapshot
+    already in memory and signs a path with a key Home Assistant already holds;
+    nothing leaves this process. The request happens later, when the returned
+    address is opened and the relay fetches the bytes -- so a card calling this
+    still triggers no collection, and during quiet hours it still answers
+    (the relay, being ``Priority.HIGH``, is what then says 503).
+
+    Two refusals, and their ``translation_key`` values are a **contract**: a
+    card reads them off the error to decide what to tell the user.
+
+    ``attachment_not_collected`` -- the homework tier has no snapshot for this
+    child yet, typically in the first seconds after a restart. Temporary.
+
+    ``attachment_unknown`` -- the snapshot exists and the key is not a file in
+    it: the homework left the horizon, the entry changed, or the key belongs to
+    *another* child of the same account. The last case is deliberately the same
+    answer as the others, so the error does not confirm to a caller that the
+    key exists elsewhere.
+    """
+    account, student_id = _resolve_student(call.hass, call)
+    _require_service(account, SERVICE_GET_ATTACHMENT_URL)
+    if not account.has_data(Tier.HOMEWORK, student_id):
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="attachment_not_collected"
+        )
+    key = call.data[ATTR_KEY]
+    if _locate(account, key, student_id=student_id) is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="attachment_unknown"
+        )
+    expires_at = dt_util.utcnow() + SIGNATURE_LIFETIME
+    return {
+        "url": signed_path(call.hass, account.entry.entry_id, key),
+        "expires_at": expires_at.isoformat(),
+    }
+
+
 #: ``(name, handler, schema, response support)``. Kept as data so the test that
 #: checks every service is documented in ``services.yaml`` and translated in
 #: ``strings.json`` can iterate it (§10.5).
@@ -578,6 +632,12 @@ _SERVICES: Final[tuple[tuple[str, Any, Any, SupportsResponse], ...]] = (
         SERVICE_GET_RATE_LIMIT_STATUS,
         _async_get_rate_limit_status,
         _DEVICE_SCHEMA,
+        SupportsResponse.ONLY,
+    ),
+    (
+        SERVICE_GET_ATTACHMENT_URL,
+        _async_get_attachment_url,
+        _ATTACHMENT_URL_SCHEMA,
         SupportsResponse.ONLY,
     ),
 )
