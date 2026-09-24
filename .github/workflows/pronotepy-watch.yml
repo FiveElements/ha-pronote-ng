@@ -64,9 +64,9 @@ jobs:
       issues: write
       actions: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           # `scripts/pronotepy_pin.py` is standard library only and installs
           # nothing -- making this job build the Home Assistant test stack to
