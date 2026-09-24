@@ -34,7 +34,7 @@ from html import unescape
 import logging
 import re
 from typing import TYPE_CHECKING, Any, Final
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 from pronotepy import dataClasses
@@ -54,6 +54,7 @@ from .const import (
     PRESENCE_KIND_ABSENCE,
     PRESENCE_KIND_DELAY,
     PRESENCE_KIND_PUNISHMENT,
+    AttachmentKind,
     GradeStatus,
 )
 from .models import (
@@ -203,29 +204,47 @@ _LINE_BREAK_TAG: Final = re.compile(
 _ANY_TAG: Final = re.compile(r"<[^>]*>")
 
 
-def _attachment(raw: Any) -> HomeworkAttachment:
-    """One attached document, with an address only when one is publishable.
+def _attachment(raw: Any, establishment_host: str | None) -> HomeworkAttachment:
+    """One attached document, classified once and for every consumer.
 
     ``G`` says which of two different things this is: ``0`` a link, ``1`` a
     file. Only the first has an address that means anything outside the session
     that fetched it -- :class:`~.models.HomeworkAttachment` gives the reason at
-    length.
+    length. The answer is written into ``kind`` rather than left to be inferred
+    from whether ``url`` is set, because that inference is wrong on the one case
+    that matters: an unusable link has no ``url`` either.
 
-    Two refusals, both of which have to happen here rather than in a card.
+    Every refusal below happens here rather than in a card, and each is one a
+    card is not placed to make.
+
     Upstream falls back to the *name* when a link carries no ``url``
     (``dataClasses.Attachment``: ``self.url = self.name if url is None else
     url``), so an unchecked read publishes a human label in a field a consumer
-    will put in an `href`. And a scheme is not a detail: an address is only
+    will put in an `href`. A scheme is not a detail: an address is only
     published if it is `http` or `https`, so a `javascript:` payload typed into
     a homework entry cannot reach a dashboard's `href` through us. A relative
-    address is refused by the same test, which is the right answer too -- the
-    consumer does not know which host it would belong to, and resolving it
-    against Home Assistant's own fabricates a dead link.
+    address is refused by the same test -- the consumer does not know which host
+    it would belong to.
+
+    And a link is only a *third party's* link if PRONOTE would not authenticate
+    it. A teacher can paste an address on the establishment's own server, and
+    one carrying a ``Session`` parameter or a ``FichiersExternes`` segment is a
+    session-bearing address whatever host it names: published, it would open a
+    document with no credentials, which is the exact hazard this module keeps
+    files out of attributes for. None was measured on a live instance -- eleven
+    links, all third parties -- and that is a fact about one fortnight of
+    homework, not a guarantee. The card cannot make this check itself: it does
+    not know the server's host, and it should not.
     """
     name = str(_get(raw, "L"))
     identifier = str(_get(raw, "N") or "")
     if _get(raw, "G") != _ATTACHMENT_LINK:
-        return HomeworkAttachment(name=name, id=identifier)
+        if not identifier:
+            # A file is fetched *by* its identifier, so without one there is
+            # nothing to relay, and a service asked for it would mint an
+            # address that 404s.
+            return HomeworkAttachment(name=name, kind=AttachmentKind.OPAQUE)
+        return HomeworkAttachment(name=name, id=identifier, kind=AttachmentKind.FILE)
     address = _get(raw, "url")
     if not isinstance(address, str):
         return HomeworkAttachment(name=name, id=identifier)
@@ -237,11 +256,57 @@ def _attachment(raw: Any) -> HomeworkAttachment:
             name,
         )
         return HomeworkAttachment(name=name, id=identifier)
-    return HomeworkAttachment(name=name, url=address, id=identifier)
+    if _is_session_bearing(parsed, establishment_host):
+        _LOGGER.debug(
+            "an attachment on %r is a link PRONOTE itself would authenticate, "
+            "so its address is not published",
+            name,
+        )
+        return HomeworkAttachment(name=name, id=identifier)
+    return HomeworkAttachment(
+        name=name, url=address, id=identifier, kind=AttachmentKind.LINK
+    )
+
+
+def _is_session_bearing(parsed: ParseResult, establishment_host: str | None) -> bool:
+    """Whether an address would open something with PRONOTE's authority.
+
+    Three signatures, any one of which is enough. The establishment's own host,
+    because anything served there is served in the context of a session. A
+    ``Session`` query parameter, compared without regard to case, because that
+    is how PRONOTE numbers one. And a ``FichiersExternes`` path segment, because
+    that is PRONOTE's route for a file whatever host a proxy puts in front of
+    it.
+    """
+    host = parsed.hostname
+    if (
+        host is not None
+        and establishment_host is not None
+        and host == establishment_host
+    ):
+        return True
+    if any(key.lower() == "session" for key in parse_qs(parsed.query)):
+        return True
+    return _PRONOTE_FILE_SEGMENT in parsed.path.lower().split("/")
+
+
+def _establishment_host(root_site: object) -> str | None:
+    """The host PRONOTE is served from, lower-cased, or ``None`` if unknowable.
+
+    Read off ``communication.root_site``, a plain attribute set at login: no
+    request. ``None`` rather than a guess when it is missing or not a URL, which
+    only disables the host test -- the other two still run.
+    """
+    if not isinstance(root_site, str):
+        return None
+    return urlparse(root_site).hostname
 
 
 #: ``G`` on a ``ListePieceJointe`` entry: a link, as opposed to a file.
 _ATTACHMENT_LINK: Final = 0
+
+#: PRONOTE's route for a file, compared lower-cased against path segments.
+_PRONOTE_FILE_SEGMENT: Final = "fichiersexternes"
 
 #: The other value of ``G``. Named because it is *written* into the payload
 #: handed to ``pronotepy`` when re-deriving a file's address, and a magic ``1``
@@ -964,9 +1029,12 @@ class PronoteGateway:
             raw, "dataSec", "data", "ListeTravauxAFaire", what="homework"
         )
 
+        establishment_host = _establishment_host(
+            getattr(client.communication, "root_site", None)
+        )
         items = [
             item
-            for item in (self._homework(entry) for entry in entries)
+            for item in (self._homework(entry, establishment_host) for entry in entries)
             if item is not None
         ]
         _LOGGER.debug(
@@ -1005,7 +1073,9 @@ class PronoteGateway:
             return 62
         return int(client.get_week(last))
 
-    def _homework(self, entry: dict[str, Any]) -> Homework | None:
+    def _homework(
+        self, entry: dict[str, Any], establishment_host: str | None = None
+    ) -> Homework | None:
         """Decode one homework item, tolerating any absent optional field."""
         identifier = entry.get("N")
         due = _parse_date(_get(entry, "PourLe", "V"))
@@ -1027,7 +1097,7 @@ class PronoteGateway:
             # thing that must not end up in a snapshot. Here nothing is
             # encrypted and no session value is touched.
             attachments=tuple(
-                _attachment(raw_attachment)
+                _attachment(raw_attachment, establishment_host)
                 for raw_attachment in _list(entry, "ListePieceJointe")
                 if _get(raw_attachment, "L")
             ),

@@ -419,6 +419,6 @@ normalement.
 | --- | --- |
 | [Documentation des cartes](https://fiveelements.github.io/ha-pronote-ng-cards/) | Les neuf cartes, réglage par réglage |
 | [§ 4 du guide](GUIDE-UTILISATEUR.md#4-catalogue-des-entités) | Le catalogue des entités et de leurs attributs |
-| [§ 5.1 du guide](GUIDE-UTILISATEUR.md#51-les-quatre-services-qui-renvoient-une-réponse) | Les services à réponse, pour l'iCal et le PDF |
+| [§ 5.1 du guide](GUIDE-UTILISATEUR.md#51-les-services-qui-renvoient-une-réponse) | Les services à réponse, pour l'iCal et le PDF |
 | [Les huit blueprints](BLUEPRINTS.md) | Automatiser, plutôt qu'afficher |
 | [Exemples d'utilisation](EXEMPLES-BLUEPRINTS.md) | Une automatisation complète par blueprint |

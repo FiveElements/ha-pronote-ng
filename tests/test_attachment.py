@@ -18,22 +18,23 @@ is the class of defect this project exists to prevent (§11.1).
 
 from __future__ import annotations
 
+from datetime import timedelta
+import re
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
-from homeassistant.const import EVENT_STATE_CHANGED
-from homeassistant.core import Event
 import pytest
 
 from custom_components.pronote_ng.attachment import (
     _SAFE_CONTENT_TYPES,
-    SIGNATURE_LIFETIME_HOURS,
+    FINGERPRINT_PATTERN,
+    SIGNATURE_LIFETIME,
     _ByteCache,
     _content_type,
     _locate,
     fingerprint,
 )
-from custom_components.pronote_ng.const import DEFAULT_TIER_INTERVALS, Tier
+from custom_components.pronote_ng.const import AttachmentKind, Tier
 from custom_components.pronote_ng.gateway import AttachmentUnavailable
 
 from .conftest import CHILDREN, REQUIRES_HASS
@@ -212,18 +213,17 @@ def test_the_cache_bounds_what_a_page_load_can_cost() -> None:
     assert cache.get("print-0") is None, "the cache grew without bound"
 
 
-def test_the_signature_outlives_the_interval_that_refreshes_it() -> None:
-    """Otherwise a page would show an address that had already expired.
+def test_a_minted_address_lives_minutes_and_not_hours() -> None:
+    """It is minted at the click and opened at once, so it has no reason to last.
 
-    The attribute carrying the signature is rebuilt on each homework
-    collection, so the signature has to last longer than that interval with
-    room to spare -- or a parent meets a 401 on a link the dashboard is still
-    displaying. Asserted against the interval table rather than a literal, so
-    shortening the tier's cadence cannot silently invalidate the reasoning.
+    This used to be twelve hours, derived from a constraint that is gone: the
+    address sat in an attribute and had to outlive the homework tier's
+    interval. Now every minute beyond the round trip is a minute a copied
+    address still opens a child's document. The floor is there too, because a
+    PDF viewer asks for a second byte range after the first one arrives, and
+    an address that died between the two would read as a broken document.
     """
-    interval_hours = DEFAULT_TIER_INTERVALS[Tier.HOMEWORK] / 60
-
-    assert interval_hours * 4 < SIGNATURE_LIFETIME_HOURS
+    assert timedelta(seconds=30) <= SIGNATURE_LIFETIME <= timedelta(minutes=10)
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +267,7 @@ class TestWhatTheViewWillServe:
         snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
         assert snapshot is not None
         item = snapshot.data.homework[0]
-        document = next(a for a in item.attachments if a.url is None)
+        document = next(a for a in item.attachments if a.kind is AttachmentKind.FILE)
 
         located = _locate(account, fingerprint(item.id, document.id))
 
@@ -300,6 +300,46 @@ class TestWhatTheViewWillServe:
         del hass
         assert _locate(account, fingerprint("HOMEWORK-1", "")) is None
 
+    async def test_a_link_is_never_located(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Only a file can be relayed, and the lookup is where that is decided.
+
+        A link is a third party's page: fetching it through the relay would use
+        the school's session on an unrelated site. Both the view and the service
+        trust what `_locate` returns, so a link is unreachable from either by
+        construction rather than by a check each of them must remember.
+        """
+        del hass
+        snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
+        assert snapshot is not None
+        item = snapshot.data.homework[0]
+        link = next(a for a in item.attachments if a.kind is AttachmentKind.LINK)
+
+        assert _locate(account, fingerprint(item.id, link.id)) is None
+
+    async def test_the_lookup_can_be_held_to_one_child(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """``student_id`` narrows the scan, and the service always passes it.
+
+        This fixture serves both children the same homework, so the same key
+        is valid for each: which one answers must be the child that was asked
+        for, and a child who is not on the account answers nothing at all.
+        """
+        del hass
+        snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
+        assert snapshot is not None
+        item = snapshot.data.homework[0]
+        document = next(a for a in item.attachments if a.kind is AttachmentKind.FILE)
+        key = fingerprint(item.id, document.id)
+
+        second = _locate(account, key, student_id=CHILDREN[1][0])
+
+        assert second is not None
+        assert second[0] == CHILDREN[1][0]
+        assert _locate(account, key, student_id="NOT-ON-THIS-ACCOUNT") is None
+
     async def test_the_download_is_charged_to_the_limiter(
         self, hass: HomeAssistant, account: PronoteAccount, parent_client: FakeClient
     ) -> None:
@@ -316,7 +356,7 @@ class TestWhatTheViewWillServe:
         snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
         assert snapshot is not None
         item = snapshot.data.homework[0]
-        document = next(a for a in item.attachments if a.url is None)
+        document = next(a for a in item.attachments if a.kind is AttachmentKind.FILE)
 
         before = account.limiter.calls_today
         content, content_type = await _fetch(account, document, CHILDREN[0][0])
@@ -362,25 +402,49 @@ class TestWhatTheDashboardReceives:
         items: list[dict[str, Any]] = state.attributes["items"]
         return items
 
-    async def test_a_file_gets_a_local_address_and_a_link_keeps_its_own(
+    async def test_a_file_gets_a_key_and_a_link_keeps_its_address(
         self, hass: HomeAssistant, account: PronoteAccount
     ) -> None:
-        """Both kinds are openable, and only one address is a third party's.
+        """Both kinds are offered, and neither entry can open anything by itself.
 
-        A link is proxied through nothing: fetching an unrelated site with the
-        school's session is not this integration's business. A file is served
-        by Home Assistant, because PRONOTE's address for it cannot be
-        published at all.
+        A link keeps its own address: it is a third party's, already visible to
+        the student in PRONOTE, and a card holding it can name the destination
+        before anybody clicks. A file gets a ``key`` -- a fingerprint that
+        names a document and authorises nothing. The address that authorises is
+        minted by the service at the click.
         """
         del account
-        links = {
-            entry["name"]: entry["url"]
-            for entry in self._items(hass)[0]["attachment_links"]
+        refs = {
+            entry["name"]: entry for entry in self._items(hass)[0]["attachment_refs"]
         }
 
-        assert links["Le sujet en ligne"] == "https://exemple.invalid/sujet"
-        assert links["enonce.pdf"].startswith("/api/pronote_ng/attachment/")
-        assert "authSig=" in links["enonce.pdf"]
+        assert refs["Le sujet en ligne"] == {
+            "name": "Le sujet en ligne",
+            "kind": "external",
+            "url": "https://exemple.invalid/sujet",
+        }
+        assert refs["enonce.pdf"]["kind"] == "local"
+        assert set(refs["enonce.pdf"]) == {"name", "kind", "key"}
+
+    async def test_a_key_has_the_exact_shape_a_card_matches(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """Lower-case hex of a fixed length, and the service schema agrees.
+
+        The card matches ``/^[0-9a-f]{16}$/`` and renders a document mute on
+        anything else, so a digest that ever came out upper-case would silently
+        disable every file. Checked against the pattern the service validates
+        with, so the two cannot drift apart.
+        """
+        del account
+        ref = next(
+            entry
+            for entry in self._items(hass)[0]["attachment_refs"]
+            if entry["kind"] == "local"
+        )
+
+        assert re.fullmatch(FINGERPRINT_PATTERN, ref["key"])
+        assert re.fullmatch(r"[0-9a-f]{16}", ref["key"])
 
     async def test_no_published_value_carries_pronotes_own_address(
         self, hass: HomeAssistant, account: PronoteAccount
@@ -404,16 +468,33 @@ class TestWhatTheDashboardReceives:
         """A fingerprint, not an ``N``.
 
         Two reasons, and the second is the one a reader forgets: a real
-        identifier carries a ``#`` that would truncate the path, *and* an
+        identifier carries a ``#`` that would truncate a path, *and* an
         attribute is written to the recorder, so publishing one puts a real
         PRONOTE identifier in a database that outlives the session.
         """
         del account
         item = self._items(hass)[0]
-        payload = repr(item["attachment_links"])
+        payload = repr(item["attachment_refs"])
 
         assert "ATTACHMENT-1" not in payload
         assert fingerprint(item["id"], "ATTACHMENT-1") in payload
+
+    async def test_the_deprecated_key_keeps_links_and_no_longer_carries_files(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """A card that has not updated keeps opening links, and loses files.
+
+        That trade is deliberate. The key used to give each file a signed path,
+        and a signed path is a bearer token readable by every account in
+        ``/api/states``. Keeping it "for one more release" would have kept open
+        the exact hole this release closes.
+        """
+        del account
+        links = self._items(hass)[0]["attachment_links"]
+
+        assert links == [
+            {"name": "Le sujet en ligne", "url": "https://exemple.invalid/sujet"}
+        ]
 
     async def test_the_names_are_still_plain_strings(
         self, hass: HomeAssistant, account: PronoteAccount
@@ -456,32 +537,21 @@ async def test_the_route_is_registered_once_for_the_whole_instance(
 
 
 @REQUIRES_HASS
-class TestNothingRecordedCanOpenADocument:
-    """The invariant, run through the recorder's own filter.
+class TestNoStateCanOpenADocument:
+    """No state, of any entity, carries an address that opens a document.
 
-    Two earlier versions of this guard passed while the tokens were being
-    written to a live database, and both failed the same way: they checked a
-    belief about Home Assistant instead of asking Home Assistant.
-
-    The first asserted that ``attachment_links`` appeared in
-    ``_unrecorded_attributes``. True, and worthless -- the recorder filters
-    **top-level** keys only, and the addresses live one level down, inside
-    ``items``. The second named ``items`` in a declaration on `PronoteSensor`,
-    which looked like the correction and was the cause: Home Assistant does not
-    union those sets up a class hierarchy, so declaring the name on a subclass
-    *replaced* the base set rather than extending it, and v0.0.22 shipped with
-    every list attribute of every sensor handed back to the recorder.
-
-    So this test calls ``StateAttributes.shared_attrs_bytes_from_event`` -- the
-    function the recorder really uses -- on a real state-changed event, and
-    searches the bytes it would have stored. Nothing is re-implemented and no
-    key is named, so it survives a rename, a reshaping and a fourth theory
-    about how the exclusion resolves.
+    This is the invariant the service exists for, and it is stronger than the
+    one it replaces. Until this release a file's signed path sat inside
+    ``items``, and the guard was that the *recorder* never stored it -- which
+    took three versions to get right, and even then left the token readable by
+    every account in ``/api/states``, kept by automation traces in
+    ``.storage``, and shown in the more-info dialog. Now there is nothing to
+    exclude, because nothing is published.
     """
 
     @pytest.fixture(name="parent_client")
     def parent_client_fixture(self) -> FakeClient:
-        """One file, so a signed address exists to be found."""
+        """One file, so there is a document an address could have opened."""
         from .fixtures.client import FakeClient
 
         client = FakeClient(children=CHILDREN)
@@ -490,55 +560,30 @@ class TestNothingRecordedCanOpenADocument:
         )
         return client
 
-    async def test_what_the_recorder_would_store_holds_no_signature(
+    async def test_no_state_carries_a_signed_address(
         self, hass: HomeAssistant, account: PronoteAccount
     ) -> None:
-        """A signed address is a bearer token and a database outlives it.
+        """Searched across every state on the instance, not one attribute.
 
-        Twelve hours is defensible for an address that leaks through a
-        browser's history. It is not defensible for one written to the history
-        database on every collection, because a database is copied into every
-        backup and occasionally pasted into a bug report.
-
-        Measured on a live instance rather than reasoned about: the history of
-        `sensor.<child>_homework_to_do` held a row carrying every token.
-        """
-        del account
-        from homeassistant.components.recorder.db_schema import StateAttributes
-
-        state = hass.states.get("sensor.enfant_un_homework_to_do")
-        assert state is not None
-        assert "authSig=" in repr(state.attributes), (
-            "no attribute carried a signature, so this proves nothing"
-        )
-
-        event = Event(
-            EVENT_STATE_CHANGED,
-            {"entity_id": state.entity_id, "old_state": None, "new_state": state},
-        )
-        stored = StateAttributes.shared_attrs_bytes_from_event(event, None)
-
-        assert b"authSig=" not in stored, (
-            f"the recorder would store a bearer token: {stored[:400]!r}"
-        )
-
-    async def test_the_signature_is_still_in_the_live_state(
-        self, hass: HomeAssistant, account: PronoteAccount
-    ) -> None:
-        """Excluded from the recorder is not excluded from the dashboard.
-
-        The pair matters: a card reads the live state, so the address has to be
-        there. A guard that removed it from both would look like it worked and
-        would have quietly deleted the feature.
+        A new entity, a new attribute or a reshaped one cannot reintroduce a
+        signature without failing this. The precondition is asserted too: a
+        file must actually be offered, or the absence proves nothing.
         """
         del account
         state = hass.states.get("sensor.enfant_un_homework_to_do")
         assert state is not None
+        refs = state.attributes["items"][0]["attachment_refs"]
+        assert any(ref["kind"] == "local" for ref in refs), (
+            "no file was offered, so this proves nothing"
+        )
 
-        links = state.attributes["items"][0]["attachment_links"]
+        carrying = [
+            other.entity_id
+            for other in hass.states.async_all()
+            if "authSig=" in repr(other.attributes) or "authSig=" in other.state
+        ]
 
-        assert links[0]["url"].startswith("/api/pronote_ng/attachment/")
-        assert "authSig=" in links[0]["url"]
+        assert carrying == []
 
 
 def test_no_entity_class_shadows_the_shared_exclusion() -> None:
@@ -709,7 +754,10 @@ class TestHowARefusalIsAnswered:
         from custom_components.pronote_ng.models import HomeworkAttachment
 
         link = HomeworkAttachment(
-            name="Le sujet", url="https://exemple.invalid/sujet", id="ATTACHMENT-9"
+            name="Le sujet",
+            url="https://exemple.invalid/sujet",
+            id="ATTACHMENT-9",
+            kind=AttachmentKind.LINK,
         )
         with patch(
             "custom_components.pronote_ng.attachment._locate",

@@ -13,9 +13,15 @@ and while it works it opens the document with no credentials at all. So it must
 never reach a state, an attribute, the recorder or a diagnostics download --
 the rule §8.2 established for the iCal URL.
 
-What is published instead is an address **Home Assistant** serves: a signed,
-expiring path to the view below, which fetches the bytes through the ordinary
-chokepoint -- one session, one lock, charged to the limiter -- and relays them.
+What a dashboard gets instead is an address **Home Assistant** serves: a
+signed, expiring path to the view below, which fetches the bytes through the
+ordinary chokepoint -- one session, one lock, charged to the limiter -- and
+relays them. That address is **not** in any attribute. The state carries a
+``key`` naming the document, and ``pronote_ng.get_attachment_url`` mints the
+signed path at the instant somebody clicks. A signed path is a bearer token,
+and an attribute is the most widely readable surface Home Assistant has: every
+account reads `/api/states`, automation traces keep the triggering state in
+`.storage`, and the more-info dialog displays it.
 
 Relayed and not redirected, deliberately. A 302 would put PRONOTE's address in
 the browser's address bar, its history, the network tab and the log of any
@@ -36,8 +42,9 @@ same idiom ``diagnostics.py`` uses for child identifiers. It also makes the
 address name a *document* rather than a position, so re-ordering between two
 collections cannot serve the wrong file.
 
-**It expires.** An address copied out of a dashboard stops working, which is
-what keeps an old recorder row from being a lasting key to a child's homework.
+**It expires, in minutes.** Minted on click and opened at once, it has no
+reason to outlive the click, so a copied address -- a link shared by mistake,
+a screenshot of the browser bar -- is dead before it can be reused.
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.components.http.auth import async_sign_path
 from homeassistant.helpers.http import KEY_HASS
 
-from .const import DOMAIN, Priority, Tier
+from .const import DOMAIN, AttachmentKind, Priority, Tier
 from .gateway import AttachmentUnavailable
 from .ratelimit import TierDeferred
 
@@ -62,16 +69,16 @@ if TYPE_CHECKING:
     from .account import PronoteAccount
     from .models import HomeworkAttachment, HomeworkFacts
 
-#: How long a published address stays usable.
+#: How long a minted address stays usable.
 #:
-#: Twelve hours, and the bound is derived rather than picked. It has to be
-#: comfortably longer than the homework tier's interval -- thirty minutes -- or
-#: an attribute would hold a signature that expired before the next collection
-#: replaced it, and a parent would meet a 401 on a link the page was still
-#: showing. It has to be short enough that a row left in the recorder, or a
-#: screenshot, is not a lasting key: half a day means an address leaked at
-#: breakfast is inert by bedtime.
-SIGNATURE_LIFETIME_HOURS: Final = 12
+#: Five minutes. It used to be twelve hours, and that figure was derived from a
+#: constraint that no longer exists: the address sat in an attribute, so it had
+#: to outlive the homework tier's interval or a parent would meet a 401 on a
+#: link the page was still showing. Minted by the service at the click and
+#: opened immediately, it only has to survive the round trip and a slow PDF
+#: viewer asking for a second range -- and every minute beyond that is a minute
+#: a copied address still opens a child's document.
+SIGNATURE_LIFETIME: Final = timedelta(minutes=5)
 
 #: Characters of the digest kept in the path.
 #:
@@ -82,6 +89,10 @@ SIGNATURE_LIFETIME_HOURS: Final = 12
 #: impossible in practice, and a longer digest would only make the address
 #: harder to read in a log.
 _FINGERPRINT_LENGTH: Final = 16
+
+#: What a well-formed fingerprint looks like, for the service schema. Derived
+#: from the length rather than written twice.
+FINGERPRINT_PATTERN: Final = rf"^[0-9a-f]{{{_FINGERPRINT_LENGTH}}}$"
 
 #: How many documents' bytes are kept in memory, per account.
 #:
@@ -135,11 +146,15 @@ def fingerprint(homework_id: str, attachment_id: str) -> str:
 
 
 def signed_path(hass: HomeAssistant, entry_id: str, print_: str) -> str:
-    """The address a dashboard receives for one document."""
+    """The address the service returns for one document.
+
+    Local: `async_sign_path` builds a JWT from a key Home Assistant already
+    holds. No request leaves this process.
+    """
     return async_sign_path(
         hass,
         f"/api/{DOMAIN}/attachment/{entry_id}/{print_}",
-        timedelta(hours=SIGNATURE_LIFETIME_HOURS),
+        SIGNATURE_LIFETIME,
     )
 
 
@@ -192,25 +207,41 @@ def cache_for(hass: HomeAssistant, entry_id: str) -> _ByteCache:
 
 
 def _locate(
-    account: PronoteAccount, print_: str
+    account: PronoteAccount, print_: str, *, student_id: str | None = None
 ) -> tuple[str, HomeworkAttachment] | None:
-    """Find the document one fingerprint names, and whose child it belongs to.
+    """Find the *file* one fingerprint names, and whose child it belongs to.
 
-    Scanned rather than addressed, and that is why the path needs no student
-    and no homework identifier: the snapshot is the authority on what this
+    Scanned rather than addressed: the snapshot is the authority on what this
     account may fetch, so a fingerprint that matches nothing in it is refused
     without ever reaching PRONOTE. An address for a document that has since
     left the horizon therefore stops working, which is the correct answer --
     the integration cannot vouch for what it no longer holds.
+
+    Only ``FILE`` matches, and that is the whole defence of the relay rather
+    than a filter: the view and the service both trust what this returns, so a
+    link -- whose bytes are a third party's page -- and an ``OPAQUE``
+    attachment are unreachable here by construction, not by a check somebody
+    could forget downstream.
+
+    ``student_id`` scopes the scan to one child, and the service always passes
+    it. Without it, a parent's card could present one child's key with the
+    other child's device and be handed a working address. The view does not
+    pass it: its path carries no student, and it does not need one -- it only
+    ever serves an address the service already scoped when it minted it.
     """
-    for student in account.students:
+    students = (
+        [student for student in account.students if student.id == student_id]
+        if student_id is not None
+        else account.students
+    )
+    for student in students:
         snapshot = account.snapshot(Tier.HOMEWORK, student.id)
         if snapshot is None:
             continue
         facts: HomeworkFacts = snapshot.data
         for item in facts.homework:
             for attachment in item.attachments:
-                if not attachment.id:
+                if attachment.kind is not AttachmentKind.FILE:
                     continue
                 if hmac.compare_digest(fingerprint(item.id, attachment.id), print_):
                     return student.id, attachment
@@ -246,12 +277,16 @@ class PronoteAttachmentView(HomeAssistantView):
             return web.Response(status=404, text="no such document on this account")
         student_id, attachment = located
 
-        if attachment.url is not None:
-            # A link, not a file. It has its own address and the dashboard was
-            # given it directly, so serving it here would mean fetching a third
-            # party's page with the school's session -- which this integration
-            # has no business doing.
-            return web.Response(status=404, text="that attachment is a link")
+        if attachment.kind is not AttachmentKind.FILE:
+            # `_locate` already returns files only, so this is unreachable
+            # today -- and it stays, because it is the relay's own refusal and
+            # not a property of whatever hands it an attachment. A link is a
+            # third party's page; relaying it would fetch an unrelated site
+            # with the school's session and make Home Assistant an open proxy
+            # for anything a teacher pastes.
+            return web.Response(
+                status=404, text="that attachment is a link, not a file"
+            )
 
         cache = cache_for(hass, entry_id)
         if (cached := cache.get(print_)) is None:
@@ -287,6 +322,14 @@ class PronoteAttachmentView(HomeAssistantView):
                 # access, so letting the browser keep them saves re-serving the
                 # same megabytes on every render.
                 "Cache-Control": "private, max-age=3600",
+                # The whitelist above is the defence; these stop a browser from
+                # second-guessing it. Without `nosniff` a document declared
+                # `text/plain` can be sniffed as HTML and run in Home
+                # Assistant's origin. And the relay's own address -- signed --
+                # must not travel to a third party as a `Referer` when a
+                # document links out.
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer",
             },
         )
 
