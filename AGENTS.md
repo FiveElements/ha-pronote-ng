@@ -138,11 +138,11 @@ Two hassfest traps: a translation string may not contain a URL (use
 `description_placeholders`), and `manifest.json` keys must be ordered `domain`,
 `name`, then alphabetically.
 
-### The version floor is one number in 19 files
+### The version floor is one number in 21 files
 
 `hacs.json` `homeassistant` ⇄ the `requirements_test.txt` pin ⇄ the gated matrix
-row in `validate.yml` ⇄ 16 blueprint `min_version` values. Currently
-**2026.9.0** / `0.13.363`. `tests/test_version_floor.py` holds all 19, and a CI
+row in `validate.yml` ⇄ 18 blueprint `min_version` values. Currently
+**2026.9.0** / `0.13.363`. `tests/test_version_floor.py` holds all 21, and a CI
 step compares `homeassistant.const.__version__` to `hacs.json` so the declared
 number is the one actually exercised. PyPI mapping observed so far:
 `0.13.354`→2026.8.0, `0.13.363`→2026.9.0, `0.13.364`→2026.9.1. Raise the floor

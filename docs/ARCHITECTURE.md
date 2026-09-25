@@ -2520,19 +2520,25 @@ marque nativement. C'est ce qui rend envisageable le retrait de l'image
 markdown de la description de la première étape du flux, sous réserve d'une
 vérification visuelle.
 
-### 12.14 Sept blueprints, pas six
+### 12.14 Neuf blueprints, pas six
 
-La spécification §2.3 énumère **six** blueprints. Le dépôt en livre **sept** par
-langue, soit quatorze fichiers dans `blueprints/automation/pronote_ng/{fr,en}/` :
+La spécification §2.3 énumère **six** blueprints. Le dépôt en livre **neuf** par
+langue, soit dix-huit fichiers dans `blueprints/automation/pronote_ng/{fr,en}/` :
 `wake_up_alarm`, `lesson_canceled`, `homework_reminder`, `new_grade`,
-`absence_alert`, `canteen_menu` — les six prévus — plus **`new_message`**, qui
-couvre l'arrivée d'un message de la messagerie ou d'une actualité publiée par
-l'établissement.
+`absence_alert`, `canteen_menu` — les six prévus — plus trois :
 
-C'est un ajout, pas une divergence de conception : il exploite les déclencheurs
-`message_received` et `information_added` qui existaient déjà au catalogue, et
-la spécification exige un test par blueprint, ce qui vaut pour le septième
-comme pour les six autres.
+- **`new_message`** couvre l'arrivée d'un message de la messagerie ou d'une
+  actualité publiée par l'établissement ;
+- **`end_of_day`** agit à la fin des cours, sur le capteur « Fin des cours » ;
+- **`midday_return`** agit à la fin de la matinée, sur le capteur « Fin de
+  matinée », avec une option qui dit si un cours annulé avance le retour ou si
+  l'élève reste en permanence jusqu'à l'heure prévue (`scheduled_end`).
+
+Ce sont des ajouts, pas des divergences de conception : ils exploitent des
+déclencheurs et des capteurs qui existaient déjà au catalogue, et la
+spécification exige un test par blueprint, ce qui vaut pour eux comme pour les
+six autres — `tests/test_blueprint_midday_return.py` exécute le dernier dans
+Home Assistant.
 
 ### 12.15 Divergences que le code a déjà consignées
 
