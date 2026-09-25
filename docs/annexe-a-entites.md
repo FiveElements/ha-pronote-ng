@@ -75,6 +75,18 @@ la journée » : un enfant qui a un cours le matin et un en fin d'après-midi a 
 creux de cinq heures qui n'est pas un déjeuner, et répondre 10h00 mettrait un
 parent sur la route au mauvais moment. La durée minimale est l'autre moitié de
 la règle — trente minutes à midi est un changement de salle, pas un repas.
+Un creux qui commence plus tôt compte quand même s'il **contient la pause
+prévue** : un creux de la grille telle que planifiée, cours annulés compris,
+qui satisfait lui-même la règle. C'est le jour où un professeur absent avance
+la fin de matinée — 8h30 à 10h30, le cours de 10h30 annulé, reprise à 14h00 :
+l'état vaut 10h30, alors que le creux réel, commençant avant 11h00, était
+écarté et que l'annonce du midi ne partait pas. La grille planifiée le
+distingue d'« un cours le matin puis une fin d'après-midi », dont le creux
+prévu commence lui aussi trop tôt. L'attribut `scheduled_end` donne l'heure
+prévue de fin de matinée, annulations ignorées — ce qu'attend un élève qui
+reste en permanence — et vaut `None` quand la grille ne prévoyait aucune pause
+et que seules des annulations en ont ouvert une ; `canceled_before_break`
+compte les cours annulés entre la fin réelle et la reprise.
 Comme `prochain_reveil`, le capteur ne compte que les cours qui placent
 réellement l'enfant quelque part : les cours annulés et ceux dont il est
 dispensé sont écartés (`_teaching_lessons`). Les chevauchements sont traités en

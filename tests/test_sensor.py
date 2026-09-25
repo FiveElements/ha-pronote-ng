@@ -20,7 +20,7 @@ neither print it nor inject it.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
 import pytest
@@ -294,6 +294,118 @@ class TestWhenTheMorningEnds:
         assert state.attributes["subject"] == "Mathématiques"
         assert state.attributes["resumes_at"] == "2026-03-12T14:00:00+01:00"
         assert state.attributes["break_minutes"] == 120
+        # Nothing cancelled: the schedule and the day agree.
+        assert state.attributes["scheduled_end"] == "2026-03-12T12:00:00+01:00"
+        assert state.attributes["canceled_before_break"] == 0
+
+
+def _lesson(
+    identifier: str,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    subject: str,
+    *,
+    canceled: bool = False,
+) -> dict[str, Any]:
+    """One lesson on the frozen day, its slot derived from half-hours at 08:00."""
+    place = (start[0] - 8) * 2 + start[1] // 30
+    duration = ((end[0] - start[0]) * 60 + end[1] - start[1]) // 30
+    return protocol.lesson(
+        identifier=identifier,
+        start=_day(*start),
+        end=_day(*end),
+        place=place,
+        duration=duration,
+        subject=subject,
+        canceled=canceled,
+    )
+
+
+class TestWhenAnAbsentTeacherBringsTheMorningForward:
+    """The lunch homecoming comes early, and it must still be announced."""
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """08:30-10:30, the 10:30 lesson cancelled, lunch, then 14:00-16:00.
+
+        The shape of a real day on a live instance: the teacher of the last
+        morning lesson was absent. The gap the child actually has starts at
+        10:30 -- before the window -- so the rule that looked only at that gap
+        published nothing, and the midday announcement never went out.
+        """
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                _lesson("LESSON-A", (8, 30), (9, 30), "Français"),
+                _lesson("LESSON-B", (9, 30), (10, 30), "Mathématiques"),
+                _lesson(
+                    "LESSON-C", (10, 30), (11, 30), "Physique-chimie", canceled=True
+                ),
+                _lesson("LESSON-D", (14, 0), (16, 0), "Histoire"),
+            ]
+        )
+        return client
+
+    async def test_the_morning_ends_at_the_last_lesson_that_takes_place(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """10:30, and the scheduled 11:30 beside it for a child who stays.
+
+        The planned grid has its lunch break at 11:30, inside the window, and
+        that is what makes the 10:30 gap a lunch break rather than "one
+        morning lesson and a late afternoon". ``scheduled_end`` is what an
+        automation waits for when the child stays at school while the teacher
+        is absent.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_morning")
+
+        assert state is not None
+        assert dt_util.parse_datetime(state.state) == datetime(
+            2026, 3, 12, 10, 30, tzinfo=PARIS
+        )
+        assert state.attributes["subject"] == "Mathématiques"
+        assert state.attributes["scheduled_end"] == "2026-03-12T11:30:00+01:00"
+        assert state.attributes["canceled_before_break"] == 1
+        assert state.attributes["resumes_at"] == "2026-03-12T14:00:00+01:00"
+        assert state.attributes["break_minutes"] == 210
+
+
+class TestWhenCancellationsOpenAGapTheTimetableNeverHad:
+    """A continuous day with its late morning cancelled."""
+
+    @pytest.fixture(name="parent_client")
+    def parent_client_fixture(self) -> FakeClient:
+        """08:00-11:00, 11:00-14:00 cancelled, then 14:00-16:00."""
+        client = FakeClient(children=CHILDREN)
+        client.responses["PageEmploiDuTemps"] = protocol.timetable_response(
+            [
+                _lesson("LESSON-A", (8, 0), (11, 0), "Français"),
+                _lesson("LESSON-B", (11, 0), (14, 0), "Sport", canceled=True),
+                _lesson("LESSON-C", (14, 0), (16, 0), "Histoire"),
+            ]
+        )
+        return client
+
+    async def test_the_break_is_published_but_no_scheduled_end_is_invented(
+        self, hass: HomeAssistant, account: PronoteAccount
+    ) -> None:
+        """The child really is free from 11:00; the grid planned no lunch.
+
+        The state keeps the rule it always had -- the gap starts at 11:00 and
+        is three hours long -- but ``scheduled_end`` is ``None``: a child who
+        stays at school when a teacher is absent is at school until 16:00 on
+        this day, and naming an instant would send somebody to collect them.
+        """
+        del account
+        state = hass.states.get("sensor.enfant_un_end_of_morning")
+
+        assert state is not None
+        assert dt_util.parse_datetime(state.state) == datetime(
+            2026, 3, 12, 11, 0, tzinfo=PARIS
+        )
+        assert state.attributes["scheduled_end"] is None
+        assert state.attributes["canceled_before_break"] == 1
 
 
 class TestWhenThereIsNoMiddayBreak:

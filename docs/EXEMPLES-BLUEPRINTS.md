@@ -87,6 +87,7 @@ YAML**. Effacez le contenu et collez le bloc.
 - [6. Nouveau message ou information](#6-nouveau-message-ou-information)
 - [7. Menu de la cantine](#7-menu-de-la-cantine)
 - [8. Retour de l'école](#8-retour-de-lécole)
+- [9. Retour du midi](#9-retour-du-midi)
 - [Deux recettes qui ne sont pas des blueprints](#deux-recettes-qui-ne-sont-pas-des-blueprints)
 
 ---
@@ -517,6 +518,51 @@ comparaison annoncerait une annulation ce jour-là.
     c'est le cas de **toutes**. L'attribut `end_inferred` le dit. Une
     notification supporte l'approximation ; l'ouverture d'un portail ou un
     départ en voiture, non.
+
+---
+
+## 9. Retour du midi
+
+**Le cas.** Annoncer que l'enfant rentre déjeuner, à l'heure où sa matinée se
+termine vraiment — y compris quand le dernier cours du matin saute parce que
+le professeur est absent.
+
+```yaml
+alias: Retour du midi d'Enfant Un
+description: Annonce dans le salon la fin de la matinée et l'heure de reprise.
+use_blueprint:
+  path: FiveElements/midday_return.yaml
+  input:
+    morning_end_sensor: sensor.enfant_un_fin_de_matinee
+    include_cancellations: true
+    midday_action:
+      - action: notify.mobile_app_telephone
+        data:
+          title: "{{ title }}"
+          message: "{{ message }}"
+```
+
+Le capteur « Fin de matinée » reconnaît une pause du midi avancée par une
+annulation : l'action part à 10h30 le jour où le cours de 10h30 est annulé, et
+le message dit combien de cours ont sauté et à quelle heure les cours
+reprennent.
+
+### Variante : l'enfant reste en permanence
+
+```yaml
+    include_cancellations: false
+```
+
+L'action part alors à l'heure **prévue** par la grille (`scheduled_end`),
+annulations ignorées. Un jour où la grille ne prévoyait aucune pause du midi
+et où seules des annulations en ont ouvert une, rien ne se passe : l'enfant
+qui reste en permanence n'a pas de retour du midi ce jour-là. L'attente se
+fait dans l'exécution de l'automatisation, à partir de la fin réelle ; un
+redémarrage de Home Assistant pendant cette attente la perd.
+
+Les jours sans pause du midi — journée continue, journée qui s'arrête à midi,
+week-end, vacances — le capteur n'a pas de valeur et rien ne s'arme. Une
+journée qui s'arrête à midi relève du blueprint « Retour de l'école ».
 
 ---
 

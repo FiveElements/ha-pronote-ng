@@ -289,7 +289,7 @@ def _next_cancellation_attributes(
 
 def _midday_break(
     facts: TimetableFacts, account: PronoteAccount
-) -> tuple[Lesson, Lesson] | None:
+) -> tuple[Lesson, Lesson, datetime | None] | None:
     """The lesson that closes the morning and the one that resumes after lunch.
 
     The rule is deliberately not "the day's largest gap": the break has to
@@ -309,32 +309,75 @@ def _midday_break(
     comparing consecutive pairs: PRONOTE does return lessons that overlap --
     a replacement arrives while the original is still present -- and a
     pairwise scan would invent a negative gap between them.
+
+    A gap that starts too early still counts when it **contains the planned
+    lunch break**, a gap of the timetable *as scheduled*, cancelled lessons
+    included, that satisfies the rule itself. That is the day a cancellation
+    brings the morning forward: 08:30 to 10:30, the 10:30 lesson cancelled
+    because its teacher is absent, lunch, 14:00. The gap the child actually
+    has starts at 10:30, before the window, and was rejected as "not a lunch
+    break" -- so the lunch homecoming was never announced, on a live
+    instance, on exactly the day it came early. The scheduled grid is what
+    tells that day apart from one morning lesson followed by a late
+    afternoon: there, the planned gap starts at 10:00 as well, and still
+    does not count.
+
+    The third value is when the morning was *scheduled* to end: the start of
+    that planned break, or ``None`` when the timetable planned none and the
+    gap exists only because lessons were cancelled -- a continuous day with
+    its late morning cancelled has no lunch homecoming on the grid.
     """
-    lessons = sorted(
-        _teaching_lessons(_lessons_on(facts, account.today())),
-        key=lambda lesson: lesson.start,
-    )
+    day = _lessons_on(facts, account.today())
+    lessons = sorted(_teaching_lessons(day), key=lambda lesson: lesson.start)
     if len(lessons) < 2:
         return None
+    planned = [
+        (before.end, after.start)
+        for _, before, after in _gaps(
+            sorted(
+                (lesson for lesson in day if not lesson.exempted),
+                key=lambda lesson: lesson.start,
+            )
+        )
+        if _is_lunch(before.end, after.start)
+    ]
 
-    breaks: list[tuple[timedelta, Lesson, Lesson]] = []
+    breaks: list[tuple[timedelta, Lesson, Lesson, datetime | None]] = []
+    for gap, before, after in _gaps(lessons):
+        inside = [
+            (end - start, start)
+            for start, end in planned
+            if before.end <= start and end <= after.start
+        ]
+        scheduled_end = max(inside)[1] if inside else None
+        if scheduled_end is not None or _is_lunch(before.end, after.start):
+            breaks.append((gap, before, after, scheduled_end))
+    if not breaks:
+        return None
+    _, before, after, scheduled_end = max(breaks, key=lambda found: found[0])
+    return before, after, scheduled_end
+
+
+def _gaps(lessons: Sequence[Lesson]) -> list[tuple[timedelta, Lesson, Lesson]]:
+    """Every gap between sorted lessons, as (length, closing, reopening)."""
+    if not lessons:
+        return []
+    gaps: list[tuple[timedelta, Lesson, Lesson]] = []
     closing = lessons[0]
     for lesson in lessons[1:]:
         if lesson.start > closing.end:
-            gap = lesson.start - closing.end
-            starts_at = closing.end.time()
-            if (
-                gap >= timedelta(minutes=MIDDAY_BREAK_MIN_MINUTES)
-                and MIDDAY_BREAK_EARLIEST <= starts_at <= MIDDAY_BREAK_LATEST
-            ):
-                breaks.append((gap, closing, lesson))
+            gaps.append((lesson.start - closing.end, closing, lesson))
         if lesson.end > closing.end:
             closing = lesson
+    return gaps
 
-    if not breaks:
-        return None
-    _, before, after = max(breaks, key=lambda found: found[0])
-    return before, after
+
+def _is_lunch(start: datetime, end: datetime) -> bool:
+    """Whether a gap is long enough, and starts late enough, to be lunch."""
+    return (
+        end - start >= timedelta(minutes=MIDDAY_BREAK_MIN_MINUTES)
+        and MIDDAY_BREAK_EARLIEST <= start.time() <= MIDDAY_BREAK_LATEST
+    )
 
 
 def _morning_end(facts: TimetableFacts, account: PronoteAccount) -> StateValue:
@@ -350,9 +393,21 @@ def _morning_end_attributes(
     found = _midday_break(facts, account)
     if found is None:
         return {}
-    before, after = found
+    before, after, scheduled_end = found
     return {
         "subject": before.subject,
+        # When the morning was due to end, cancellations ignored. It is what a
+        # parent whose child stays at school when a teacher is absent waits
+        # for instead of the state; `None` when the grid planned no lunch
+        # break and only cancellations opened one.
+        "scheduled_end": scheduled_end.isoformat() if scheduled_end else None,
+        "canceled_before_break": sum(
+            1
+            for lesson in _lessons_on(facts, account.today())
+            if lesson.canceled
+            and lesson.end > before.end
+            and lesson.start < after.start
+        ),
         # As on every other timestamp taken from a lesson end: pronotepy
         # infers it when `DateDuCoursFin` is absent, and on this
         # establishment that is every lesson (§4.1).
