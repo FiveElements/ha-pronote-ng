@@ -6,6 +6,9 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&style=flat-square&label=HACS)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml)
 [![hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&style=flat-square&label=hassfest)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square)](https://hacs.xyz/docs/faq/custom_repositories/)
+[![Téléchargements](https://img.shields.io/github/downloads/FiveElements/ha-pronote-ng/total?style=flat-square&label=t%C3%A9l%C3%A9chargements)](https://github.com/FiveElements/ha-pronote-ng/releases)
+[![Dependabot](https://img.shields.io/badge/Dependabot-activ%C3%A9-025E8C?style=flat-square&logo=dependabot&logoColor=white)](.github/dependabot.yml)
 
  **Pronote NG** est une intégration [Home Assistant](<https://www.home-assistant.io/>) permettant d'intégrer **PRONOTE** directement dans votre installation domotique.
 
