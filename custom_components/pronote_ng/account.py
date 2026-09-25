@@ -59,6 +59,7 @@ from .const import (
     ISSUE_DAILY_CAP_NEAR,
     ISSUE_INVALID_CREDENTIALS,
     ISSUE_MFA_REQUIRED,
+    LEGACY_WRITE_OPERATIONS_ENABLED,
     OPT_CONNECT_TIMEOUT,
     OPT_ESTABLISHMENT_TIMEZONE,
     OPT_HISTORY_PERIODS,
@@ -334,8 +335,17 @@ class PronoteAccount:
 
     @property
     def write_enabled(self) -> bool:
-        """Whether write operations are permitted (false by default, §8.3)."""
-        return bool(self.entry.options.get(OPT_WRITE_OPERATIONS_ENABLED, False))
+        """Whether write operations are permitted (§8.3).
+
+        A missing key reads as the *legacy* default, not the current one: new
+        entries are created with the key set, so its absence means an entry
+        from before writes were on by default, whose owner never chose them.
+        """
+        return bool(
+            self.entry.options.get(
+                OPT_WRITE_OPERATIONS_ENABLED, LEGACY_WRITE_OPERATIONS_ENABLED
+            )
+        )
 
     @property
     def students(self) -> tuple[Student, ...]:

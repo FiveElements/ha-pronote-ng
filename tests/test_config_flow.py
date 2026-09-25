@@ -64,6 +64,7 @@ from custom_components.pronote_ng.const import (
     CONF_SOURCE,
     CONF_UUID,
     DOMAIN,
+    OPT_WRITE_OPERATIONS_ENABLED,
     LoginMode,
 )
 from custom_components.pronote_ng.login_guard import limiter_state_store, login_guard
@@ -200,6 +201,8 @@ async def test_an_ecoledirecte_login_stores_password_and_not_the_token(
     assert created["data"]["password"] == "not-a-real-password"
     assert "token" not in created["data"]
     assert created["data"][CONF_SOURCE] == "ecoledirecte"
+    # The connector offers no write, so there is nothing to switch on.
+    assert OPT_WRITE_OPERATIONS_ENABLED not in created["options"]
 
 
 async def test_a_250_opens_the_qcm_step_and_does_not_create_the_entry(
@@ -514,6 +517,28 @@ async def test_a_single_child_account_is_created_straight_away(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_CHILDREN] == ["STUDENT-1"]
     assert result["data"][CONF_LOGIN_MODE] == LoginMode.CREDENTIALS.value
+
+
+async def test_a_new_entry_is_created_with_writes_on(
+    hass: HomeAssistant, no_spacing: None
+) -> None:
+    """A homework list that cannot be ticked reads as a broken integration.
+
+    Written into the entry's own options rather than left to a fallback,
+    because the fallback must keep answering "off" for every entry created
+    before this default changed (§8.3).
+    """
+    flow_id = await _start(hass)
+
+    with patch(
+        "custom_components.pronote_ng.config_flow._probe",
+        return_value=_outcome(("STUDENT-1", "Enfant Un")),
+    ):
+        result = await _submit_credentials(hass, flow_id)
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"][OPT_WRITE_OPERATIONS_ENABLED] is True
+    assert result["result"].options[OPT_WRITE_OPERATIONS_ENABLED] is True
 
 
 async def test_a_parent_account_asks_which_children_to_follow(

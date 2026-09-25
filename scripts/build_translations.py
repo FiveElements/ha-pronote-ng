@@ -744,14 +744,14 @@ GENERAL_OPTIONS: list[tuple[str, str, str, str, str]] = [
         "Allow writing to PRONOTE",
         "Autoriser l'écriture dans PRONOTE",
         (
-            "Off by default. When on, ticking a homework item, marking news read "
-            "and sending messages become possible, and the establishment sees "
-            "those actions."
+            "On for a new installation. When on, ticking a homework item, marking "
+            "news read and sending messages are possible, and the establishment "
+            "sees those actions."
         ),
         (
-            "Désactivé par défaut. Une fois activé, cocher un devoir, marquer une "
-            "actualité comme lue et envoyer des messages deviennent possibles, et "
-            "l'établissement voit ces actions."
+            "Activé pour une nouvelle installation. Activé, cocher un devoir, "
+            "marquer une actualité comme lue et envoyer des messages sont "
+            "possibles, et l'établissement voit ces actions."
         ),
     ),
 ]

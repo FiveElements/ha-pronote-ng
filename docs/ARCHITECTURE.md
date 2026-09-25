@@ -1985,13 +1985,19 @@ entités de diagnostic, le service `get_rate_limit_status` — qui lit tout en
 mémoire et coûte **zéro** requête, donc peut être interrogé depuis un tableau de
 bord — et le téléchargement de diagnostic. Jamais par le journal amont.
 
-### 10.5 Les écritures sont désactivées par défaut
+### 10.5 Les écritures sont un choix enregistré
 
 Cocher un devoir, marquer une actualité comme lue et envoyer un message
-modifient ce que l'établissement voit. Les trois sont refusés à moins que
-l'utilisateur n'ait activé les opérations d'écriture
-(`OPT_WRITE_OPERATIONS_ENABLED`, défaut faux), et refusés **avec une
-explication** plutôt qu'ignorés (`_require_writes`, `services.py`).
+modifient ce que l'établissement voit. Les trois sont refusés quand les
+opérations d'écriture sont coupées (`OPT_WRITE_OPERATIONS_ENABLED`), et refusés
+**avec une explication** plutôt qu'ignorés (`_require_writes`, `services.py`).
+
+Une nouvelle entrée PRONOTE naît avec l'option vraie, inscrite dans ses options
+par `_async_create` (`config_flow.py`). Le repli, lui, reste faux
+(`LEGACY_WRITE_OPERATIONS_ENABLED`) dans `write_enabled` comme dans le
+formulaire : une entrée sans la clé date d'avant ce défaut, et la lire avec le
+nouveau aurait ouvert l'écriture chez quelqu'un qui ne l'a jamais choisie — au
+premier démarrage, ou au premier enregistrement de la page « Général ».
 
 La liste de devoirs suit la même règle jusque dans son interface :
 `todo.py` n'annonce `UPDATE_TODO_ITEM` que si les écritures sont activées,

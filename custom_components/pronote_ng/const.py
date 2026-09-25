@@ -253,7 +253,13 @@ DEFAULT_QUIET_END: Final = "06:00:00"
 DEFAULT_HOMEWORK_HORIZON: Final = 14
 DEFAULT_WAKE_MARGIN: Final = 90
 DEFAULT_HISTORY_PERIODS: Final = 0  # 0 means "every closed period"
-DEFAULT_WRITE_OPERATIONS_ENABLED: Final = False
+#: What a *new* PRONOTE entry is created with (§8.3). Seeded into the entry's
+#: options at creation, never read as a fallback: an entry that lacks the key
+#: was created while writes were off by default, and reading this constant for
+#: it would turn writes on for somebody who never chose them.
+DEFAULT_WRITE_OPERATIONS_ENABLED: Final = True
+#: What an entry without the key is: one created before the default changed.
+LEGACY_WRITE_OPERATIONS_ENABLED: Final = False
 DEFAULT_STALE_AFTER: Final = 6
 
 # pronotepy passes no `timeout=` anywhere -- verified, `grep -rn timeout` over

@@ -1141,7 +1141,8 @@ Trois sections, toutes préremplies :
 présentation, sans effet sur le budget, cf. §5.2),
 `history_periods` (nombre de périodes closes à suivre, toutes par défaut),
 `wake_margin` (marge du capteur de réveil, 90 min par défaut),
-`write_operations_enabled` (faux par défaut, §8.3).
+`write_operations_enabled` (vrai pour une nouvelle entrée PRONOTE, faux pour
+une entrée antérieure qui ne le porte pas, §8.3).
 
 **Exigence.** Un changement d'options recharge l'entrée sans redémarrage, et une
 réduction d'intervalle ne déclenche pas de collecte immédiate : la prochaine
@@ -1231,9 +1232,15 @@ documentation doit dire que ces services sont à usage interactif.
 
 **Exigence.** Les opérations qui modifient PRONOTE (marquer un devoir fait,
 marquer une actualité lue, envoyer un message) sont derrière l'option
-`write_operations_enabled`, fausse par défaut. Une intégration de lecture qui se
-met à écrire sans que l'utilisateur l'ait demandé est une mauvaise surprise, et
-un message envoyé ne se rappelle pas.
+`write_operations_enabled`, **vraie à la création** d'une entrée PRONOTE. Une
+liste de devoirs qu'on ne peut pas cocher passe pour une panne, et c'est ce que
+voyait un parent à l'installation.
+
+**Exigence.** Une entrée qui ne porte pas l'option reste en lecture seule. Elle a
+été créée quand l'écriture était coupée par défaut, et personne n'y a choisi
+d'écrire : la nouvelle valeur est inscrite dans les options à la création, jamais
+lue comme repli. Le formulaire d'options suit la même règle, puisqu'il est
+renvoyé tel qu'il est affiché. Un message envoyé ne se rappelle pas.
 
 **Exigence.** L'entité `todo` reste visible quand l'option est fausse, mais
 n'annonce pas `UPDATE_ITEM` : mieux vaut une case non cochable qu'une case qui
