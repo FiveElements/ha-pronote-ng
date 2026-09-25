@@ -1008,7 +1008,9 @@ message envoyé est un vrai message, avec l'identité du compte.
 
 - la liste de tâches « Devoirs » devient cochable — avant, elle est visiblement
   en lecture seule, ce qui vaut mieux qu'une case qui semble cliquable et refuse
-  au moment du clic ;
+  au moment du clic. La boîte d'édition de Home Assistant propose aussi de
+  modifier la matière, l'énoncé et l'échéance : l'enregistrement est **refusé**
+  avec un message, parce qu'ils appartiennent au professeur. Seule la coche part ;
 - les trois services d'écriture cessent de refuser ;
 - deux actions supplémentaires apparaissent dans l'éditeur d'automatisations,
   « Cocher un devoir » et « Marquer une actualité comme lue ».

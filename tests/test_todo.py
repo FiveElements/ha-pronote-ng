@@ -433,9 +433,10 @@ async def test_turning_writes_on_re_declares_the_feature(
     for _child_id, name in CHILDREN:
         state = hass.states.get(_list_id(name))
         assert state is not None
-        assert (
-            state.attributes["supported_features"]
-            & TodoListEntityFeature.UPDATE_TODO_ITEM
+        assert state.attributes["supported_features"] == (
+            TodoListEntityFeature.UPDATE_TODO_ITEM
+            | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
+            | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
         )
 
 
@@ -472,12 +473,12 @@ async def test_ticking_an_item_sends_the_status_and_never_the_wording(
 ) -> None:
     """PRONOTE owns the subject, the wording and the deadline of a homework.
 
-    ``todo.update_item`` is a partial update over the whole item, so a caller
-    may pass ``rename`` -- the frontend offers it, and core validates it
-    against no extra feature. This call renames on purpose: a client that
-    pushed the summary back would overwrite what a teacher wrote, and the only
-    symptom would be a homework diary slowly filling with a parent's own
-    phrasing.
+    Only ``TAFFait`` reaches the wire. The call is the one Home Assistant's own
+    list card places to tick an item: the whole item sent back, subject,
+    description and due date included. Before the list declared the due date
+    and the description, core refused that call with
+    ``update_field_not_supported`` -- so ticking from the native card failed on
+    a live instance while a card that sent the status alone worked.
     """
     entity_id = _list_id("Enfant Un")
 
@@ -487,7 +488,9 @@ async def test_ticking_an_item_sends_the_status_and_never_the_wording(
         {
             "entity_id": entity_id,
             "item": "HOMEWORK-1",
-            "rename": "Ce que le parent en pense",
+            "rename": "Histoire",
+            "description": "Lire le chapitre 4",
+            "due_date": "2026-03-16",
             "status": "completed",
         },
         blocking=True,
@@ -496,8 +499,45 @@ async def test_ticking_an_item_sends_the_status_and_never_the_wording(
     assert parent_client.body_for("SaisieTAFFaitEleve") == {
         "listeTAF": [{"N": "HOMEWORK-1", "TAFFait": True}]
     }
-    # And the rename did not reach the list either: the summary still comes
-    # from the snapshot, which is to say from the establishment.
+
+
+@writes_on
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {"rename": "Ce que le parent en pense"},
+        {"description": "Rien à faire"},
+        {"due_date": "2026-03-17"},
+    ],
+    ids=["subject", "description", "due-date"],
+)
+async def test_an_edit_to_what_the_teacher_wrote_is_refused_and_not_lost(
+    hass: HomeAssistant,
+    account: PronoteAccount,
+    parent_client: FakeClient,
+    edit: dict[str, str],
+) -> None:
+    """Declaring the fields opens the edit dialog; saving in it must say no.
+
+    The due date and the description are declared only so a whole item sent
+    back with its tick is accepted. The same declaration lets the native
+    dialog offer to edit them, and an edit that was accepted and then dropped
+    would read as saved. A pushed edit would be worse: a homework diary slowly
+    filling with a parent's own phrasing over a teacher's.
+    """
+    entity_id = _list_id("Enfant Un")
+    before = len(parent_client.posts)
+
+    with pytest.raises(ServiceValidationError) as raised:
+        await hass.services.async_call(
+            "todo",
+            "update_item",
+            {"entity_id": entity_id, "item": "HOMEWORK-1", **edit},
+            blocking=True,
+        )
+
+    assert raised.value.translation_key == "todo_item_owned_by_pronote"
+    assert len(parent_client.posts) == before
     items = {item["uid"]: item for item in await _items(hass, entity_id)}
     assert items["HOMEWORK-1"]["summary"] == "Histoire"
 

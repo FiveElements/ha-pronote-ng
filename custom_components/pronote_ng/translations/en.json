@@ -716,6 +716,9 @@
     },
     "todo_item_unknown": {
       "message": "That to-do item has no PRONOTE identifier, so it cannot be updated."
+    },
+    "todo_item_owned_by_pronote": {
+      "message": "Only the tick can be changed. The subject, the wording and the due date of a homework item belong to the teacher, in PRONOTE."
     }
   },
   "issues": {
