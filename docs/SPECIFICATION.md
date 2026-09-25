@@ -1246,6 +1246,13 @@ renvoyé tel qu'il est affiché. Un message envoyé ne se rappelle pas.
 n'annonce pas `UPDATE_ITEM` : mieux vaut une case non cochable qu'une case qui
 échoue au clic.
 
+**Exigence.** Quand l'option est vraie, l'entité annonce aussi
+`SET_DUE_DATE_ON_ITEM` et `SET_DESCRIPTION_ON_ITEM`, sans pour autant les
+écrire. La carte de liste de Home Assistant coche un élément en le renvoyant
+entier, et `todo.update_item` refuse un champ dont la fonctionnalité n'est pas
+annoncée. Un appel qui change la matière, l'énoncé ou l'échéance est refusé
+avec une explication plutôt qu'ignoré : seule la coche part vers PRONOTE.
+
 ### 8.4 Diagnostic
 
 **Exigence.** `async_get_config_entry_diagnostics` masque `password`,

@@ -1241,6 +1241,17 @@ EXCEPTIONS: list[tuple[str, str, str]] = [
             "être mis à jour."
         ),
     ),
+    (
+        "todo_item_owned_by_pronote",
+        (
+            "Only the tick can be changed. The subject, the wording and the due "
+            "date of a homework item belong to the teacher, in PRONOTE."
+        ),
+        (
+            "Seule la coche peut changer. La matière, l'énoncé et l'échéance "
+            "d'un devoir appartiennent au professeur, dans PRONOTE."
+        ),
+    ),
 ]
 
 ISSUES: list[tuple[str, str, str, str, str]] = [

@@ -80,8 +80,18 @@ class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):
         # tappable and then refuses is worse than one that is visibly
         # read-only. Changing the option reloads the entry, so this is
         # re-evaluated (§7.3).
+        #
+        # The due date and the description are declared too, although neither
+        # can be written. Home Assistant's own list card ticks an item by
+        # sending it back whole, due date and description included, and
+        # `todo.update_item` refuses a field whose feature is not declared --
+        # so with the tick alone, every tick from that card failed with
+        # `update_field_not_supported`. `async_update_todo_item` accepts them
+        # unchanged and refuses them changed.
         self._attr_supported_features = (
             TodoListEntityFeature.UPDATE_TODO_ITEM
+            | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
+            | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
             if account.write_enabled
             else TodoListEntityFeature(0)
         )
@@ -116,6 +126,11 @@ class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):
         Only the status is sent. PRONOTE owns the subject, the wording and the
         deadline of a homework item -- a client that also pushed those would be
         overwriting a teacher.
+
+        So an edit to any of them is refused rather than dropped: the list
+        declares the due date and the description so that a whole item sent
+        back with its tick is accepted, and the edit dialog that declaration
+        opens must not save something that is then silently lost.
         """
         if not self.account.write_enabled:
             raise ServiceValidationError(
@@ -126,6 +141,20 @@ class PronoteHomeworkTodoList(PronoteEntity, TodoListEntity):
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="todo_item_unknown",
+            )
+
+        current = next(
+            (known for known in self.todo_items or () if known.uid == item.uid),
+            None,
+        )
+        if current is not None and (
+            item.summary,
+            item.description,
+            item.due,
+        ) != (current.summary, current.description, current.due):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="todo_item_owned_by_pronote",
             )
 
         done = item.status == TodoItemStatus.COMPLETED
