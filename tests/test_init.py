@@ -1972,6 +1972,50 @@ class TestWhatSurvivesAReload:
         assert after is not None
         assert after.state == before.state
 
+    async def test_the_data_survives_a_login_that_renames_the_children(
+        self,
+        hass: HomeAssistant,
+        account: PronoteAccount,
+        parent_client: FakeClient,
+    ) -> None:
+        """The reload's own login rotates the identifiers; the data must follow.
+
+        Measured on a live instance: an options save reloaded the entry, the
+        new login announced the child under a fresh ``46#<signature>``, and
+        every one of its forty-four entities went ``unavailable`` for six
+        minutes -- and would have stayed so for each tier's whole interval but
+        for a manual refresh. The snapshots had been carried under the old
+        identifier, where no entity looked, while each tier counted as
+        restored and kept its deadline.
+
+        The control is the same as the previous test's: nothing is re-read,
+        because nothing was lost. Re-collecting on every rotation would make
+        each options save cost a full batch, which §7.3 forbids.
+        """
+        entity_id = "sensor.enfant_un_timetable_this_week"
+        before = hass.states.get(entity_id)
+        assert before is not None
+        assert before.state not in ("unavailable", "unknown")
+        ids_before = {student.id for student in account.students}
+        posted = len(parent_client.posted_names)
+
+        parent_client.rotate_identifiers()
+        await hass.config_entries.async_reload(account.entry.entry_id)
+        await hass.async_block_till_done()
+
+        reloaded: PronoteAccount = hass.data[DOMAIN][account.entry.entry_id]
+        assert {student.id for student in reloaded.students}.isdisjoint(ids_before)
+        after = hass.states.get(entity_id)
+        assert after is not None
+        assert after.state == before.state
+        for student in reloaded.students:
+            snapshot = reloaded.snapshot(Tier.MENUS, student.id)
+            assert snapshot is not None
+            assert snapshot.student_id == student.id
+        placed = parent_client.posted_names[posted:]
+        assert FUNC_TIMETABLE[0] not in placed
+        assert FUNC_MENUS[0] not in placed
+
     async def test_a_tier_whose_data_did_not_survive_is_due_again(
         self,
         hass: HomeAssistant,
