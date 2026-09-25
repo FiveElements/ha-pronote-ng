@@ -376,7 +376,7 @@ source de vérité sur le calendrier scolaire.
 | **Devoirs** | Nombre total de devoirs dans l'horizon d'affichage. | `items` |
 | **Devoirs en retard** *(binaire)* | Actif si un devoir non coché a une échéance déjà passée. | `count`, `items` |
 | **Devoirs** *(agenda)* | Un évènement d'une journée par échéance ; les devoirs faits sont préfixés d'une coche. | — |
-| **Devoirs** *(liste de tâches)* | Un élément par devoir : matière en titre, énoncé en description, échéance. Cochable **seulement si vous avez activé l'écriture** (§ [7](#7-écrire-dans-pronote)). | — |
+| **Devoirs** *(liste de tâches)* | Un élément par devoir : matière en titre, énoncé en description, échéance. Cochable **si l'écriture est activée**, ce qui est le cas à l'installation (§ [7](#7-écrire-dans-pronote)). | — |
 
 Chaque élément de `items` contient `id`, `subject`, `description`,
 `description_text`, `due`, `done`, `attachments`, `attachment_refs` et, pour
@@ -840,9 +840,9 @@ aucun appel lui-même. L'appeler cinq fois de suite coûte une collecte, pas cin
 
 ### 5.3 Les trois services d'écriture
 
-Ces trois services modifient ce que voit l'établissement. Ils sont **refusés par
-défaut** ; il faut d'abord activer l'écriture dans les options
-(§ [7](#7-écrire-dans-pronote)). Sinon :
+Ces trois services modifient ce que voit l'établissement. Ils sont **refusés si
+l'écriture est coupée** dans les options (§ [7](#7-écrire-dans-pronote)) — le
+cas d'une installation antérieure à la 0.0.29 :
 
 > L'écriture dans PRONOTE est désactivée. Activez d'abord « Autoriser l'écriture
 > dans PRONOTE » dans les options de l'intégration.
@@ -976,22 +976,26 @@ Ce tableau donne la traduction, pas la mécanique. Ce qui fait entrer dans chaqu
 
 ## 7. Écrire dans PRONOTE
 
-Par défaut, l'intégration est en **lecture seule**. Trois actions peuvent
-modifier ce que voit l'établissement, et elles sont toutes coupées :
+Trois actions peuvent modifier ce que voit l'établissement. Elles sont
+**activées à l'installation**, et un interrupteur les coupe toutes les trois :
 
 - cocher un devoir comme fait ;
 - marquer une actualité comme lue ;
 - envoyer un message dans la messagerie.
 
-### Comment les activer
+### Comment les couper, ou les activer
 
 **Paramètres → Appareils et services → PRONOTE → Configurer → Général**, puis
 l'interrupteur :
 
 > **Autoriser l'écriture dans PRONOTE**
-> Désactivé par défaut. Une fois activé, cocher un devoir, marquer une actualité
-> comme lue et envoyer des messages deviennent possibles, et l'établissement
+> Activé pour une nouvelle installation. Activé, cocher un devoir, marquer une
+> actualité comme lue et envoyer des messages sont possibles, et l'établissement
 > voit ces actions.
+
+**Une installation antérieure à la version 0.0.29 reste en lecture seule** tant
+que vous n'activez pas l'interrupteur : la mise à jour ne choisit pas à votre
+place.
 
 ### Ce que ça implique
 
@@ -1108,7 +1112,7 @@ supérieure prudente.
 | **Marquer périmé après** | 6 | *Rarement.* Multiples de l'intervalle d'une catégorie au-delà desquels ses entités sont marquées périmées. Elles gardent leur dernière valeur au lieu de devenir indisponibles. Baisser cette valeur ne fait pas collecter plus souvent : ça fait juste dire « périmé » plus tôt. |
 | **Fuseau de l'établissement** | Vide — donc le fuseau de Home Assistant | *Seulement si l'établissement est dans un autre fuseau que vous.* PRONOTE renvoie des heures locales sans fuseau ; c'est ici qu'on dit dans quel fuseau les interpréter. Voir ci-dessous : **la case vide est un réglage**, pas un oubli. |
 | **Stratégie de session** | Conserver la session (recommandé) | *Non.* Voir ci-dessous. |
-| **Autoriser l'écriture dans PRONOTE** | Désactivé | *Si vous en avez besoin.* Voir § [7](#7-écrire-dans-pronote). |
+| **Autoriser l'écriture dans PRONOTE** | Activé (désactivé pour une installation antérieure à la 0.0.29) | *À couper si vous ne voulez rien écrire.* Voir § [7](#7-écrire-dans-pronote). |
 
 **Le fuseau de l'établissement, et pourquoi la case est vide.** Vide veut dire
 « suis le fuseau de Home Assistant », et c'est ce que veulent presque tous les

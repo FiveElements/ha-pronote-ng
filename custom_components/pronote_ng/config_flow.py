@@ -87,6 +87,7 @@ from .const import (
     DEFAULT_WAKE_MARGIN,
     DEFAULT_WRITE_OPERATIONS_ENABLED,
     DOMAIN,
+    LEGACY_WRITE_OPERATIONS_ENABLED,
     OPT_BACKOFF_BASE,
     OPT_BACKOFF_MAX,
     OPT_BOOTSTRAP_HOLD,
@@ -1060,7 +1061,15 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         }
         if data.get(CONF_SOURCE) == Source.ECOLEDIRECTE.value:
             data = {key: data[key] for key in _ED_PERSISTED if key in data}
-        return self.async_create_entry(title=str(self._data["title"]), data=data)
+            return self.async_create_entry(title=str(self._data["title"]), data=data)
+        # Seeded rather than left to a fallback: the fallback has to keep
+        # answering "off" for entries created before writes were on by
+        # default, so a new entry must say "on" in its own options (§8.3).
+        return self.async_create_entry(
+            title=str(self._data["title"]),
+            data=data,
+            options={OPT_WRITE_OPERATIONS_ENABLED: DEFAULT_WRITE_OPERATIONS_ENABLED},
+        )
 
 
 class PronoteOptionsFlow(OptionsFlow):
@@ -1176,9 +1185,13 @@ class PronoteOptionsFlow(OptionsFlow):
                     ),
                     vol.Required(
                         OPT_WRITE_OPERATIONS_ENABLED,
+                        # The legacy default, like `write_enabled`: the form is
+                        # submitted as displayed, so prefilling an old entry
+                        # with "on" would turn writes on for whoever saved
+                        # this page to change something else.
                         default=options.get(
                             OPT_WRITE_OPERATIONS_ENABLED,
-                            DEFAULT_WRITE_OPERATIONS_ENABLED,
+                            LEGACY_WRITE_OPERATIONS_ENABLED,
                         ),
                     ): BooleanSelector(),
                 }

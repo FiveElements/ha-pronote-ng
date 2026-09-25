@@ -208,7 +208,7 @@ Home Assistant 2026.9.0 ou supérieur
 
  Le [catalogue des entités et des services](https://fiveelements.github.io/ha-pronote-ng/annexe-a-entites/) donne, pour chaque champ publié, d'où il vient.
 
- Des opérations d'écriture sont également disponibles mais sont **désactivées par défaut**, notamment :
+ Des opérations d'écriture sont également disponibles, **activées à l'installation** et désactivables dans les options :
 
  - cocher un devoir
 - marquer une actualité comme lue

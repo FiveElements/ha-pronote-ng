@@ -125,19 +125,22 @@ def parent_client_fixture() -> FakeClient:
 
 
 @pytest.fixture(name="writes_enabled")
-def writes_enabled_fixture(request: pytest.FixtureRequest) -> bool:
+def writes_enabled_fixture(request: pytest.FixtureRequest) -> bool | None:
     """Whether this test's entry permits writing to PRONOTE.
 
     ``False`` unless a test asks otherwise through the :data:`writes_on`
-    marker, because that is the shipped default (§8.3) and the read-only
-    behaviour deserves to be what a test gets by accident.
+    marker. A new entry is created with writes on (§8.3), but the read-only
+    behaviour is the one that must never be lost, so it is what a test gets by
+    accident. ``None`` leaves the key out, as in an entry created before that
+    default changed.
     """
-    return bool(getattr(request, "param", False))
+    param = getattr(request, "param", False)
+    return None if param is None else bool(param)
 
 
 @pytest.fixture(name="mock_entry")
 def mock_entry_with_write_option(
-    hass: HomeAssistant, mock_entry: MockConfigEntry, writes_enabled: bool
+    hass: HomeAssistant, mock_entry: MockConfigEntry, writes_enabled: bool | None
 ) -> MockConfigEntry:
     """Extend the shared entry with the write option already decided.
 
@@ -145,10 +148,14 @@ def mock_entry_with_write_option(
     rather than replacing it: the entry, its synthetic credentials and the
     widened limiter ceilings all still come from ``conftest.py``.
     """
-    hass.config_entries.async_update_entry(
-        mock_entry,
-        options={**mock_entry.options, OPT_WRITE_OPERATIONS_ENABLED: writes_enabled},
-    )
+    options = {
+        key: value
+        for key, value in mock_entry.options.items()
+        if key != OPT_WRITE_OPERATIONS_ENABLED
+    }
+    if writes_enabled is not None:
+        options[OPT_WRITE_OPERATIONS_ENABLED] = writes_enabled
+    hass.config_entries.async_update_entry(mock_entry, options=options)
     return mock_entry
 
 
@@ -356,6 +363,25 @@ async def test_the_list_is_visibly_read_only_while_writes_are_off(
         )
 
     assert len(parent_client.posts) == before
+
+
+@pytest.mark.parametrize("writes_enabled", [None], indirect=True, ids=["option-absent"])
+async def test_an_entry_from_before_writes_were_on_by_default_stays_read_only(
+    hass: HomeAssistant, account: PronoteAccount
+) -> None:
+    """A missing option is the owner's old default, not today's.
+
+    New entries are created with writes on, so the fallback could look like a
+    formality. It is not: every entry created before that change lacks the
+    key, and reading the new default for it would open writes -- messages
+    included -- on an update nobody agreed to (§8.3).
+    """
+    assert OPT_WRITE_OPERATIONS_ENABLED not in account.entry.options
+    assert account.write_enabled is False
+
+    state = hass.states.get(_list_id("Enfant Un"))
+    assert state is not None
+    assert state.attributes["supported_features"] == TodoListEntityFeature(0)
 
 
 async def test_a_tick_is_refused_by_the_option_and_not_only_by_the_feature_flag(

@@ -337,7 +337,11 @@ useless for replaying a session. `urls.py` trims what the user pasted down to
 the bare page URL, because ENT bounces and address-bar copies carry session
 parameters that would otherwise reach `.storage` and repair placeholders.
 
-Writes to PRONOTE are **off by default**; `todo.py`'s tick is the only write
+Writes to PRONOTE are **on for a new entry** — seeded into its options at
+creation — and **off for an entry that lacks the key**, which predates that
+default; `LEGACY_WRITE_OPERATIONS_ENABLED` is the fallback in both
+`write_enabled` and the options form, which is submitted as displayed.
+`todo.py`'s tick is the only write
 reachable without a service call, and with writes off the list is read-only
 through its supported features rather than by failing when tapped.
 

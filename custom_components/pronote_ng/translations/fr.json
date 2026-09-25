@@ -146,7 +146,7 @@
           "stale_after": "Multiples de l'intervalle d'un palier au-delà desquels ses entités sont marquées périmées. Elles conservent leur dernière valeur au lieu de devenir indisponibles : une entité qui clignote en indisponible déclenche des automatisations à tort.",
           "establishment_timezone": "PRONOTE renvoie des heures locales sans fuseau. C'est le fuseau dans lequel elles sont interprétées. Laissez la case vide pour suivre le fuseau de Home Assistant, ce qui est le bon choix sauf si l'établissement est dans un autre fuseau que vous. S'écrit Région/Ville, par exemple Europe/Paris.",
           "session_strategy": "Conserver une session entre les collectes (lazy) ou en ouvrir une par lot. Le mode lazy démarre prudemment et basculera de lui-même si le serveur expire vite les sessions : il n'est jamais moins bon que l'autre.",
-          "write_operations_enabled": "Désactivé par défaut. Une fois activé, cocher un devoir, marquer une actualité comme lue et envoyer des messages deviennent possibles, et l'établissement voit ces actions."
+          "write_operations_enabled": "Activé pour une nouvelle installation. Activé, cocher un devoir, marquer une actualité comme lue et envoyer des messages sont possibles, et l'établissement voit ces actions."
         }
       },
       "tiers": {

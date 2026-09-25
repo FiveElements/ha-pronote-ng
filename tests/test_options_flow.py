@@ -237,9 +237,9 @@ async def test_the_write_switch_can_be_turned_on_and_stays_on(
 ) -> None:
     """The one option that changes what the integration is allowed to do.
 
-    Writes are off by default; a boolean that failed to round-trip through the
-    form would either leave them permanently off -- silently ignoring the
-    services -- or, worse, be read as on.
+    A boolean that failed to round-trip through the form would either leave
+    writes permanently off -- silently ignoring the services -- or, worse, be
+    read as on.
     """
     form = await _open(hass, mock_entry, "general")
 
@@ -249,6 +249,27 @@ async def test_the_write_switch_can_be_turned_on_and_stays_on(
     )
 
     assert result["data"][OPT_WRITE_OPERATIONS_ENABLED] is True
+
+
+@REQUIRES_HASS
+async def test_saving_the_page_does_not_turn_writes_on_for_an_old_entry(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """An entry without the option shows it off, so saving leaves it off.
+
+    New entries are created with writes on, but the form is submitted as
+    displayed: prefilled with that default, an entry from before the change
+    would have had writes -- sending messages included -- switched on by
+    whoever saved this page to change the tick (§8.3).
+    """
+    assert OPT_WRITE_OPERATIONS_ENABLED not in mock_entry.options
+    form = await _open(hass, mock_entry, "general")
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"], _form_defaults(form["data_schema"])
+    )
+
+    assert result["data"][OPT_WRITE_OPERATIONS_ENABLED] is False
 
 
 @REQUIRES_HASS
