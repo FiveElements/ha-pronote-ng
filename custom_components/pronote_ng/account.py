@@ -19,7 +19,7 @@ The order of operations inside a tick is not incidental:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 import logging
 import time
@@ -285,19 +285,16 @@ class PronoteAccount:
         #
         # So a tier whose snapshot came back keeps its deadline, and a tier
         # without data is due immediately. That invariant is the whole point,
-        # and it is enforced here rather than in the scheduler because only the
-        # account can see the coordinators -- `scheduler.py` knows nothing of
-        # Home Assistant and must keep knowing nothing.
-        restored = self._restore_snapshots(_saved_snapshots(hass).get(entry.entry_id))
-        self.scheduler.import_state(
-            {
-                name: instant
-                for name, instant in _saved_schedule(hass)
-                .get(entry.entry_id, {})
-                .items()
-                if name in restored
-            }
-        )
+        # and it is enforced by the account rather than the scheduler because
+        # only the account can see the coordinators -- `scheduler.py` knows
+        # nothing of Home Assistant and must keep knowing nothing.
+        #
+        # Only *read* here, and applied by `async_setup` once the login has
+        # named the children: the snapshots are keyed by PRONOTE's resource
+        # identifier, which rotates between sessions, so they can only be
+        # handed to the new identifiers after pairing has said which is which.
+        self._carried_snapshots = _saved_snapshots(hass).get(entry.entry_id)
+        self._carried_schedule = _saved_schedule(hass).get(entry.entry_id, {})
 
         self._selected_children = _selected_children_from_entry(entry.data)
         #: Every child the account has announced so far, followed or not. The
@@ -390,6 +387,14 @@ class PronoteAccount:
     async def async_setup(self) -> None:
         """Log in once, learn the account's shape, and start the heartbeat."""
         await self._async_load_session_facts()
+        restored = self._restore_snapshots(self._carried_snapshots)
+        self.scheduler.import_state(
+            {
+                name: instant
+                for name, instant in self._carried_schedule.items()
+                if name in restored
+            }
+        )
 
         # A master tick of 0 would schedule the next tick in the past, and
         # `async_track_point_in_time` fires an overdue callback immediately
@@ -443,6 +448,18 @@ class PronoteAccount:
     ) -> frozenset[str]:
         """Refill the coordinators from a reload, and say which tiers came back.
 
+        ``carried`` is keyed by each child's *minted* key, not by the PRONOTE
+        resource identifier the coordinators use, and that is the defect this
+        re-keying removes. The identifier rotates between sessions, and the
+        reload's own login is a new session: carried under the old identifier,
+        every snapshot came back where no entity looked for it, while the tier
+        still counted as restored and kept its deadline. A live instance lost
+        all forty-four entities of its only child on an options save, for as
+        long as each tier's interval -- the login had logged the rotation a
+        second earlier. So this runs after pairing, and a tier counts as
+        restored only if **every** child followed now has its snapshot back.
+        The session tier is skipped: the login has just published it afresh.
+
         Returns tier *names*, because that is the key
         :meth:`FetchScheduler.export_state` uses and comparing the two in one
         vocabulary is what keeps the pair honest.
@@ -458,13 +475,23 @@ class PronoteAccount:
         """
         if not carried:
             return frozenset()
+        current = {key: student_id for student_id, key in self._child_keys.items()}
+        followed = {student.id for student in self.state.students}
         restored: set[str] = set()
         for tier, data in carried.items():
             coordinator = self.coordinators.get(tier)
-            if coordinator is None or not data:
+            if coordinator is None or tier is Tier.SESSION:
                 continue
-            coordinator.data = dict(data)
-            restored.add(str(tier))
+            rekeyed = {
+                current[key]: replace(snapshot, student_id=current[key])
+                for key, snapshot in data.items()
+                if key in current
+            }
+            if not rekeyed:
+                continue
+            coordinator.data = rekeyed
+            if followed <= rekeyed.keys():
+                restored.add(str(tier))
         return frozenset(restored)
 
     async def async_unload(self) -> None:
@@ -480,9 +507,14 @@ class PronoteAccount:
             self._unsub_tick = None
         _saved_schedule(self.hass)[self.entry.entry_id] = self.scheduler.export_state()
         # Exported together with the schedule, because the two are only sound
-        # together: see `_restore_snapshots`.
+        # together: see `_restore_snapshots`. Keyed by the minted key, which
+        # survives the login the reload is about to make; the resource
+        # identifier does not.
         _saved_snapshots(self.hass)[self.entry.entry_id] = {
-            tier: dict(coordinator.data)
+            tier: {
+                self._child_keys.get(student_id, student_id): snapshot
+                for student_id, snapshot in coordinator.data.items()
+            }
             for tier, coordinator in self.coordinators.items()
             if coordinator.data
         }
