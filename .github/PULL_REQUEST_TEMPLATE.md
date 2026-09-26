@@ -16,7 +16,7 @@ bonne, et pas seulement si elle fait passer les tests. -->
 ## Portails
 
 - [ ] `ruff check .` et `ruff format --check .`
-- [ ] `mypy --strict custom_components/pronote_ng`
+- [ ] `mypy --strict custom_components/carnet_scolaire`
 - [ ] `pytest tests` — au complet, sous Linux, WSL ou Docker
       (`pytest -p no:homeassistant` ne couvre que la moitié de la suite)
 - [ ] `python scripts/check_coverage.py coverage.xml` — 80 % global, et 100 %

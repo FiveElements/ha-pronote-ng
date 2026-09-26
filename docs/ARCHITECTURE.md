@@ -1,7 +1,7 @@
-# Architecture de `ha-pronote-ng`
+# Architecture de `ha-carnet-scolaire`
 
-Ce document décrit l'architecture réelle de `ha-pronote-ng`, telle qu'elle est
-implémentée dans `custom_components/pronote_ng/`. Il est écrit pour un lecteur
+Ce document décrit l'architecture réelle de `ha-carnet-scolaire`, telle qu'elle est
+implémentée dans `custom_components/carnet_scolaire/`. Il est écrit pour un lecteur
 qui n'a jamais ouvert ce dépôt et qui doit pouvoir, à la fin, expliquer non
 seulement *où* les choses se trouvent mais *pourquoi* elles sont arrangées
 ainsi.
@@ -16,14 +16,18 @@ divergences relevées sont rassemblées à la fin, dans
 « [Écarts avec la spécification](#12-écarts-avec-la-spécification) ».
 
 Un mot de vocabulaire, parce que la confusion coûte cher : le dépôt s'appelle
-**`ha-pronote-ng`** et l'intégration s'affiche sous le nom **Pronote NG**. Le
+**`ha-carnet-scolaire`** et l'intégration s'affiche sous le nom **Carnet scolaire**. Le
 domaine Home Assistant s'appelle
-**`pronote_ng`**, et seulement lui. Ce choix est délibéré
-(`DOMAIN`, `custom_components/pronote_ng/const.py`) : une autre intégration PRONOTE
-déjà installée peut occuper le domaine `pronote`, et deux composants
-personnalisés qui réclament le même domaine ne cohabitent pas — Home Assistant
-en charge un et ignore l'autre. Garder un domaine distinct permet d'essayer
-cette intégration sans désinstaller d'abord ce dont on dépend.
+**`carnet_scolaire`**, et seulement lui. Ce choix est délibéré
+(`DOMAIN`, `custom_components/carnet_scolaire/const.py`) : l'intégration collecte
+auprès de PRONOTE **et** d'EcoleDirecte, donc aucun des deux noms d'éditeur ne
+convient, et un domaine neutre ne peut entrer en collision avec aucune
+intégration personnalisée qui occupe `pronote` ou `ecoledirecte` — deux
+composants qui réclament le même domaine ne cohabitent pas, Home Assistant en
+charge un et ignore l'autre. Jusqu'à la 0.0.32, l'intégration s'appelait
+*Pronote NG* (domaine `pronote_ng`, dépôt `ha-pronote-ng`) ; Home Assistant ne
+sait pas migrer un domaine, et une entrée créée sous l'ancien nom se supprime
+puis se rajoute.
 
 ---
 
@@ -46,31 +50,31 @@ cette intégration sans désinstaller d'abord ce dont on dépend.
 
 ## 1. Objet de l'intégration
 
-`ha-pronote-ng` expose dans Home Assistant les données PRONOTE d'un compte parent
+`ha-carnet-scolaire` expose dans Home Assistant les données PRONOTE d'un compte parent
 ou élève : emploi du temps, devoirs, notes, absences, évaluations, actualités,
 messagerie, menus de cantine, équipe pédagogique et bulletins des périodes
 closes.
 
-L'objectif directeur, énoncé dans l'en-tête de `custom_components/pronote_ng/__init__.py`,
+L'objectif directeur, énoncé dans l'en-tête de `custom_components/carnet_scolaire/__init__.py`,
 n'est pas « afficher PRONOTE » mais **rendre les automatisations simples à
 écrire**, avec un critère de succès précis : toute automatisation scolaire
 ordinaire doit pouvoir s'écrire sans template Jinja. Cet objectif est ce qui
 explique la forme de presque tout le reste — des états numériques plutôt que
 du texte formaté, des `binary_sensor` pour les prédicats, des entités `event`
 pour les changements, des *device triggers* nommés, et huit blueprints livrés
-en français et en anglais dans `blueprints/automation/pronote_ng/{fr,en}/`.
+en français et en anglais dans `blueprints/automation/carnet_scolaire/{fr,en}/`.
 
 La contrainte structurante, elle, vient d'ailleurs. PRONOTE ne publie aucune
 limite de débit : il applique des sanctions, et la plus coûteuse d'entre elles
 — la suspension d'adresse — vise une **adresse IP** et non un compte, se
 déclenche sur des échecs de connexion répétés, et n'est documentée nulle part
-(l'en-tête de `custom_components/pronote_ng/ratelimit.py`). Tout le dimensionnement de
+(l'en-tête de `custom_components/carnet_scolaire/ratelimit.py`). Tout le dimensionnement de
 cette intégration découle de ce fait : une seule voie vers le réseau, un
 budget compté, et une comptabilité de l'authentification séparée de celle des
 requêtes.
 
 La dépendance amont est `pronotepy==2.15.7`, épinglée exactement
-(`custom_components/pronote_ng/manifest.json`). Le pin n'est pas de la
+(`custom_components/carnet_scolaire/manifest.json`). Le pin n'est pas de la
 prudence rituelle : la moitié des décisions de la passerelle et du client
 durci reposent sur des détails de comportement vérifiés dans cette version
 précise, et un déplacement de version demande de relire deux fichiers.
@@ -221,7 +225,7 @@ flowchart TB
 
 La frontière `pronotepy` reste le trait le plus important **du connecteur
 Pronote**. Elle existe pour trois raisons concrètes, énoncées dans
-l'en-tête de `custom_components/pronote_ng/models.py` :
+l'en-tête de `custom_components/carnet_scolaire/models.py` :
 
 * un objet `pronotepy` lu après la fermeture de sa session lève
   `Erreur.G = 22` ;
@@ -244,7 +248,7 @@ mapping, et aucun jeton ne franchit la mémoire du client.
 
 ### 2.2 Le cycle de vie de l'entrée de configuration
 
-`async_setup_entry` (`custom_components/pronote_ng/__init__.py`) suit un
+`async_setup_entry` (`custom_components/carnet_scolaire/__init__.py`) suit un
 ordre qui n'est pas indifférent.
 
 1. Construction de `PronoteAccount`. Le constructeur assemble la passerelle
@@ -331,7 +335,7 @@ une adresse IP, quel que soit le nombre d'enfants suivis.
 
 ## 3. Le limiteur de débit
 
-`custom_components/pronote_ng/ratelimit.py` est le cœur du design. Il est
+`custom_components/carnet_scolaire/ratelimit.py` est le cœur du design. Il est
 aussi le module le plus long après `sensor.py` et `gateway.py`, et le seul dont
 le docstring d'ouverture énumère les propriétés porteuses avant le premier
 `import` — parce que chacune d'elles corrige un défaut réel trouvé en revue,
@@ -676,7 +680,7 @@ boucle.
 
 ## 4. L'ordonnanceur
 
-`custom_components/pronote_ng/scheduler.py` répond à une seule question : *que
+`custom_components/carnet_scolaire/scheduler.py` répond à une seule question : *que
 faut-il collecter maintenant, et dans quel ordre ?* Comme le limiteur, il ne
 connaît ni PRONOTE ni Home Assistant et prend une horloge injectable.
 
@@ -1224,7 +1228,7 @@ manuelle d'un appareil périmé.
 
 ## 6. La passerelle
 
-`custom_components/pronote_ng/gateway.py` est l'adaptateur : une fonction
+`custom_components/carnet_scolaire/gateway.py` est l'adaptateur : une fonction
 publique par **appel protocolaire**, des DTO gelés en sortie. Avec
 `hardened_client.py`, c'est le seul module à importer les types de données
 `pronotepy`, donc le seul à relire lors d'un changement de version et le seul
@@ -2031,7 +2035,7 @@ dérogations existantes sont peu nombreuses et motivées ligne par ligne dans
 `hardened_client.py`, ce qui est la concentration de la surface amont rendue
 exécutable par l'outillage.
 
-**`mypy --strict`** sur `custom_components/pronote_ng` seulement, avec
+**`mypy --strict`** sur `custom_components/carnet_scolaire` seulement, avec
 `warn_unreachable` et `warn_unused_ignores`. Trois dérogations par module :
 `pronotepy.*` (qui livre `py.typed` mais importe `autoslot.Slots` sous un
 `type: ignore`), `autoslot.*`, et `homeassistant.*` pour `implicit_reexport` —
@@ -2039,7 +2043,7 @@ le cœur publie son API publique à travers des espaces de noms sans `__all__`, 
 sa propre CI n'applique pas `no_implicit_reexport` contre eux.
 
 **`pytest`** avec `asyncio_mode = "auto"`, `--strict-markers`,
-`--strict-config`, et `filterwarnings = ["error::DeprecationWarning:custom_components.pronote_ng.*"]`
+`--strict-config`, et `filterwarnings = ["error::DeprecationWarning:custom_components.carnet_scolaire.*"]`
 — une dépréciation dans notre propre code est une erreur, une dépréciation
 ailleurs ne l'est pas. Plus de 1200 tests, répartis sur trente-huit fichiers.
 
@@ -2201,7 +2205,7 @@ services et leurs quatre réponses `SupportsResponse.ONLY`, l'arithmétique de
 budget à environ 180 requêtes de données par jour, et les portails de qualité
 (95 % par module, 100 % sur sept, 80 % global).
 
-### 12.1 Le domaine annoncé est `pronote`, le domaine réel est `pronote_ng`
+### 12.1 Le domaine annoncé est `pronote`, le domaine réel est `carnet_scolaire`
 
 `SPECIFICATION.md` déclare en en-tête le domaine **`pronote`** et présente le
 renommage comme « une décision de fin de parcours, pas de début », puisqu'il
@@ -2213,17 +2217,19 @@ par ailleurs autocontradictoire sur ce point — « domaine `pronote` et non
 `pronote` » — ce qui a tout l'air d'un artefact de recherche-remplacement.
 
 Le code a tranché dans l'autre sens et l'a motivé
-(`DOMAIN`, `const.py`) : le domaine est **`pronote_ng`**, les services sont
-`pronote_ng.*`, et les blueprints vivent sous
-`blueprints/automation/pronote_ng/` et non `blueprints/automation/pronote/`.
-Le renommage n'a pas eu lieu, délibérément : une autre intégration PRONOTE déjà
-installée peut occuper `pronote`, et deux composants personnalisés réclamant le
-même domaine ne cohabitent pas. Garder `pronote_ng` permet d'essayer cette
-intégration sans d'abord désinstaller celle dont on dépend — ce qui est
-précisément l'objectif de cohabitation que la spécification énonçait, atteint
-par le moyen inverse de celui qu'elle prescrivait.
+(`DOMAIN`, `const.py`) : le domaine est **`carnet_scolaire`**, les services sont
+`carnet_scolaire.*`, et les blueprints vivent sous
+`blueprints/automation/carnet_scolaire/` et non `blueprints/automation/pronote/`.
+Le domaine `pronote` n'a jamais été pris, délibérément : une autre intégration
+PRONOTE déjà installée peut l'occuper, et deux composants personnalisés
+réclamant le même domaine ne cohabitent pas. Un domaine distinct permet
+d'essayer cette intégration sans d'abord désinstaller celle dont on dépend — ce
+qui est précisément l'objectif de cohabitation que la spécification énonçait,
+atteint par le moyen inverse de celui qu'elle prescrivait. Le domaine a été
+`pronote_ng` jusqu'à la 0.0.32, puis `carnet_scolaire` quand EcoleDirecte a
+rejoint PRONOTE comme seconde source.
 
-Le dépôt, lui, s'appelle `ha-pronote-ng`, et c'est sous le nom **Pronote NG**
+Le dépôt, lui, s'appelle `ha-carnet-scolaire`, et c'est sous le nom **Carnet scolaire**
 que `hacs.json` et le champ `name` du manifest présentent l'intégration. Le
 domaine est le seul endroit où la forme soulignée apparaît.
 
@@ -2523,7 +2529,7 @@ vérification visuelle.
 ### 12.14 Neuf blueprints, pas six
 
 La spécification §2.3 énumère **six** blueprints. Le dépôt en livre **neuf** par
-langue, soit dix-huit fichiers dans `blueprints/automation/pronote_ng/{fr,en}/` :
+langue, soit dix-huit fichiers dans `blueprints/automation/carnet_scolaire/{fr,en}/` :
 `wake_up_alarm`, `lesson_canceled`, `homework_reminder`, `new_grade`,
 `absence_alert`, `canteen_menu` — les six prévus — plus trois :
 

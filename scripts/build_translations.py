@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-COMPONENT = ROOT / "custom_components" / "pronote_ng"
+COMPONENT = ROOT / "custom_components" / "carnet_scolaire"
 
 
 # ---------------------------------------------------------------------------
@@ -1679,7 +1679,7 @@ def _services_yaml() -> str:
         "",
     ]
     selectors = {
-        "device_id": "      device:\n        integration: pronote_ng",
+        "device_id": "      device:\n        integration: carnet_scolaire",
         "tiers": (
             "      select:\n"
             "        multiple: true\n"

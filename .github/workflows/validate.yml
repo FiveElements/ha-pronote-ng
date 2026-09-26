@@ -48,7 +48,7 @@ jobs:
         run: ruff format --check .
 
       - name: mypy --strict
-        run: mypy --strict custom_components/pronote_ng
+        run: mypy --strict custom_components/carnet_scolaire
 
   test:
     name: Tests (HA ${{ matrix.ha-version }})
@@ -131,12 +131,12 @@ jobs:
       - name: mypy --strict against the floating release
         if: matrix.pytest-hacc == ''
         continue-on-error: true
-        run: mypy --strict custom_components/pronote_ng
+        run: mypy --strict custom_components/carnet_scolaire
 
       - name: pytest
         run: |
           pytest \
-            --cov=custom_components/pronote_ng \
+            --cov=custom_components/carnet_scolaire \
             --cov-branch \
             --cov-report=xml:coverage.xml \
             --cov-report=term-missing

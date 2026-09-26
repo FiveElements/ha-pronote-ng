@@ -23,7 +23,7 @@ body:
         identifiants y sont rédigés, l'adresse retaillée, et les identifiants
         d'élève remplacés par une empreinte tronquée.
 
-        *Paramètres → Appareils et services → Pronote NG → ⋯ → Télécharger les
+        *Paramètres → Appareils et services → Carnet scolaire → ⋯ → Télécharger les
         diagnostics*
 
         Un extrait de journal, lui, ne passe par **aucune** rédaction. Relisez-le.
@@ -31,7 +31,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Version de Pronote NG
+      label: Version de Carnet scolaire
       description: HACS, ou le champ `version` de `manifest.json`.
       placeholder: "0.0.3"
     validations:
@@ -131,7 +131,7 @@ body:
       description: >-
         L'identifiant d'entité (avec le nom de l'enfant remplacé) ou le nom du
         service.
-      placeholder: "sensor.<enfant>_prochain_cours, pronote_ng.refresh"
+      placeholder: "sensor.<enfant>_prochain_cours, carnet_scolaire.refresh"
 
   - type: textarea
     id: logs
@@ -143,7 +143,7 @@ body:
         ```yaml
         logger:
           logs:
-            custom_components.pronote_ng: debug
+            custom_components.carnet_scolaire: debug
         ```
 
         ⚠️ N'ajoutez **jamais** `pronotepy` à cette liste : il écrit

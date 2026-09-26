@@ -8,7 +8,7 @@ pas supposées. Aucun appel réseau n'a été émis.
 
     `clients.py`, `dataClasses.py` et `pronoteAPI.py` sont des fichiers de
     **`pronotepy`**, la bibliothèque tierce, et non du code de l'intégration —
-    les chercher sous `custom_components/pronote_ng/` est vain. Partout ailleurs
+    les chercher sous `custom_components/carnet_scolaire/` est vain. Partout ailleurs
     dans la documentation, un nom de fichier nu désigne un module de
     l'intégration et un chemin préfixé (`tests/conftest.py`, `scripts/`) désigne
     le reste du dépôt ; ce document est la seule exception, et elle est entière.

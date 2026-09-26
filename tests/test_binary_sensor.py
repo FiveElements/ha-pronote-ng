@@ -22,18 +22,18 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.pronote_ng import binary_sensor
-from custom_components.pronote_ng.binary_sensor import (
+from custom_components.carnet_scolaire import binary_sensor
+from custom_components.carnet_scolaire.binary_sensor import (
     _holiday_attributes,
     _is_holiday,
 )
-from custom_components.pronote_ng.connectors.protocol import (
+from custom_components.carnet_scolaire.connectors.protocol import (
     ConnectorCapabilities,
     Source,
 )
-from custom_components.pronote_ng.const import Tier
-from custom_components.pronote_ng.coordinator import PronoteTierCoordinator
-from custom_components.pronote_ng.models import (
+from custom_components.carnet_scolaire.const import Tier
+from custom_components.carnet_scolaire.coordinator import PronoteTierCoordinator
+from custom_components.carnet_scolaire.models import (
     Absence,
     AttendanceFacts,
     Punishment,
@@ -48,8 +48,8 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
-    from custom_components.pronote_ng.models import TimetableFacts
+    from custom_components.carnet_scolaire.account import PronoteAccount
+    from custom_components.carnet_scolaire.models import TimetableFacts
 
     from .fixtures.client import FakeClient
 
@@ -260,7 +260,7 @@ def test_an_absence_in_progress_publishes_its_own_dates_and_not_the_days() -> No
     picking the first of the list would show yesterday's on a card while the
     state is about today's.
     """
-    from custom_components.pronote_ng.binary_sensor import _absence_attributes
+    from custom_components.carnet_scolaire.binary_sensor import _absence_attributes
 
     now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
     facts = AttendanceFacts(
@@ -294,7 +294,7 @@ def test_no_absence_in_progress_publishes_nothing_rather_than_the_next_one() -> 
     future date while the state says otherwise -- and the two are read
     together.
     """
-    from custom_components.pronote_ng.binary_sensor import _absence_attributes
+    from custom_components.carnet_scolaire.binary_sensor import _absence_attributes
 
     now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
     facts = AttendanceFacts(
@@ -319,7 +319,7 @@ def test_the_next_punishment_slot_is_the_earliest_still_ahead() -> None:
     returns a punishment's schedule in its own order, and a card showing a
     detention that has already been served is worse than showing none.
     """
-    from custom_components.pronote_ng.binary_sensor import _punishment_attributes
+    from custom_components.carnet_scolaire.binary_sensor import _punishment_attributes
 
     now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
     facts = AttendanceFacts(
@@ -364,7 +364,7 @@ def test_the_next_punishment_slot_is_the_earliest_still_ahead() -> None:
 
 def test_a_punishment_wholly_in_the_past_publishes_nothing() -> None:
     """Served is not pending, and the block must not resurrect it."""
-    from custom_components.pronote_ng.binary_sensor import _punishment_attributes
+    from custom_components.carnet_scolaire.binary_sensor import _punishment_attributes
 
     now = dt.datetime(2026, 3, 12, 10, 0, tzinfo=PARIS)
     facts = AttendanceFacts(

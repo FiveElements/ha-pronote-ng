@@ -38,23 +38,23 @@ from homeassistant.helpers import (
 from pronotepy.exceptions import CryptoError, MFAError, PronoteAPIError
 import pytest
 
-from custom_components.pronote_ng import async_remove_config_entry_device
-from custom_components.pronote_ng.account import (
+from custom_components.carnet_scolaire import async_remove_config_entry_device
+from custom_components.carnet_scolaire.account import (
     PronoteAccount,
     TierRecord,
     _establishment_timezone,
 )
-from custom_components.pronote_ng.child_keys import is_minted
-from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
+from custom_components.carnet_scolaire.child_keys import is_minted
+from custom_components.carnet_scolaire.connectors.ecoledirecte.connector import (
     EcoledirecteConnector,
 )
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_client import (
     EcoleDirecteClient,
 )
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_limiter import (
     EdRateLimiter,
 )
-from custom_components.pronote_ng.connectors.errors import (
+from custom_components.carnet_scolaire.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorChildMissingError,
     ConnectorCredentialsError,
@@ -64,13 +64,13 @@ from custom_components.pronote_ng.connectors.errors import (
     ConnectorUndecodableError,
     ConnectorUnsupportedError,
 )
-from custom_components.pronote_ng.connectors.pronote import (
+from custom_components.carnet_scolaire.connectors.pronote import (
     RateLimiter as PronoteConnectorRateLimiter,
     SerialExecutor as PronoteConnectorSerialExecutor,
     SessionManager as PronoteConnectorSessionManager,
 )
-from custom_components.pronote_ng.connectors.protocol import ChallengeKind, Source
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.connectors.protocol import ChallengeKind, Source
+from custom_components.carnet_scolaire.const import (
     CHILD_KEY,
     CHILD_NAME,
     CHILD_RESOURCE_ID,
@@ -99,15 +99,15 @@ from custom_components.pronote_ng.const import (
     SessionStrategy,
     Tier,
 )
-from custom_components.pronote_ng.hardened_client import BootstrapUnavailable
-from custom_components.pronote_ng.login_guard import limiter_state_store
-from custom_components.pronote_ng.ratelimit import (
+from custom_components.carnet_scolaire.hardened_client import BootstrapUnavailable
+from custom_components.carnet_scolaire.login_guard import limiter_state_store
+from custom_components.carnet_scolaire.ratelimit import (
     LOGIN_COST_KEY,
     REQUESTS_PER_LOGIN,
     RateLimitConfig,
 )
-from custom_components.pronote_ng.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
-from custom_components.pronote_ng.tiers import (
+from custom_components.carnet_scolaire.sensor import LIST_SENSORS, PRIMITIVE_SENSORS
+from custom_components.carnet_scolaire.tiers import (
     _FIRST_COLLECTION_ATTEMPTS,
     _priority_for,
     collect_tier,
@@ -132,7 +132,9 @@ async def _setup_failing(
     hass: HomeAssistant, entry: MockConfigEntry, error: BaseException
 ) -> None:
     """Attempt a set-up whose login raises ``error``."""
-    with patch("custom_components.pronote_ng.session.build_client", side_effect=error):
+    with patch(
+        "custom_components.carnet_scolaire.session.build_client", side_effect=error
+    ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -183,7 +185,7 @@ async def _enrol_a_third_child(
     )
 
     with patch(
-        "custom_components.pronote_ng.session.build_client",
+        "custom_components.carnet_scolaire.session.build_client",
         return_value=parent_client,
     ):
         assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -296,7 +298,7 @@ async def test_adopting_a_child_costs_no_login_of_its_own(
     )
 
     with patch(
-        "custom_components.pronote_ng.session.build_client",
+        "custom_components.carnet_scolaire.session.build_client",
         return_value=parent_client,
     ):
         assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -353,7 +355,7 @@ async def test_a_rotated_identifier_is_not_read_as_a_new_child(
     )
 
     with patch(
-        "custom_components.pronote_ng.session.build_client",
+        "custom_components.carnet_scolaire.session.build_client",
         return_value=parent_client,
     ):
         assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -457,7 +459,7 @@ async def test_an_unselected_child_with_unreadable_facts_does_not_block_setup(
     no_spacing: None,
 ) -> None:
     """A child excluded in the flow must be filtered before its facts are decoded."""
-    from custom_components.pronote_ng.gateway import PronoteGateway
+    from custom_components.carnet_scolaire.gateway import PronoteGateway
 
     del school_day, no_spacing
     hass.config_entries.async_update_entry(
@@ -473,7 +475,7 @@ async def test_an_unselected_child_with_unreadable_facts_does_not_block_setup(
 
     with (
         patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ),
         patch.object(PronoteGateway, "session_facts", session_facts),
@@ -738,7 +740,7 @@ async def test_unloading_stops_the_heartbeat_and_releases_the_client(
     registered from `async_setup` and deliberately never removed. Home Assistant
     can only validate an automation against actions that *exist*, so removing
     them when the last entry unloaded made every automation referencing
-    `pronote_ng.mark_homework_done` unvalidatable exactly when the user was
+    `carnet_scolaire.mark_homework_done` unvalidatable exactly when the user was
     already looking at a broken account -- and being driven by automations is
     this integration's stated purpose (§1).
 
@@ -810,7 +812,7 @@ async def test_a_login_with_no_session_key_is_a_credential_problem(
     parent_client.logged_in = False
 
     with patch(
-        "custom_components.pronote_ng.session.build_client",
+        "custom_components.carnet_scolaire.session.build_client",
         return_value=parent_client,
     ):
         await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -1148,7 +1150,7 @@ async def test_a_stale_child_selection_says_so_instead_of_recovering_quietly(
     caplog.set_level(logging.WARNING)
 
     with patch(
-        "custom_components.pronote_ng.session.build_client",
+        "custom_components.carnet_scolaire.session.build_client",
         return_value=parent_client,
     ):
         assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -1276,15 +1278,15 @@ async def test_an_ed_entry_instantiates_no_pronote_network_primitive(
         patch.object(PronoteAccount, "async_setup", return_value=None),
         patch.object(PronoteAccount, "async_start_first_collection"),
         patch(
-            "custom_components.pronote_ng.connectors.pronote.SerialExecutor",
+            "custom_components.carnet_scolaire.connectors.pronote.SerialExecutor",
             wraps=PronoteConnectorSerialExecutor,
         ) as executor,
         patch(
-            "custom_components.pronote_ng.connectors.pronote.SessionManager",
+            "custom_components.carnet_scolaire.connectors.pronote.SessionManager",
             wraps=PronoteConnectorSessionManager,
         ) as session_manager,
         patch(
-            "custom_components.pronote_ng.connectors.pronote.RateLimiter",
+            "custom_components.carnet_scolaire.connectors.pronote.RateLimiter",
             wraps=PronoteConnectorRateLimiter,
         ) as pronote_limiter,
         patch.object(
@@ -1398,9 +1400,11 @@ async def _setup_ed_entry(
     )
     entry.add_to_hass(hass)
     with (
-        patch("custom_components.pronote_ng.EcoleDirecteClient", side_effect=factory),
         patch(
-            "custom_components.pronote_ng.connectors.pronote.SessionManager",
+            "custom_components.carnet_scolaire.EcoleDirecteClient", side_effect=factory
+        ),
+        patch(
+            "custom_components.carnet_scolaire.connectors.pronote.SessionManager",
             wraps=PronoteConnectorSessionManager,
         ) as session_manager,
     ):
@@ -1513,7 +1517,7 @@ def _english_entity_id(platform: str, child_name: str, key: str) -> str:
     from homeassistant.util import slugify
 
     catalogue = json.loads(
-        Path("custom_components/pronote_ng/translations/en.json").read_text(
+        Path("custom_components/carnet_scolaire/translations/en.json").read_text(
             encoding="utf-8"
         )
     )
@@ -1588,7 +1592,7 @@ async def test_an_ecoledirecte_entry_offers_no_menu_button(
     while the menus coordinator is present -- the same double-skip trap as
     the sensors -- and checks the filter is what discards it.
     """
-    from custom_components.pronote_ng.button import (
+    from custom_components.carnet_scolaire.button import (
         PronoteButtonDescription,
         async_setup_entry as async_setup_buttons,
     )
@@ -1623,7 +1627,7 @@ async def test_an_ecoledirecte_entry_offers_no_menu_button(
         requests=(Tier.MENUS,),
     )
     with patch(
-        "custom_components.pronote_ng.button.BUTTONS",
+        "custom_components.carnet_scolaire.button.BUTTONS",
         (menus_button,),
     ):
         await async_setup_buttons(hass, entry, capture)  # type: ignore[arg-type]
@@ -1648,7 +1652,9 @@ async def test_an_ed_505_at_setup_opens_reauthentication(hass: HomeAssistant) ->
         data=_ed_entry_data(),
     )
     entry.add_to_hass(hass)
-    with patch("custom_components.pronote_ng.EcoleDirecteClient", side_effect=factory):
+    with patch(
+        "custom_components.carnet_scolaire.EcoleDirecteClient", side_effect=factory
+    ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -1682,7 +1688,7 @@ async def test_an_ed_not_ready_retry_restores_the_punitive_limiter(
     )
     entry.add_to_hass(hass)
     with patch(
-        "custom_components.pronote_ng.EcoleDirecteClient", side_effect=boom_factory
+        "custom_components.carnet_scolaire.EcoleDirecteClient", side_effect=boom_factory
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -1695,7 +1701,8 @@ async def test_an_ed_not_ready_retry_restores_the_punitive_limiter(
         return EcoleDirecteClient(RecordingTransport.scripted([]))
 
     with patch(
-        "custom_components.pronote_ng.EcoleDirecteClient", side_effect=empty_factory
+        "custom_components.carnet_scolaire.EcoleDirecteClient",
+        side_effect=empty_factory,
     ):
         await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
@@ -1804,7 +1811,7 @@ class TestHowLongAFirstCollectionOutranksQuietHours:
         """An account that knows its shape and holds no snapshot."""
         account = PronoteAccount(hass, mock_entry)
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=client,
         ):
             await account.async_setup()
@@ -1944,7 +1951,7 @@ class TestWhenTheFirstBatchIsAllowedToRun:
         account = PronoteAccount(hass, mock_entry)
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             await account.async_setup()
@@ -2100,7 +2107,7 @@ class TestWhatSurvivesAReload:
         ignore that deadline. Without the pairing the tier would sit idle,
         holding nothing, until its interval elapsed.
         """
-        from custom_components.pronote_ng.account import (
+        from custom_components.carnet_scolaire.account import (
             _saved_schedule,
             _saved_snapshots,
         )
@@ -2315,7 +2322,7 @@ class TestWhichTimezonePronotesNaiveTimesAreReadIn:
         )
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -2400,7 +2407,7 @@ async def test_an_ecoledirecte_homework_list_refuses_a_tick(
     """
     from homeassistant.components.todo import TodoItem, TodoItemStatus
 
-    from custom_components.pronote_ng.todo import PronoteHomeworkTodoList
+    from custom_components.carnet_scolaire.todo import PronoteHomeworkTodoList
 
     entry, _session_manager = await _setup_ed_entry(
         hass, options={OPT_WRITE_OPERATIONS_ENABLED: True}
@@ -2450,11 +2457,11 @@ async def test_a_reauthentication_clears_the_hold_on_the_live_account_too(
     hold the user just cleared by retyping their password -- and the repair
     card comes straight back, which reads as "the new password is wrong too".
     """
-    from custom_components.pronote_ng.login_guard import (
+    from custom_components.carnet_scolaire.login_guard import (
         clear_login_penalties,
         limiter_state_store,
     )
-    from custom_components.pronote_ng.ratelimit import LoginOutcome
+    from custom_components.carnet_scolaire.ratelimit import LoginOutcome
 
     account.limiter.note_login(LoginOutcome.BAD_CREDENTIALS)
     limiter_state_store(hass)[mock_entry.entry_id] = account.limiter.export_state()
@@ -2477,11 +2484,11 @@ async def test_a_reauthentication_with_no_entry_still_clears_the_flow_guard(
     that call, and it must not reach into ``hass.data`` for an entry that is
     not there.
     """
-    from custom_components.pronote_ng.login_guard import (
+    from custom_components.carnet_scolaire.login_guard import (
         clear_login_penalties,
         login_guard,
     )
-    from custom_components.pronote_ng.ratelimit import LoginOutcome
+    from custom_components.carnet_scolaire.ratelimit import LoginOutcome
 
     login_guard(hass).note_login(LoginOutcome.BAD_CREDENTIALS)
     assert login_guard(hass).snapshot_counters()["failed_logins_hour"] > 0
@@ -2564,7 +2571,7 @@ async def test_a_child_with_no_minted_key_falls_back_loudly(
     are orphaned at the next session. The log line is the only thing that turns
     a silent orphaning into something a user can report.
     """
-    caplog.set_level(logging.ERROR, logger="custom_components.pronote_ng.account")
+    caplog.set_level(logging.ERROR, logger="custom_components.carnet_scolaire.account")
     student_id = account.students[0].id
     keys = dict(account._child_keys)
     account._child_keys.clear()
@@ -2586,7 +2593,7 @@ async def test_a_deferred_tier_is_deferred_and_not_recorded_as_a_failure(
     up and, at three, cost it the first-collection dispensation -- so a tight
     budget would look exactly like a tab the establishment does not publish.
     """
-    from custom_components.pronote_ng.ratelimit import TierDeferred
+    from custom_components.carnet_scolaire.ratelimit import TierDeferred
 
     record = account.state.records.setdefault(Tier.MENUS, TierRecord())
     failures_before = record.consecutive_failures
@@ -2612,7 +2619,7 @@ async def test_an_authentication_refusal_stops_the_batch_and_holds_the_retry(
     made the tier due again on the very next tick, and ten tiers then
     attempted ten logins a tick.
     """
-    from custom_components.pronote_ng.session import InvalidCredentials
+    from custom_components.carnet_scolaire.session import InvalidCredentials
 
     with patch.object(
         account.connector,

@@ -491,7 +491,7 @@ haut niveau (`lessons`, `homework`, `menus`, `information_and_surveys`,
 ### 3.5 Arborescence du dépôt
 
 ```
-custom_components/pronote_ng/
+custom_components/carnet_scolaire/
 ├── __init__.py            # mise en place / retrait de l'entrée, migration
 ├── manifest.json
 ├── const.py               # domaine, clés d'options, valeurs par défaut
@@ -1328,7 +1328,7 @@ erreur.
 est le fichier de référence même si le public est français :
 
 ```
-custom_components/pronote_ng/
+custom_components/carnet_scolaire/
 ├── strings.json              # source de vérité, en anglais, vérifiée par hassfest
 └── translations/
     ├── en.json               # copie de strings.json
@@ -1500,7 +1500,7 @@ fusion :
 - `ruff check` et `ruff format --check`, jeu de règles large, aucune dette
   initiale — le projet démarre vierge, il n'y a pas de raison d'ouvrir un
   registre d'exemptions.
-- `mypy --strict` sur `custom_components/pronote_ng`, avec
+- `mypy --strict` sur `custom_components/carnet_scolaire`, avec
   `[[tool.mypy.overrides]] module = "pronotepy.*"` et
   `follow_imports = "skip"`. `pronotepy` livre bien `py.typed`, mais
   `dataClasses.py` importe `autoslot.Slots` sous `# type: ignore` et porte
@@ -1525,7 +1525,7 @@ déclencheur ni le même public :
 | `validate.yml` | `pull_request`, `push` sur la branche par défaut | `ruff`, `mypy --strict`, `pytest` avec seuil de couverture, matrice de versions Home Assistant |
 | `hassfest.yml` | idem | action officielle `home-assistant/actions/hassfest` |
 | `hacs.yml` | idem, plus `schedule` hebdomadaire | action `hacs/action` en mode `integration` |
-| `release.yml` | `push` d'une étiquette `v*` | archive `zip` de `custom_components/pronote_ng`, note de version, publication GitHub |
+| `release.yml` | `push` d'une étiquette `v*` | archive `zip` de `custom_components/carnet_scolaire`, note de version, publication GitHub |
 | `pronotepy-watch.yml` | `schedule` hebdomadaire, `workflow_dispatch` | compare l'épingle `pronotepy` à PyPI et propose la montée de version en *pull request* (§11.1.1) |
 
 **Exigence.** `validate.yml` échoue si **un seul module** descend sous 95 %, si

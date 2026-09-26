@@ -14,16 +14,16 @@ from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from custom_components.pronote_ng.calendar import (
+from custom_components.carnet_scolaire.calendar import (
     CALENDARS,
     PronoteCalendar,
     async_setup_entry,
 )
-from custom_components.pronote_ng.connectors.protocol import (
+from custom_components.carnet_scolaire.connectors.protocol import (
     ConnectorCapabilities,
     Source,
 )
-from custom_components.pronote_ng.const import Tier
+from custom_components.carnet_scolaire.const import Tier
 
 from .conftest import REQUIRES_HASS
 
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
     from .fixtures.client import FakeClient
 

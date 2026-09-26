@@ -28,12 +28,12 @@ jobs:
 
       - name: Build the integration archive
         run: |
-          cd custom_components/pronote_ng
-          zip -r ../../pronote_ng.zip . -x '*__pycache__*' -x '*.pyc'
+          cd custom_components/carnet_scolaire
+          zip -r ../../carnet_scolaire.zip . -x '*__pycache__*' -x '*.pyc'
 
       - name: Publish the GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          files: pronote_ng.zip
+          files: carnet_scolaire.zip
           generate_release_notes: true
           fail_on_unmatched_files: true

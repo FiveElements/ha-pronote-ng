@@ -22,7 +22,7 @@ import re
 
 import pytest
 
-from custom_components.pronote_ng import const
+from custom_components.carnet_scolaire import const
 
 from .conftest import REQUIRES_HASS
 
@@ -133,7 +133,7 @@ def test_every_entity_appears_in_the_annexe_a_catalogue() -> None:
 
     root = Path(__file__).resolve().parents[1]
     entities = json.loads(
-        (root / "custom_components/pronote_ng/translations/fr.json").read_text(
+        (root / "custom_components/carnet_scolaire/translations/fr.json").read_text(
             encoding="utf-8"
         )
     )["entity"]

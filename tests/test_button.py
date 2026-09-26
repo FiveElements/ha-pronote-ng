@@ -39,14 +39,14 @@ from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID, STATE_UNAVAILABLE
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.pronote_ng import button as button_platform
-from custom_components.pronote_ng.button import (
+from custom_components.carnet_scolaire import button as button_platform
+from custom_components.carnet_scolaire.button import (
     BUTTONS,
     PronoteRefreshButton,
     async_setup_entry,
 )
-from custom_components.pronote_ng.const import DOMAIN, Tier
-from custom_components.pronote_ng.entity import PronoteEntity
+from custom_components.carnet_scolaire.const import DOMAIN, Tier
+from custom_components.carnet_scolaire.entity import PronoteEntity
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
 
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity import Entity
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
     from .fixtures.client import FakeClient
 

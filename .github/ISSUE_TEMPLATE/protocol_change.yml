@@ -41,7 +41,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Version de Pronote NG
+      label: Version de Carnet scolaire
       placeholder: "0.0.3"
     validations:
       required: true
@@ -125,7 +125,7 @@ body:
     attributes:
       label: Diagnostic
       description: >-
-        *Paramètres → Appareils et services → Pronote NG → ⋯ → Télécharger les
+        *Paramètres → Appareils et services → Carnet scolaire → ⋯ → Télécharger les
         diagnostics*. Le diagnostic par **appareil** est le plus parlant ici :
         il donne, palier par palier, l'âge de la dernière collecte, son coût et
         le nombre d'éléments.

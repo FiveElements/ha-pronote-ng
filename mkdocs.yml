@@ -1,11 +1,11 @@
-site_name: Pronote NG
+site_name: Carnet scolaire
 site_description: >-
   Intégration Home Assistant pour PRONOTE — seconde génération.
   Ordonnanceur multi-cadence, limiteur de débit débité à l'admission,
   et aucun secret dans un état d'entité.
-site_url: https://fiveelements.github.io/ha-pronote-ng/
-repo_url: https://github.com/FiveElements/ha-pronote-ng
-repo_name: FiveElements/ha-pronote-ng
+site_url: https://fiveelements.github.io/ha-carnet-scolaire/
+repo_url: https://github.com/FiveElements/ha-carnet-scolaire
+repo_name: FiveElements/ha-carnet-scolaire
 edit_uri: edit/main/docs/
 copyright: MIT — Jérôme Morille
 
@@ -128,5 +128,5 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/FiveElements/ha-pronote-ng
+      link: https://github.com/FiveElements/ha-carnet-scolaire
       name: Le dépôt

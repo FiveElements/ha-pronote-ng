@@ -28,24 +28,24 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.setup import async_setup_component
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     DOMAIN,
     EVENT_GRADE_ADDED,
     EVENT_LESSON_CANCELED,
     OPT_WRITE_OPERATIONS_ENABLED,
 )
-from custom_components.pronote_ng.device_action import (
+from custom_components.carnet_scolaire.device_action import (
     ACTION_TYPES,
     WRITE_ACTIONS,
     async_get_actions,
 )
-from custom_components.pronote_ng.device_condition import (
+from custom_components.carnet_scolaire.device_condition import (
     CONDITION_MAP,
     CONDITION_SCHEMA,
     async_condition_from_config,
     async_get_conditions,
 )
-from custom_components.pronote_ng.device_trigger import (
+from custom_components.carnet_scolaire.device_trigger import (
     TRIGGER_TYPES,
     async_attach_trigger,
     async_get_triggers,
@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 pytestmark = REQUIRES_HASS
 
@@ -99,7 +99,7 @@ async def _fire(
     entity_key: str = "lesson_changed",
 ) -> None:
     """Fire one delta on the bus, the way the account does."""
-    from custom_components.pronote_ng.account import SIGNAL_DELTA
+    from custom_components.carnet_scolaire.account import SIGNAL_DELTA
 
     hass.bus.async_fire(
         SIGNAL_DELTA,
@@ -422,7 +422,7 @@ async def test_a_refresh_action_calls_the_matching_service(
     A device action that reached the gateway directly would be a second path to
     the network, and annexe B §6 gives the limiter a monopoly on that.
     """
-    from custom_components.pronote_ng.device_action import (
+    from custom_components.carnet_scolaire.device_action import (
         async_call_action_from_config,
     )
 
@@ -474,7 +474,7 @@ async def test_the_editor_asks_only_for_the_fields_an_action_needs(
     accepted, and then refused by the service at run time -- a failure the
     automation editor had every chance to prevent.
     """
-    from custom_components.pronote_ng.device_action import (
+    from custom_components.carnet_scolaire.device_action import (
         async_get_action_capabilities,
     )
 
@@ -528,7 +528,7 @@ async def test_a_write_action_carries_its_identifier_into_the_service_call(
     dropped it instead of defaulting would send ``done`` absent -- which the
     service reads as a validation error on the commonest write there is.
     """
-    from custom_components.pronote_ng.device_action import (
+    from custom_components.carnet_scolaire.device_action import (
         async_call_action_from_config,
     )
 
@@ -595,7 +595,7 @@ async def test_a_change_trigger_asks_the_editor_for_no_extra_field(
     it is worth pinning rather than leaving to whatever the default happens to
     be.
     """
-    from custom_components.pronote_ng.device_trigger import (
+    from custom_components.carnet_scolaire.device_trigger import (
         async_get_trigger_capabilities,
     )
 
@@ -616,7 +616,7 @@ async def test_a_device_this_integration_does_not_own_resolves_to_no_entry(
     there -- ``"".partition("_")`` returns empty strings quite happily, and an
     entry id of ``""`` looks up as a missing account instead of as a bug.
     """
-    from custom_components.pronote_ng.device_trigger import _entry_id, _student_id
+    from custom_components.carnet_scolaire.device_trigger import _entry_id, _student_id
 
     other = dr.async_get(hass).async_get_or_create(
         config_entry_id=mock_entry.entry_id,
@@ -640,7 +640,7 @@ async def test_a_child_device_of_an_unloaded_entry_still_reads_as_a_child(
     switched off. The untranslated key is enough to answer "this is a child",
     which is all ``async_get_triggers`` asks; nothing can fire meanwhile.
     """
-    from custom_components.pronote_ng.device_trigger import _student_id
+    from custom_components.carnet_scolaire.device_trigger import _student_id
 
     device_id = _child(hass, mock_entry, STUDENT_ONE)
     resolved = _student_id(hass, device_id)

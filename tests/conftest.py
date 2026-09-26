@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     CHILD_KEY,
     CHILD_RESOURCE_ID,
     CONF_CHILD_KEYS,
@@ -31,8 +31,8 @@ from custom_components.pronote_ng.const import (
     OPT_QUIET_HOURS_ENABLED,
     LoginMode,
 )
-from custom_components.pronote_ng.gateway import PronoteGateway
-from custom_components.pronote_ng.ratelimit import RateLimitConfig, RateLimiter
+from custom_components.carnet_scolaire.gateway import PronoteGateway
+from custom_components.carnet_scolaire.ratelimit import RateLimitConfig, RateLimiter
 
 from .clock import FakeClock, RecordingSleeper
 from .fixtures.client import FakeClient
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 #: Home Assistant's own test harness imports ``fcntl``, so it cannot be loaded
 #: on Windows at all -- not by anything this project does. The plugin is
@@ -138,7 +138,7 @@ if HAS_HASS_HARNESS:
 
     @pytest.fixture(autouse=True)
     def _auto_enable_custom_integrations(enable_custom_integrations: Any) -> None:
-        """Let Home Assistant load ``custom_components/pronote_ng``.
+        """Let Home Assistant load ``custom_components/carnet_scolaire``.
 
         Autouse, because forgetting it in one file produces a failure that
         reads like a bug in the integration rather than a missing fixture.
@@ -233,10 +233,10 @@ def utc_now_fixture() -> datetime:
 def domain_fixture() -> str:
     """The Home Assistant domain, which is *not* the project name.
 
-    ``pronote_ng`` rather than ``pronote``: another PRONOTE custom integration
-    may already own that domain, and two custom components claiming one domain
-    cannot be installed side by side. The repository is ``ha-pronote-ng`` and the
-    integration is displayed as "Pronote NG".
+    ``carnet_scolaire`` names what a parent follows rather than one platform,
+    since the integration collects from PRONOTE and from EcoleDirecte. The
+    repository is ``ha-carnet-scolaire`` and the integration is displayed as
+    "Carnet scolaire".
     """
     return DOMAIN
 
@@ -282,7 +282,7 @@ if HAS_HASS_HARNESS:
         sleeper.
         """
         with patch(
-            "custom_components.pronote_ng.ratelimit._asyncio_sleep", new=_no_sleep
+            "custom_components.carnet_scolaire.ratelimit._asyncio_sleep", new=_no_sleep
         ):
             yield
 
@@ -326,7 +326,7 @@ if HAS_HASS_HARNESS:
         test that leaves a timer or a worker thread behind.
         """
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)

@@ -59,7 +59,7 @@ body:
         Avec le chemin du fichier si vous l'avez trouvé — c'est ce qui rend la
         correction vérifiable au lieu d'être une opinion contre une autre.
       placeholder: >-
-        `custom_components/pronote_ng/sensor.py:333` lit l'option
+        `custom_components/carnet_scolaire/sensor.py:333` lit l'option
         `homework_horizon`, alors que le guide annonce sept jours fixes.
     validations:
       required: true

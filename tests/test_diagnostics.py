@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
-from custom_components.pronote_ng.const import CONF_PRONOTE_URL, DOMAIN
-from custom_components.pronote_ng.diagnostics import (
+from custom_components.carnet_scolaire.const import CONF_PRONOTE_URL, DOMAIN
+from custom_components.carnet_scolaire.diagnostics import (
     _counts,
     _short_hash,
     _student_id,
@@ -47,7 +47,7 @@ from .conftest import CHILDREN, REQUIRES_HASS, child_key
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 ENTRY_ID = "0123456789abcdef0123456789abcdef"
 

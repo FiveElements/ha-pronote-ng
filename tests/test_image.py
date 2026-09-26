@@ -13,9 +13,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
-from custom_components.pronote_ng.const import Tier
-from custom_components.pronote_ng.image import PronoteProfileImage
-from custom_components.pronote_ng.ratelimit import TierDeferred
+from custom_components.carnet_scolaire.const import Tier
+from custom_components.carnet_scolaire.image import PronoteProfileImage
+from custom_components.carnet_scolaire.ratelimit import TierDeferred
 
 from .conftest import REQUIRES_HASS
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
     from .fixtures.client import FakeClient
 
@@ -167,7 +167,7 @@ async def test_a_static_tier_with_no_coordinator_creates_no_photo_entity(
     lands inside the platform forward, which takes the whole entry down rather
     than one photo.
     """
-    from custom_components.pronote_ng.image import async_setup_entry
+    from custom_components.carnet_scolaire.image import async_setup_entry
 
     built: list[object] = []
 

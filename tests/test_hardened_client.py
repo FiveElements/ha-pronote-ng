@@ -53,9 +53,9 @@ from pronotepy.exceptions import MFAError, PronoteAPIError
 import pytest
 import requests
 
-from custom_components.pronote_ng import hardened_client
-from custom_components.pronote_ng.const import LoginMode
-from custom_components.pronote_ng.hardened_client import (
+from custom_components.carnet_scolaire import hardened_client
+from custom_components.carnet_scolaire.const import LoginMode
+from custom_components.carnet_scolaire.hardened_client import (
     BootstrapUnavailable,
     HardenedClient,
     _ConfinedRegistry,

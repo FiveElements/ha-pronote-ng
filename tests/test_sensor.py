@@ -26,7 +26,7 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.pronote_ng.const import Tier
+from custom_components.carnet_scolaire.const import Tier
 
 from .conftest import CHILDREN, PARIS, REQUIRES_HASS
 from .fixtures import protocol
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 pytestmark = REQUIRES_HASS
 
@@ -939,8 +939,8 @@ def test_a_closed_period_the_history_holds_nothing_for_publishes_unknown(
     Parametrised over all eight because they are near-identical by design, and
     a ninth added tomorrow that returned ``0`` would be the easy mistake.
     """
-    from custom_components.pronote_ng import sensor as sensor_module
-    from custom_components.pronote_ng.models import HistoryFacts
+    from custom_components.carnet_scolaire import sensor as sensor_module
+    from custom_components.carnet_scolaire.models import HistoryFacts
 
     empty = HistoryFacts(marks=(), attendance=(), evaluations=())
 
@@ -960,7 +960,7 @@ def test_a_day_with_no_lesson_publishes_no_end_of_day_attributes() -> None:
     zero there on a day with no timetable at all would answer "nothing was
     cancelled today" about a day that was never a school day.
     """
-    from custom_components.pronote_ng.sensor import _end_of_day_attributes
+    from custom_components.carnet_scolaire.sensor import _end_of_day_attributes
 
     from .test_delta import timetable
 
@@ -982,7 +982,7 @@ def test_a_period_with_no_grade_publishes_unknown_and_no_context() -> None:
     and the state stays numeric. With no grade at all there is nothing to put
     in either.
     """
-    from custom_components.pronote_ng.sensor import (
+    from custom_components.carnet_scolaire.sensor import (
         _latest_grade_attributes,
         _latest_grade_value,
     )
@@ -997,7 +997,7 @@ def test_a_period_with_no_grade_publishes_unknown_and_no_context() -> None:
 
 def test_a_period_with_no_report_card_publishes_no_report_attributes() -> None:
     """Most of the year there is no report card, and that is not missing data."""
-    from custom_components.pronote_ng.sensor import _report_attributes
+    from custom_components.carnet_scolaire.sensor import _report_attributes
 
     from .test_delta import marks
 

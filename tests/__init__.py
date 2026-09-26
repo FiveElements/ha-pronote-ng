@@ -1,4 +1,4 @@
-"""Tests for the ha-pronote-ng integration.
+"""Tests for the ha-carnet-scolaire integration.
 
 Nothing in here touches a PRONOTE server, and nothing in here contains a real
 credential, a real establishment, a real student name or a real ``N``

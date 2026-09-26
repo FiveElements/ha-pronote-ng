@@ -35,7 +35,7 @@ from homeassistant.helpers import device_registry as dr
 import pytest
 import voluptuous as vol
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     DOMAIN,
     OPT_WRITE_OPERATIONS_ENABLED,
     SERVICE_GENERATE_TIMETABLE_PDF,
@@ -50,7 +50,7 @@ from custom_components.pronote_ng.const import (
     Priority,
     Tier,
 )
-from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
+from custom_components.carnet_scolaire.ratelimit import DeferReason, TierDeferred
 
 from .conftest import CHILDREN, REQUIRES_HASS, child_key
 from .fixtures import protocol
@@ -60,7 +60,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 pytestmark = REQUIRES_HASS
 
@@ -854,7 +854,7 @@ async def test_a_one_child_account_need_not_say_which_child(
     that refused *every* account device would look like correct strictness.
     """
     with patch(
-        "custom_components.pronote_ng.session.build_client", return_value=client
+        "custom_components.carnet_scolaire.session.build_client", return_value=client
     ):
         assert await hass.config_entries.async_setup(mock_entry.entry_id)
         await hass.async_block_till_done()
@@ -880,7 +880,7 @@ async def test_registering_the_services_twice_leaves_one_of_each(
     the live handler mid-flight; the guard is the ``has_service`` check, and
     nothing exercised it.
     """
-    from custom_components.pronote_ng.services import async_setup_services
+    from custom_components.carnet_scolaire.services import async_setup_services
 
     async_setup_services(hass)
     async_setup_services(hass)
@@ -937,7 +937,7 @@ class TestTheAttachmentAddressIsMintedOnClick:
         if kind == "external":
             # A link carries no key; the fingerprint a card could compute from
             # it is what a misbehaving caller would send.
-            from custom_components.pronote_ng.attachment import fingerprint
+            from custom_components.carnet_scolaire.attachment import fingerprint
 
             item_id = state.attributes["items"][0]["id"]
             return fingerprint(item_id, "ATTACHMENT-2")

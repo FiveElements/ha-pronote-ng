@@ -4,14 +4,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.pronote_ng.connectors.errors import ConnectorUnsupportedError
-from custom_components.pronote_ng.connectors.protocol import (
+from custom_components.carnet_scolaire.connectors.errors import (
+    ConnectorUnsupportedError,
+)
+from custom_components.carnet_scolaire.connectors.protocol import (
     ConnectorCapabilities,
     Source,
     has_pronote_extras,
 )
-from custom_components.pronote_ng.const import Priority, Tier
-from custom_components.pronote_ng.models import GatewayResult, HomeworkFacts
+from custom_components.carnet_scolaire.const import Priority, Tier
+from custom_components.carnet_scolaire.models import GatewayResult, HomeworkFacts
 from tests.fixtures.fake_connector import FakeConnector
 
 
@@ -24,8 +26,10 @@ def test_has_pronote_extras_is_a_runtime_guard() -> None:
 
 def test_an_entry_without_a_source_key_is_pronote() -> None:
     """Existing installs must not wake up as Ecoledirecte."""
-    from custom_components.pronote_ng.connectors.factory import source_from_entry_data
-    from custom_components.pronote_ng.connectors.protocol import Source
+    from custom_components.carnet_scolaire.connectors.factory import (
+        source_from_entry_data,
+    )
+    from custom_components.carnet_scolaire.connectors.protocol import Source
 
     assert source_from_entry_data({}) is Source.PRONOTE
     assert source_from_entry_data({"source": "ecoledirecte"}) is Source.ECOLEDIRECTE
@@ -33,13 +37,13 @@ def test_an_entry_without_a_source_key_is_pronote() -> None:
 
 def test_building_an_ecoledirecte_connector_uses_the_ready_client() -> None:
     """The factory must select ED without constructing the Pronote transport stack."""
-    from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
+    from custom_components.carnet_scolaire.connectors.ecoledirecte.connector import (
         EcoledirecteConnector,
     )
-    from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+    from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_client import (
         EcoleDirecteClient,
     )
-    from custom_components.pronote_ng.connectors.factory import build_connector
+    from custom_components.carnet_scolaire.connectors.factory import build_connector
     from tests.test_ecoledirecte_client import RecordingTransport
 
     entry = SimpleNamespace(
@@ -121,7 +125,7 @@ def test_a_source_the_factory_does_not_know_is_refused_loudly() -> None:
     """
     from unittest.mock import patch
 
-    from custom_components.pronote_ng.connectors import factory
+    from custom_components.carnet_scolaire.connectors import factory
 
     entry = SimpleNamespace(
         entry_id="entry-under-test", data={"source": "pronote"}, options={}

@@ -29,8 +29,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.const import AttachmentKind, GradeStatus
-from custom_components.pronote_ng.gateway import (
+from custom_components.carnet_scolaire.const import AttachmentKind, GradeStatus
+from custom_components.carnet_scolaire.gateway import (
     MAX_DISCUSSION_EXPANSIONS,
     DiscussionIsClosed,
     DiscussionNotFound,
@@ -55,7 +55,7 @@ from custom_components.pronote_ng.gateway import (
     _supersedes,
     deduplicate_lessons,
 )
-from custom_components.pronote_ng.models import HomeworkAttachment, Lesson
+from custom_components.carnet_scolaire.models import HomeworkAttachment, Lesson
 
 from .clock import FakeClock  # noqa: TC001 -- a pytest fixture annotation
 from .fixtures import protocol

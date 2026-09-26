@@ -33,14 +33,14 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 import voluptuous as vol
 
-from custom_components.pronote_ng.config_flow import (
+from custom_components.carnet_scolaire.config_flow import (
     PronoteOptionsFlow,
     _default,
     _entry_children,
     _measured_lifetime,
     _number,
 )
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     CONF_CHILDREN,
     DEFAULT_MASTER_TICK,
     DEFAULT_TIER_INTERVALS,
@@ -54,7 +54,7 @@ from custom_components.pronote_ng.const import (
     OPTION_RANGES,
     Tier,
 )
-from custom_components.pronote_ng.options import estimate_daily_requests
+from custom_components.carnet_scolaire.options import estimate_daily_requests
 
 from .conftest import CHILDREN, REQUIRES_HASS
 
@@ -62,7 +62,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 SECTIONS = ("general", "tiers", "rate_limit")
 
@@ -786,7 +786,7 @@ def test_the_options_flow_is_the_one_the_config_flow_hands_out() -> None:
     here to get wrong except returning the wrong class, which is exactly what
     this checks.
     """
-    from custom_components.pronote_ng.config_flow import PronoteConfigFlow
+    from custom_components.carnet_scolaire.config_flow import PronoteConfigFlow
 
     assert isinstance(
         PronoteConfigFlow.async_get_options_flow(None),  # type: ignore[arg-type]

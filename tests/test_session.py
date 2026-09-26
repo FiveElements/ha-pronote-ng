@@ -35,18 +35,18 @@ from pronotepy import ChildNotFound
 from pronotepy.exceptions import ExpiredObject, PronoteAPIError
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     LimiterState,
     LoginMode,
     Priority,
     SessionStrategy,
 )
-from custom_components.pronote_ng.hardened_client import protocol_error_code
-from custom_components.pronote_ng.ratelimit import (
+from custom_components.carnet_scolaire.hardened_client import protocol_error_code
+from custom_components.carnet_scolaire.ratelimit import (
     RateLimitConfig,
     RateLimiter,
 )
-from custom_components.pronote_ng.session import (
+from custom_components.carnet_scolaire.session import (
     ERROR_PAGE_EXPIRED,
     ERROR_SESSION_EXPIRED,
     ERROR_TOO_MANY_AUTHORIZATIONS,
@@ -213,8 +213,10 @@ async def harness_fixture(
     )
 
     with (
-        patch("custom_components.pronote_ng.session.build_client", side_effect=build),
-        patch("custom_components.pronote_ng.session.release_client"),
+        patch(
+            "custom_components.carnet_scolaire.session.build_client", side_effect=build
+        ),
+        patch("custom_components.carnet_scolaire.session.release_client"),
     ):
         yield Harness(
             manager=manager,
@@ -587,7 +589,7 @@ async def test_an_unreachable_server_is_logged_once_and_again_when_it_returns(
     never run ``_async_refresh``. The session is the one place that sees both
     the transport failure and the next success, for the account as a whole.
     """
-    caplog.set_level(logging.INFO, logger="custom_components.pronote_ng.session")
+    caplog.set_level(logging.INFO, logger="custom_components.carnet_scolaire.session")
 
     with pytest.raises(IntegrationFault):
         await harness.manager.run(
@@ -917,7 +919,7 @@ async def test_an_os_error_on_a_call_marks_the_server_unreachable_and_re_raises(
     tier's cadence; and the exception has to keep travelling, or the tier
     records a success it did not have.
     """
-    caplog.set_level(logging.INFO, logger="custom_components.pronote_ng.session")
+    caplog.set_level(logging.INFO, logger="custom_components.carnet_scolaire.session")
 
     with pytest.raises(OSError, match="network is down"):
         await harness.manager.run(
@@ -947,7 +949,7 @@ async def test_a_client_that_will_not_release_cleanly_does_not_break_the_unload(
     assert harness.manager.is_open
 
     with patch(
-        "custom_components.pronote_ng.session.release_client",
+        "custom_components.carnet_scolaire.session.release_client",
         side_effect=RuntimeError("the worker is gone"),
     ):
         await harness.manager.close()
@@ -957,7 +959,7 @@ async def test_a_client_that_will_not_release_cleanly_does_not_break_the_unload(
 
 def test_a_non_ent_login_resolves_no_provider() -> None:
     """Credentials and QR code modes must not reach into ``pronotepy.ent``."""
-    from custom_components.pronote_ng.session import _resolve_ent
+    from custom_components.carnet_scolaire.session import _resolve_ent
 
     assert _resolve_ent(_credentials()) is None
 
@@ -971,7 +973,7 @@ def test_an_ent_provider_nobody_recognises_is_refused_rather_than_guessed() -> N
     answers as bad credentials -- and two of those count against the IP guard,
     whose sanction is the expensive one.
     """
-    from custom_components.pronote_ng.session import _resolve_ent
+    from custom_components.carnet_scolaire.session import _resolve_ent
 
     credentials = SessionCredentials(
         login_mode=LoginMode.ENT,
@@ -993,7 +995,7 @@ def test_an_ent_provider_upstream_still_ships_is_resolved_to_its_callable() -> N
     """
     from pronotepy import ent as ent_module
 
-    from custom_components.pronote_ng.session import _resolve_ent
+    from custom_components.carnet_scolaire.session import _resolve_ent
 
     name = next(
         attribute

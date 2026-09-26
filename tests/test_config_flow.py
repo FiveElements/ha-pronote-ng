@@ -37,8 +37,8 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pronote_ng.account import PronoteAccount
-from custom_components.pronote_ng.config_flow import (
+from custom_components.carnet_scolaire.account import PronoteAccount
+from custom_components.carnet_scolaire.config_flow import (
     ProbeBootstrapFailed,
     ProbeEntUnknown,
     ProbeInvalidCredentials,
@@ -46,12 +46,14 @@ from custom_components.pronote_ng.config_flow import (
     ProbeQrInvalid,
     ProbeQrRefused,
 )
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_limiter import (
     EdRateLimiter,
 )
-from custom_components.pronote_ng.connectors.errors import ConnectorChallengeRequired
-from custom_components.pronote_ng.connectors.protocol import ChallengeKind
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.connectors.errors import (
+    ConnectorChallengeRequired,
+)
+from custom_components.carnet_scolaire.connectors.protocol import ChallengeKind
+from custom_components.carnet_scolaire.const import (
     CONF_ACCOUNT_PIN,
     CONF_CHILD_KEYS,
     CONF_CHILDREN,
@@ -67,15 +69,18 @@ from custom_components.pronote_ng.const import (
     OPT_WRITE_OPERATIONS_ENABLED,
     LoginMode,
 )
-from custom_components.pronote_ng.login_guard import limiter_state_store, login_guard
-from custom_components.pronote_ng.options import build_rate_limit_config
-from custom_components.pronote_ng.ratelimit import (
+from custom_components.carnet_scolaire.login_guard import (
+    limiter_state_store,
+    login_guard,
+)
+from custom_components.carnet_scolaire.options import build_rate_limit_config
+from custom_components.carnet_scolaire.ratelimit import (
     REQUESTS_PER_LOGIN,
     DeferReason,
     LoginOutcome,
     LoginRefusedByLimiter,
 )
-from custom_components.pronote_ng.urls import public_url, url_host
+from custom_components.carnet_scolaire.urls import public_url, url_host
 from tests.test_ecoledirecte_client import RecordingTransport, load_fixture
 
 from .conftest import REQUIRES_HASS
@@ -117,7 +122,9 @@ def no_setup_fixture() -> Iterator[None]:
     failure it prevents shows up as a lingering-thread error in the *next*
     test's teardown, which is a genuinely confusing place to debug from.
     """
-    with patch("custom_components.pronote_ng.async_setup_entry", return_value=True):
+    with patch(
+        "custom_components.carnet_scolaire.async_setup_entry", return_value=True
+    ):
         yield
 
 
@@ -189,7 +196,7 @@ async def test_an_ecoledirecte_login_stores_password_and_not_the_token(
     assert result["type"] is FlowResultType.FORM
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
         return_value={"students": (("1", "Enfant Un"),)},
     ):
         created = await hass.config_entries.flow.async_configure(
@@ -216,7 +223,7 @@ async def test_a_250_opens_the_qcm_step_and_does_not_create_the_entry(
         result["flow_id"], {"next_step_id": "ecoledirecte"}
     )
     with patch(
-        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
         side_effect=ConnectorChallengeRequired(
             ChallengeKind.QCM,
             question="Couleur préférée ?",
@@ -243,7 +250,7 @@ async def test_an_ecoledirecte_qcm_submit_creates_the_entry_after_200(
         result["flow_id"], {"next_step_id": "ecoledirecte"}
     )
     with patch(
-        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
         side_effect=ConnectorChallengeRequired(
             ChallengeKind.QCM,
             question="Couleur préférée ?",
@@ -263,7 +270,7 @@ async def test_an_ecoledirecte_qcm_submit_creates_the_entry_after_200(
     assert "choice" in schema_keys
     assert "qcm_json" not in schema_keys
     with patch(
-        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
         return_value={"students": (("1", "Enfant Un"),)},
     ) as probe:
         created = await hass.config_entries.flow.async_configure(
@@ -317,7 +324,7 @@ async def test_an_ecoledirecte_qcm_submit_after_250_is_not_held_by_the_limiter(
     )
     with (
         patch(
-            "custom_components.pronote_ng.config_flow.async_create_clientsession",
+            "custom_components.carnet_scolaire.config_flow.async_create_clientsession",
             return_value=transport,
         ),
         patch.object(PronoteAccount, "async_setup", return_value=None),
@@ -357,7 +364,7 @@ async def test_an_ecoledirecte_entry_persists_exactly_the_contract_keys(
         result["flow_id"], {"next_step_id": "ecoledirecte"}
     )
     with patch(
-        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
         return_value={"students": (("1", "Enfant Un"),)},
     ):
         created = await hass.config_entries.flow.async_configure(
@@ -388,7 +395,7 @@ async def test_an_ecoledirecte_limiter_refusal_is_rate_limited(
         result["flow_id"], {"next_step_id": "ecoledirecte"}
     )
     with patch(
-        "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+        "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
         side_effect=LoginRefusedByLimiter(DeferReason.LOGIN_CAP, 60),
     ):
         refused = await hass.config_entries.flow.async_configure(
@@ -436,11 +443,11 @@ async def test_an_ed_reauth_asks_for_identifier_and_qcm_not_a_pronote_probe(
 
     with (
         patch(
-            "custom_components.pronote_ng.config_flow._probe",
+            "custom_components.carnet_scolaire.config_flow._probe",
             side_effect=AssertionError("Pronote probe must not run for ED reauth"),
         ),
         patch(
-            "custom_components.pronote_ng.config_flow._probe_ecoledirecte",
+            "custom_components.carnet_scolaire.config_flow._probe_ecoledirecte",
             return_value={"students": (("1", "Enfant Un"),)},
         ),
     ):
@@ -509,7 +516,7 @@ async def test_a_single_child_account_is_created_straight_away(
     flow_id = await _start(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         result = await _submit_credentials(hass, flow_id)
@@ -531,7 +538,7 @@ async def test_a_new_entry_is_created_with_writes_on(
     flow_id = await _start(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         result = await _submit_credentials(hass, flow_id)
@@ -548,7 +555,7 @@ async def test_a_parent_account_asks_which_children_to_follow(
     flow_id = await _start(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un"), ("STUDENT-2", "Enfant Deux")),
     ):
         result = await _submit_credentials(hass, flow_id)
@@ -576,7 +583,7 @@ async def test_the_same_account_cannot_be_added_twice(
     flow_id = await _start(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         result = await _submit_credentials(hass, flow_id)
@@ -601,7 +608,7 @@ async def test_an_ent_account_records_its_provider(
     assert CONF_ENT in schema_keys
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         created = await hass.config_entries.flow.async_configure(
@@ -639,7 +646,7 @@ async def test_the_query_string_of_the_pasted_address_is_not_stored(
     flow_id = await _start(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ) as probe:
         result = await _submit_credentials(hass, flow_id)
@@ -710,7 +717,9 @@ async def test_a_failed_login_re_displays_the_form_with_a_reason(
     """Never an abort: the user is one corrected field away from succeeding."""
     flow_id = await _start(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe", side_effect=error):
+    with patch(
+        "custom_components.carnet_scolaire.config_flow._probe", side_effect=error
+    ):
         result = await _submit_credentials(hass, flow_id)
 
     assert result["type"] is FlowResultType.FORM
@@ -732,7 +741,7 @@ async def test_the_flow_stops_asking_after_three_refusals(
     for _attempt in range(3):
         flow_id = await _start(hass)
         with patch(
-            "custom_components.pronote_ng.config_flow._probe",
+            "custom_components.carnet_scolaire.config_flow._probe",
             side_effect=ProbeInvalidCredentials(),
         ):
             result = await _submit_credentials(hass, flow_id)
@@ -740,7 +749,7 @@ async def test_the_flow_stops_asking_after_three_refusals(
 
     flow_id = await _start(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeInvalidCredentials(),
     ) as probe:
         result = await _submit_credentials(hass, flow_id)
@@ -763,7 +772,7 @@ async def test_the_guard_counts_the_requests_a_flow_login_really_spends(
 
     flow_id = await _start(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         await _submit_credentials(hass, flow_id)
@@ -801,7 +810,7 @@ async def test_qr_enrolment_keeps_neither_the_payload_nor_its_pin(
     flow_id = await _start_qr(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         result = dict(
@@ -831,7 +840,7 @@ async def test_a_qr_payload_that_is_not_one_is_refused_before_any_request(
     """Field-level, so the user sees which box is wrong."""
     flow_id = await _start_qr(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+    with patch("custom_components.carnet_scolaire.config_flow._probe") as probe:
         result = await hass.config_entries.flow.async_configure(
             flow_id, {CONF_QR_PAYLOAD: "this is not json", CONF_QR_PIN: "1234"}
         )
@@ -847,7 +856,7 @@ async def test_a_consumed_qr_code_says_to_generate_a_new_one(
     flow_id = await _start_qr(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeQrInvalid(),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -871,7 +880,7 @@ async def test_qr_enrolment_is_charged_for_the_two_logins_it_performs(
 
     flow_id = await _start_qr(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         await hass.config_entries.flow.async_configure(
@@ -901,7 +910,7 @@ async def test_reauthentication_asks_for_the_pin_and_forgets_it_again(
     assert result["step_id"] == "reauth_confirm"
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ) as probe:
         result = await hass.config_entries.flow.async_configure(
@@ -932,7 +941,7 @@ async def test_reauthentication_lifts_the_hold_a_human_can_only_lift(
     for _attempt in range(3):
         flow_id = await _start(hass)
         with patch(
-            "custom_components.pronote_ng.config_flow._probe",
+            "custom_components.carnet_scolaire.config_flow._probe",
             side_effect=ProbeInvalidCredentials(),
         ):
             await _submit_credentials(hass, flow_id)
@@ -940,7 +949,7 @@ async def test_reauthentication_lifts_the_hold_a_human_can_only_lift(
 
     result = await mock_entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ) as probe:
         result = await hass.config_entries.flow.async_configure(
@@ -959,7 +968,7 @@ async def test_a_reauthentication_that_fails_says_so_and_stays_open(
     result = await mock_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeInvalidCredentials(),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -989,7 +998,7 @@ async def test_a_qr_payload_that_is_json_but_not_an_object_is_refused(
     """
     flow_id = await _start_qr(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+    with patch("custom_components.carnet_scolaire.config_flow._probe") as probe:
         result = await hass.config_entries.flow.async_configure(
             flow_id, {CONF_QR_PAYLOAD: payload, CONF_QR_PIN: "1234"}
         )
@@ -1017,7 +1026,7 @@ async def test_the_first_screen_supplies_every_placeholder_its_text_uses(
     """
     strings = json.loads(
         await asyncio.to_thread(
-            pathlib.Path("custom_components/pronote_ng/strings.json").read_text,
+            pathlib.Path("custom_components/carnet_scolaire/strings.json").read_text,
             encoding="utf-8",
         )
     )
@@ -1058,7 +1067,7 @@ async def test_a_qr_payload_missing_a_key_is_refused_before_any_request(
     """
     flow_id = await _start_qr(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+    with patch("custom_components.carnet_scolaire.config_flow._probe") as probe:
         result = await hass.config_entries.flow.async_configure(
             flow_id, {CONF_QR_PAYLOAD: payload, CONF_QR_PIN: "1234"}
         )
@@ -1087,7 +1096,7 @@ async def test_a_failed_ent_login_comes_back_to_the_ent_form(
     )
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeInvalidCredentials("the identity provider refused"),
     ):
         refused = await hass.config_entries.flow.async_configure(
@@ -1122,7 +1131,7 @@ async def test_reauthentication_accepts_a_pin_without_a_new_password(
     assert result["step_id"] == "reauth_confirm"
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un")),
     ):
         done = await hass.config_entries.flow.async_configure(
@@ -1238,7 +1247,7 @@ async def test_a_qr_reconnection_reaches_the_probe_instead_of_raising(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(),
     ) as probe:
         done = await hass.config_entries.flow.async_configure(
@@ -1271,7 +1280,7 @@ async def test_a_qr_reconnection_reuses_the_device_uuid_it_was_enrolled_with(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(),
     ) as probe:
         await hass.config_entries.flow.async_configure(
@@ -1298,7 +1307,7 @@ async def test_a_qr_reconnection_persists_the_token_and_no_single_use_secret(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(),
     ):
         await hass.config_entries.flow.async_configure(
@@ -1332,7 +1341,7 @@ async def test_a_qr_code_from_another_account_is_refused_rather_than_applied(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(account_id=f"{TRIMMED_URL}::47#not-a-real-signature"),
     ):
         done = await hass.config_entries.flow.async_configure(
@@ -1367,7 +1376,7 @@ async def test_a_re_enrolment_of_the_same_account_survives_a_rotated_signature(
 
     result = await qr_entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(account_id=rotated),
     ):
         done = await hass.config_entries.flow.async_configure(
@@ -1392,7 +1401,7 @@ async def test_the_same_resource_at_another_establishment_is_a_different_account
     """
     result = await qr_entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(
             account_id="https://autre.example.invalid/pronote/mobile.parent.html::46#s"
         ),
@@ -1412,7 +1421,7 @@ async def test_a_bad_payload_on_reconnection_never_reaches_the_school(
     """Parsed before anything is sent, as on the enrolment form."""
     result = await qr_entry.start_reauth_flow(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+    with patch("custom_components.carnet_scolaire.config_flow._probe") as probe:
         again = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_QR_PAYLOAD: "not json at all", CONF_QR_PIN: "1234"},
@@ -1431,7 +1440,7 @@ async def test_a_consumed_qr_code_on_reconnection_says_to_generate_a_new_one(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeQrInvalid(),
     ):
         again = await hass.config_entries.flow.async_configure(
@@ -1454,7 +1463,7 @@ async def test_a_qr_reconnection_is_charged_for_the_two_logins_it_performs(
 
     result = await qr_entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_qr_outcome(),
     ):
         await hass.config_entries.flow.async_configure(
@@ -1494,7 +1503,7 @@ async def test_a_reconnection_does_not_widen_the_children_being_followed(
 
     result = await entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         return_value=_outcome(("STUDENT-1", "Enfant Un"), ("STUDENT-2", "Enfant Deux")),
     ):
         done = await hass.config_entries.flow.async_configure(
@@ -1528,7 +1537,7 @@ async def test_a_qr_code_the_server_refuses_is_not_reported_as_bad_credentials(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeQrRefused("challenge refused"),
     ):
         again = await hass.config_entries.flow.async_configure(
@@ -1555,7 +1564,7 @@ async def test_the_two_qr_failures_stay_two_messages(
     result = await qr_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeQrInvalid("invalid confirmation code"),
     ):
         again = await hass.config_entries.flow.async_configure(
@@ -1589,7 +1598,7 @@ async def test_a_typo_in_the_four_digit_code_does_not_spend_the_rail(
     for _attempt in range(3):
         flow_id = await _start_qr(hass)
         with patch(
-            "custom_components.pronote_ng.config_flow._probe",
+            "custom_components.carnet_scolaire.config_flow._probe",
             side_effect=ProbeQrInvalid("invalid confirmation code"),
         ):
             await hass.config_entries.flow.async_configure(
@@ -1613,7 +1622,7 @@ async def test_three_refusals_that_reached_the_server_do_close_the_door(
     for _attempt in range(3):
         flow_id = await _start_qr(hass)
         with patch(
-            "custom_components.pronote_ng.config_flow._probe",
+            "custom_components.carnet_scolaire.config_flow._probe",
             side_effect=ProbeQrRefused("challenge refused"),
         ):
             await hass.config_entries.flow.async_configure(
@@ -1640,11 +1649,13 @@ async def test_a_rejected_payload_is_logged_by_its_shape_and_not_its_content(
     That is enough to separate "pasted the wrong thing entirely" from "pasted
     JSON missing a key".
     """
-    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    caplog.set_level(
+        logging.DEBUG, logger="custom_components.carnet_scolaire.config_flow"
+    )
     flow_id = await _start_qr(hass)
     pasted = '{"login": "SENTINEL-LOGIN-DO-NOT-LEAK"} trailing junk'
 
-    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+    with patch("custom_components.carnet_scolaire.config_flow._probe") as probe:
         again = await hass.config_entries.flow.async_configure(
             flow_id, {CONF_QR_PAYLOAD: pasted, CONF_QR_PIN: "1234"}
         )
@@ -1668,7 +1679,9 @@ async def test_something_that_is_not_json_at_all_is_described_as_such(
     payload of the wrong shape looks like. Same message on the screen, two
     different things to tell the user, and only the log can separate them.
     """
-    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    caplog.set_level(
+        logging.DEBUG, logger="custom_components.carnet_scolaire.config_flow"
+    )
     flow_id = await _start_qr(hass)
 
     await hass.config_entries.flow.async_configure(
@@ -1693,7 +1706,7 @@ async def test_a_password_reconnection_still_reads_as_one(
     result = await mock_entry.start_reauth_flow(hass)
 
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeInvalidCredentials(),
     ):
         again = await hass.config_entries.flow.async_configure(
@@ -1732,10 +1745,14 @@ async def test_every_classified_refusal_says_why_on_our_own_logger(
     strictly more conservative than the ERROR-level traceback the unexpected arm
     already writes unconditionally.
     """
-    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    caplog.set_level(
+        logging.DEBUG, logger="custom_components.carnet_scolaire.config_flow"
+    )
     result = await mock_entry.start_reauth_flow(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe", side_effect=failure):
+    with patch(
+        "custom_components.carnet_scolaire.config_flow._probe", side_effect=failure
+    ):
         await hass.config_entries.flow.async_configure(
             result["flow_id"], {"password": "still-wrong-not-real"}
         )
@@ -1757,14 +1774,16 @@ async def test_the_refusal_log_names_the_upstream_cause_and_not_only_ours(
     a stale token from a wrong two-factor PIN. `probe_account` already chains
     them with ``raise ... from error``, so the cause is there to be read.
     """
-    caplog.set_level(logging.DEBUG, logger="custom_components.pronote_ng.config_flow")
+    caplog.set_level(
+        logging.DEBUG, logger="custom_components.carnet_scolaire.config_flow"
+    )
     cause = ValueError("challenge decryption failed")
     classified = ProbeInvalidCredentials("refused")
     classified.__cause__ = cause
 
     result = await mock_entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe", side_effect=classified
+        "custom_components.carnet_scolaire.config_flow._probe", side_effect=classified
     ):
         await hass.config_entries.flow.async_configure(
             result["flow_id"], {"password": "still-wrong-not-real"}
@@ -1790,7 +1809,7 @@ def test_the_flow_never_imports_pronotepy_to_be_added(
     to. Neither half of that is visible from reading `_probe`'s two lines,
     which is why it is asserted.
     """
-    from custom_components.pronote_ng import config_flow
+    from custom_components.carnet_scolaire import config_flow
 
     assert not any(
         name == "pronotepy" or name.startswith("pronotepy.")
@@ -1798,7 +1817,7 @@ def test_the_flow_never_imports_pronotepy_to_be_added(
     ), "pronotepy is bound in the flow's namespace, so it was imported at module scope"
 
     with patch(
-        "custom_components.pronote_ng.flow_login.probe_account",
+        "custom_components.carnet_scolaire.flow_login.probe_account",
         return_value={"account_id": "a", "children": [], "title": "t"},
     ) as probe_account:
         assert config_flow._probe({"any": "data"})["account_id"] == "a"
@@ -1867,7 +1886,7 @@ async def test_a_payload_of_the_right_shape_but_wrong_content_costs_nothing(
     before = guard.calls_today
     flow_id = await _start_qr(hass)
 
-    with patch("custom_components.pronote_ng.config_flow._probe") as probe:
+    with patch("custom_components.carnet_scolaire.config_flow._probe") as probe:
         again = await hass.config_entries.flow.async_configure(
             flow_id, {CONF_QR_PAYLOAD: json.dumps(payload), CONF_QR_PIN: "1234"}
         )
@@ -1896,7 +1915,7 @@ async def test_a_wrong_four_digit_code_settles_the_charge_it_incurred(
     """
     result = await qr_entry.start_reauth_flow(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeQrInvalid("invalid confirmation code"),
     ):
         await hass.config_entries.flow.async_configure(
@@ -1927,7 +1946,7 @@ async def test_three_wrong_four_digit_codes_still_leave_the_door_open(
     for _ in range(3):
         result = await qr_entry.start_reauth_flow(hass)
         with patch(
-            "custom_components.pronote_ng.config_flow._probe",
+            "custom_components.carnet_scolaire.config_flow._probe",
             side_effect=ProbeQrInvalid("invalid confirmation code"),
         ):
             await hass.config_entries.flow.async_configure(
@@ -1963,7 +1982,7 @@ async def test_an_unknown_ent_provider_is_reported_on_the_provider_field(
 
     guard = login_guard(hass)
     with patch(
-        "custom_components.pronote_ng.config_flow._probe",
+        "custom_components.carnet_scolaire.config_flow._probe",
         side_effect=ProbeEntUnknown("ac_nowhere"),
     ):
         refused = await hass.config_entries.flow.async_configure(

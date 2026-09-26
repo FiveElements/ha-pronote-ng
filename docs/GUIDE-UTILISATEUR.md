@@ -1,10 +1,10 @@
-# Guide de l'utilisateur — Pronote NG
+# Guide de l'utilisateur — Carnet scolaire
 
 Ce guide est destiné aux parents et aux élèves qui veulent voir leurs données
 PRONOTE dans Home Assistant et écrire quelques automatisations autour. Il ne
 suppose aucune connaissance de Python ni du fonctionnement interne de PRONOTE.
 
-**Pronote NG** est une intégration personnalisée qui lit un compte PRONOTE —
+**Carnet scolaire** est une intégration personnalisée qui lit un compte PRONOTE —
 compte parent ou compte élève — et en publie le contenu sous forme d'entités
 Home Assistant : emploi du temps, devoirs, notes, absences, menus de la cantine,
 messagerie. Elle ne modifie rien dans PRONOTE, sauf si vous l'autorisez
@@ -50,10 +50,10 @@ section de ce guide, lisez celle-là.
 | Le code PIN à deux facteurs du compte, s'il en a un | Il est demandé au moment de la connexion et **n'est jamais conservé**. Gardez-le accessible : il sera redemandé si PRONOTE l'exige de nouveau. |
 
 L'intégration cohabite sans conflit avec une autre intégration PRONOTE déjà
-installée : elle occupe un domaine différent, `pronote_ng`, précisément pour
+installée : elle occupe un domaine différent, `carnet_scolaire`, précisément pour
 que l'on puisse l'essayer sans rien désinstaller.
 Vous verrez donc ce nom apparaître dans les identifiants d'entités et dans les
-appels de service. Le dépôt, lui, s'appelle **`ha-pronote-ng`**.
+appels de service. Le dépôt, lui, s'appelle **`ha-carnet-scolaire`**.
 
 ### 1.2 Par HACS, en dépôt personnalisé
 
@@ -63,9 +63,9 @@ l'ajouter comme dépôt personnalisé une fois.
 1. Ouvrez **HACS**, puis le menu **⋮** en haut à droite, et choisissez
    **Dépôts personnalisés**.
 2. Dans le champ d'adresse, collez
-   `https://github.com/FiveElements/ha-pronote-ng`, choisissez la catégorie
+   `https://github.com/FiveElements/ha-carnet-scolaire`, choisissez la catégorie
    **Intégration**, puis validez.
-3. Recherchez **Pronote NG** dans HACS et installez-la.
+3. Recherchez **Carnet scolaire** dans HACS et installez-la.
 4. **Redémarrez Home Assistant.** L'intégration n'apparaît pas avant le
    redémarrage.
 5. Allez dans **Paramètres → Appareils et services → Ajouter une intégration**,
@@ -75,9 +75,9 @@ l'ajouter comme dépôt personnalisé une fois.
 
 Si vous n'utilisez pas HACS :
 
-1. Téléchargez le dépôt et copiez le dossier `custom_components/pronote_ng/`
+1. Téléchargez le dépôt et copiez le dossier `custom_components/carnet_scolaire/`
    dans le dossier `custom_components/` de votre configuration Home Assistant.
-   Vous devez obtenir `config/custom_components/pronote_ng/manifest.json`.
+   Vous devez obtenir `config/custom_components/carnet_scolaire/manifest.json`.
 2. Redémarrez Home Assistant.
 3. **Paramètres → Appareils et services → Ajouter une intégration → PRONOTE**.
 
@@ -712,7 +712,7 @@ changements depuis l'éditeur graphique, avec un nom lisible.
 
 ## 5. Les services
 
-Huit services sont disponibles sous le domaine `pronote_ng`. Tous se ciblent sur
+Huit services sont disponibles sous le domaine `carnet_scolaire`. Tous se ciblent sur
 un **appareil** — celui d'un enfant, ou celui du compte pour les deux services
 qui concernent l'ensemble. Dans l'interface graphique, le sélecteur ne vous
 proposera que les appareils PRONOTE ; en YAML, il faut l'identifiant de
@@ -749,7 +749,7 @@ pas dans un fichier YAML versionné, et ne la joignez jamais à un rapport de bu
 
 ```yaml
 sequence:
-  - action: pronote_ng.get_ical_url
+  - action: carnet_scolaire.get_ical_url
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
     response_variable: ical
@@ -766,7 +766,7 @@ sequence:
 
 ```yaml
 sequence:
-  - action: pronote_ng.get_identity
+  - action: carnet_scolaire.get_identity
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
     response_variable: identite
@@ -785,7 +785,7 @@ La réponse contient `name`, `birth_date`, `birth_place`, `email`, `phone`,
 
 ```yaml
 sequence:
-  - action: pronote_ng.generate_timetable_pdf
+  - action: carnet_scolaire.generate_timetable_pdf
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
       day: "2026-09-14"
@@ -805,7 +805,7 @@ puisqu'il ne consomme rien :
 
 ```yaml
 sequence:
-  - action: pronote_ng.get_rate_limit_status
+  - action: carnet_scolaire.get_rate_limit_status
     data:
       device_id: b1c2d3e4f5061728394a5b6c7d8e9f01   # l'appareil du compte
     response_variable: budget
@@ -821,7 +821,7 @@ sequence:
 
 ```yaml
 sequence:
-  - action: pronote_ng.refresh
+  - action: carnet_scolaire.refresh
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
       tiers:
@@ -851,7 +851,7 @@ cas d'une installation antérieure à la 0.0.29 :
 
 ```yaml
 sequence:
-  - action: pronote_ng.mark_homework_done
+  - action: carnet_scolaire.mark_homework_done
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
       homework_id: "12345678"
@@ -866,7 +866,7 @@ L'identifiant du devoir se lit dans le champ `id` des éléments de l'attribut
 
 ```yaml
 sequence:
-  - action: pronote_ng.mark_information_read
+  - action: carnet_scolaire.mark_information_read
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
       information_id: "87654321"
@@ -881,7 +881,7 @@ Répondre à un fil existant :
 
 ```yaml
 sequence:
-  - action: pronote_ng.send_message
+  - action: carnet_scolaire.send_message
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
       discussion_id: "D-4711"
@@ -895,7 +895,7 @@ destinataires doivent être nommés exactement comme PRONOTE les publie :
 
 ```yaml
 sequence:
-  - action: pronote_ng.send_message
+  - action: carnet_scolaire.send_message
     data:
       device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
       subject: Absence du 14 septembre
@@ -1263,7 +1263,7 @@ journée. À 80 % du plafond, Home Assistant ouvre un signalement de réparation
 déjà. Pour ça, lisez
 [Migrer ses automatisations](MIGRATION-AUTOMATISATIONS.md) — en particulier
 avant de retirer l'ancienne intégration, car c'est ce retrait, et non
-l'installation de Pronote NG, qui casse vos automatisations existantes.
+l'installation de Carnet scolaire, qui casse vos automatisations existantes.
 
 ### 9.1 Les huit blueprints livrés
 
@@ -1295,7 +1295,7 @@ l'intégration mais ne sont pas installés automatiquement.
 1. Allez dans **Paramètres → Automatisations et scènes → onglet Blueprints →
    Importer un blueprint**.
 2. Collez l'adresse du blueprint dans le dépôt, par exemple :
-   `https://github.com/FiveElements/ha-pronote-ng/blob/main/blueprints/automation/pronote_ng/fr/wake_up_alarm.yaml`
+   `https://github.com/FiveElements/ha-carnet-scolaire/blob/main/blueprints/automation/carnet_scolaire/fr/wake_up_alarm.yaml`
 3. Validez, puis **Créer une automatisation** à partir du blueprint importé.
 
 Les versions anglaises sont dans le dossier `en/` à côté ; Home Assistant
@@ -1382,7 +1382,7 @@ conditions:
   - condition: time
     after: "06:15:00"
   - condition: device
-    domain: pronote_ng
+    domain: carnet_scolaire
     device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
     type: is_not_holidays
 actions:
@@ -1419,7 +1419,7 @@ mode: queued
 max: 10
 triggers:
   - trigger: device
-    domain: pronote_ng
+    domain: carnet_scolaire
     device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
     type: absence_added
 actions:
@@ -1459,7 +1459,7 @@ mode: queued
 max: 10
 triggers:
   - trigger: device
-    domain: pronote_ng
+    domain: carnet_scolaire
     device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
     type: grade_added
 variables:
@@ -1505,7 +1505,7 @@ conditions:
     entity_id: sensor.enfant_un_devoirs_pour_demain
     above: 0
   - condition: device
-    domain: pronote_ng
+    domain: carnet_scolaire
     device_id: a1b2c3d4e5f60718293a4b5c6d7e8f90
     type: is_not_holidays
 actions:
@@ -1751,14 +1751,14 @@ cette bibliothèque.
 
 L'intégration ne configure elle-même aucun journaliseur et ne demande jamais
 l'activation du mode débogage. Si vous avez besoin de journaux plus détaillés
-pour un rapport de bug, activez le débogage sur `custom_components.pronote_ng`
+pour un rapport de bug, activez le débogage sur `custom_components.carnet_scolaire`
 seulement — l'intégration, pas la bibliothèque :
 
 ```yaml
 logger:
   default: warning
   logs:
-    custom_components.pronote_ng: debug
+    custom_components.carnet_scolaire: debug
 ```
 
 Et pensez à le remettre à `warning` une fois le problème signalé.
@@ -1789,7 +1789,7 @@ avez enrôlé Home Assistant par QR code — révoquer l'appareil côté PRONOTE
 
 ### 12.1 Supprimer l'entrée de configuration
 
-**Paramètres → Appareils et services → Pronote NG**, l'entrée du compte, menu
+**Paramètres → Appareils et services → Carnet scolaire**, l'entrée du compte, menu
 **⋮**, **Supprimer**.
 
 Ce que cela fait, tout seul et immédiatement :
@@ -1841,7 +1841,7 @@ qui la contient.
 **Relevez les identifiants d'entités *avant* de supprimer l'entrée.** C'est le
 seul moment où la liste est encore sous vos yeux — la page de l'intégration, puis
 son compteur d'entités. Vous en aurez besoin pour la purge, car les identifiants
-sont construits sur le **nom de l'enfant** et non sur le domaine `pronote_ng`
+sont construits sur le **nom de l'enfant** et non sur le domaine `carnet_scolaire`
 (§ [4](#4-catalogue-des-entités)) : il n'existe aucun motif générique qui les
 attrape tous.
 
@@ -1879,7 +1879,7 @@ Deux limites de cette action, qu'il vaut mieux connaître :
 #### Les automatisations, les scripts, les scènes et les cartes
 
 Rien de tout cela n'est supprimé, et rien ne vous avertit. Une automatisation qui
-écoutait un appareil enfant, un script qui appelait `pronote_ng.mark_homework_done`,
+écoutait un appareil enfant, un script qui appelait `carnet_scolaire.mark_homework_done`,
 une carte de tableau de bord qui affichait `sensor.enfant_un_prochain_cours` :
 tout reste en place et **casse en silence**. Une automatisation dont le
 déclencheur pointe un appareil qui n'existe plus ne se déclenche jamais — sans
@@ -1897,7 +1897,7 @@ tant que les appareils existent encore :
   dans les identifiants d'entités ;
 - les cartes se repèrent à l'œil : une entité inconnue s'affiche en « Entité non
   disponible » sur le tableau de bord ;
-- si vos automatisations sont en YAML, un `grep -rn "pronote_ng\|enfant_un"` sur
+- si vos automatisations sont en YAML, un `grep -rn "carnet_scolaire\|enfant_un"` sur
   votre dossier de configuration est plus rapide que l'interface.
 
 #### Les blueprints importés
@@ -1927,12 +1927,12 @@ pour préparer un rapport de bug, votre `configuration.yaml` contient encore :
 logger:
   default: warning
   logs:
-    custom_components.pronote_ng: debug
+    custom_components.carnet_scolaire: debug
 ```
 
 Ce bloc **survit à la désinstallation** et sera relu au démarrage suivant : il ne
 fera plus rien d'utile, mais il restera là. Retirez la ligne
-`custom_components.pronote_ng: debug` — et le bloc `logs:` entier s'il ne
+`custom_components.carnet_scolaire: debug` — et le bloc `logs:` entier s'il ne
 contenait que celle-là. Un `logger.set_level` passé à chaud, lui, ne survit pas
 au redémarrage : il n'y a rien à défaire.
 
@@ -1955,16 +1955,16 @@ démarrage.
 **Si vous avez installé par HACS** (§ [1.2](#12-par-hacs-en-dépôt-personnalisé)),
 il y a deux gestes, et le second est celui que tout le monde oublie :
 
-1. dans **HACS**, ouvrez **Pronote NG**, puis son menu **⋮**, et choisissez
+1. dans **HACS**, ouvrez **Carnet scolaire**, puis son menu **⋮**, et choisissez
    **Supprimer** (« Désinstaller » selon la version de HACS). Les fichiers de
-   `custom_components/pronote_ng/` sont effacés ;
+   `custom_components/carnet_scolaire/` sont effacés ;
 2. retirez le **dépôt personnalisé** : menu **⋮** de HACS →
-   **Dépôts personnalisés** → l'entrée `FiveElements/ha-pronote-ng` → supprimer.
+   **Dépôts personnalisés** → l'entrée `FiveElements/ha-carnet-scolaire` → supprimer.
    Sans cela HACS continue d'interroger le dépôt et de vous proposer ses mises à
    jour d'une intégration que vous n'avez plus.
 
 **Si vous avez installé à la main** (§ [1.3](#13-manuellement)), supprimez le
-dossier `config/custom_components/pronote_ng/` en entier.
+dossier `config/custom_components/carnet_scolaire/` en entier.
 
 Dans les deux cas, **redémarrez Home Assistant** pour finir. Python garde les
 modules déjà importés en mémoire : jusqu'au redémarrage, l'intégration est encore
@@ -2081,5 +2081,5 @@ disparaît au redémarrage.
 | `docs/MIGRATION-AUTOMATISATIONS.md` | Vous arrivez de l'intégration `pronote` et vos automatisations sont déjà écrites |
 
 Pour signaler un problème :
-<https://github.com/FiveElements/ha-pronote-ng/issues>, en joignant le fichier de
+<https://github.com/FiveElements/ha-carnet-scolaire/issues>, en joignant le fichier de
 diagnostic.

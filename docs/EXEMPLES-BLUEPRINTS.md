@@ -15,14 +15,14 @@ d'un formulaire vide.
 
 ### Le chemin n'est pas celui du dépôt
 
-Le dépôt range les blueprints dans `blueprints/automation/pronote_ng/fr/`. Ce
+Le dépôt range les blueprints dans `blueprints/automation/carnet_scolaire/fr/`. Ce
 n'est **pas** le chemin à écrire. Quand Home Assistant importe un blueprint
 depuis une URL GitHub, il le range sous le **nom du propriétaire du dépôt** :
 
 ```yaml
 use_blueprint:
   path: FiveElements/wake_up_alarm.yaml     # ✅ ce que Home Assistant a réellement
-  # path: pronote_ng/fr/wake_up_alarm.yaml  # ❌ ce que tout le monde suppose
+  # path: carnet_scolaire/fr/wake_up_alarm.yaml  # ❌ ce que tout le monde suppose
 ```
 
 Pour vérifier chez vous : **Paramètres → Automatisations et scènes → onglet
@@ -64,7 +64,7 @@ donc un `child_device` factice :
 child_device: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4   # à remplacer
 ```
 
-Pour trouver le vôtre : **Paramètres → Appareils et services → Pronote NG →**
+Pour trouver le vôtre : **Paramètres → Appareils et services → Carnet scolaire →**
 l'appareil de l'enfant. L'identifiant est la dernière portion de l'URL de sa
 page. Il est propre à votre installation : recopier celui d'un exemple ne
 produit aucune erreur, juste une automatisation qui ne se déclenche jamais.

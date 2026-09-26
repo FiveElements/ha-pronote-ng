@@ -3,7 +3,7 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ha-pronote-ng"
+name = "ha-carnet-scolaire"
 version = "0.1.0"
 description = "Home Assistant integration for PRONOTE, designed for automations"
 readme = "README.md"
@@ -99,8 +99,8 @@ ignore = [
 # The gateway is the one place allowed to reach into pronotepy internals; that
 # is the whole point of concentrating the upstream surface in a single file
 # (SPECIFICATION.md §3.4).
-"custom_components/pronote_ng/gateway.py" = ["SLF001"]
-"custom_components/pronote_ng/hardened_client.py" = ["SLF001"]
+"custom_components/carnet_scolaire/gateway.py" = ["SLF001"]
+"custom_components/carnet_scolaire/hardened_client.py" = ["SLF001"]
 # The protocol fixtures are *naive* datetimes on purpose: PRONOTE transmits
 # local wall-clock times with no offset, and attaching a zone here would test a
 # shape the server never sends. The gateway is the single place a zone is
@@ -138,7 +138,7 @@ warn_unreachable = true
 warn_unused_ignores = true
 show_error_codes = true
 plugins = []
-files = ["custom_components/pronote_ng"]
+files = ["custom_components/carnet_scolaire"]
 
 # pronotepy ships py.typed, but dataClasses.py imports autoslot.Slots under a
 # `# type: ignore` and carries several ignored annotations. Without this
@@ -174,10 +174,10 @@ implicit_reexport = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers --strict-config"
-filterwarnings = ["error::DeprecationWarning:custom_components.pronote_ng.*"]
+filterwarnings = ["error::DeprecationWarning:custom_components.carnet_scolaire.*"]
 
 [tool.coverage.run]
-source = ["custom_components/pronote_ng"]
+source = ["custom_components/carnet_scolaire"]
 branch = true
 
 [tool.coverage.report]

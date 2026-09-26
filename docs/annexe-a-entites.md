@@ -212,7 +212,7 @@ que distingue `kind` :
 | `kind` | Champs | Comment l'ouvrir |
 | --- | --- | --- |
 | `external` | `name`, `url` | `url` est absolue, en `http` ou `https`, et va dans un `href` |
-| `local` | `name`, `key` | `key` se passe au service `pronote_ng.get_attachment_url`, qui rend l'adresse |
+| `local` | `name`, `key` | `key` se passe au service `carnet_scolaire.get_attachment_url`, qui rend l'adresse |
 
 Un consommateur traite tout autre `kind` comme **non ouvrable**, ce qui fait
 échouer fermé une valeur que cette intégration n'aurait pas encore inventée.
@@ -262,8 +262,8 @@ n'ont donc aucun octet commun, et celle-ci ouvre le document sans aucun
 identifiant tant que la session vit.
 
 **Exigence.** L'adresse d'un fichier n'est dans **aucun** attribut. Le service
-`pronote_ng.get_attachment_url` la frappe à l'instant du clic : un chemin signé
-vers le point d'entrée `/api/pronote_ng/attachment/` de l'intégration, qui va
+`carnet_scolaire.get_attachment_url` la frappe à l'instant du clic : un chemin signé
+vers le point d'entrée `/api/carnet_scolaire/attachment/` de l'intégration, qui va
 chercher les octets par le chemin unique vers le réseau — une session, un
 verrou, une requête facturée — et les **relaie**.
 
@@ -620,15 +620,15 @@ dans aucun état (§8.1 de la spécification).
 
 | Service | Cible | Effet | Réponse |
 | --- | --- | --- | --- |
-| `pronote_ng.refresh` | entrée, palier optionnel | force une échéance | — |
-| `pronote_ng.get_ical_url` | entrée | rend l'URL iCal | `SupportsResponse.ONLY` |
-| `pronote_ng.get_identity` | entrée | rend l'identité et les responsables légaux | `SupportsResponse.ONLY` |
-| `pronote_ng.mark_homework_done` | identifiant de devoir | `Homework.set_done()` | — |
-| `pronote_ng.mark_information_read` | identifiant d'actualité | `Information.mark_as_read()` | — |
-| `pronote_ng.send_message` | discussion ou destinataires | `Discussion.reply()` / `Client.new_discussion()` | — |
-| `pronote_ng.generate_timetable_pdf` | entrée, jour, orientation | rend une URL de PDF | `SupportsResponse.ONLY` |
-| `pronote_ng.get_rate_limit_status` | entrée | rend l'état complet du limiteur | `SupportsResponse.ONLY` |
-| `pronote_ng.get_attachment_url` | enfant, `key` | rend une adresse signée de cinq minutes vers un fichier de devoir | `SupportsResponse.ONLY` |
+| `carnet_scolaire.refresh` | entrée, palier optionnel | force une échéance | — |
+| `carnet_scolaire.get_ical_url` | entrée | rend l'URL iCal | `SupportsResponse.ONLY` |
+| `carnet_scolaire.get_identity` | entrée | rend l'identité et les responsables légaux | `SupportsResponse.ONLY` |
+| `carnet_scolaire.mark_homework_done` | identifiant de devoir | `Homework.set_done()` | — |
+| `carnet_scolaire.mark_information_read` | identifiant d'actualité | `Information.mark_as_read()` | — |
+| `carnet_scolaire.send_message` | discussion ou destinataires | `Discussion.reply()` / `Client.new_discussion()` | — |
+| `carnet_scolaire.generate_timetable_pdf` | entrée, jour, orientation | rend une URL de PDF | `SupportsResponse.ONLY` |
+| `carnet_scolaire.get_rate_limit_status` | entrée | rend l'état complet du limiteur | `SupportsResponse.ONLY` |
+| `carnet_scolaire.get_attachment_url` | enfant, `key` | rend une adresse signée de cinq minutes vers un fichier de devoir | `SupportsResponse.ONLY` |
 
 **Exigence.** Les services à réponse ne créent aucun état et ne journalisent
 pas leur réponse. `get_ical_url`, `get_identity` et `get_attachment_url`

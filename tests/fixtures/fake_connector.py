@@ -6,14 +6,20 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-from custom_components.pronote_ng.connectors.errors import ConnectorUnsupportedError
-from custom_components.pronote_ng.connectors.protocol import (
+from custom_components.carnet_scolaire.connectors.errors import (
+    ConnectorUnsupportedError,
+)
+from custom_components.carnet_scolaire.connectors.protocol import (
     ConnectorCapabilities,
     SchoolConnector,
     Source,
 )
-from custom_components.pronote_ng.const import Priority, Tier
-from custom_components.pronote_ng.models import GatewayResult, SessionFacts, Student
+from custom_components.carnet_scolaire.const import Priority, Tier
+from custom_components.carnet_scolaire.models import (
+    GatewayResult,
+    SessionFacts,
+    Student,
+)
 
 _DEFAULT_NOW = dt.datetime(2026, 3, 12, 8, 0, tzinfo=dt.UTC)
 

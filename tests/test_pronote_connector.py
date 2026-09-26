@@ -6,13 +6,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from custom_components.pronote_ng.connectors.errors import ConnectorChildMissingError
-from custom_components.pronote_ng.const import Priority, Tier
+from custom_components.carnet_scolaire.connectors.errors import (
+    ConnectorChildMissingError,
+)
+from custom_components.carnet_scolaire.const import Priority, Tier
 
 from .conftest import REQUIRES_HASS
 
 if TYPE_CHECKING:
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
     from .fixtures.client import FakeClient
 
@@ -21,8 +23,8 @@ pytestmark = REQUIRES_HASS
 
 def test_pronote_connector_capabilities_list_every_collectable_tier() -> None:
     """Silently dropping history is a missing bulletin, not a setting."""
-    from custom_components.pronote_ng.connectors.pronote import PronoteConnector
-    from custom_components.pronote_ng.const import Tier
+    from custom_components.carnet_scolaire.connectors.pronote import PronoteConnector
+    from custom_components.carnet_scolaire.const import Tier
 
     collectable = frozenset(tier for tier in Tier if tier is not Tier.SESSION)
     assert collectable <= PronoteConnector.CAPABILITIES.tiers
@@ -88,7 +90,7 @@ def test_a_pupils_own_account_announces_itself_as_its_only_child(
     that announces nobody collects nothing -- which is how a pupil's own
     account would present: loaded, no error, no entities.
     """
-    from custom_components.pronote_ng.connectors.pronote import _client_student_ids
+    from custom_components.carnet_scolaire.connectors.pronote import _client_student_ids
 
     assert not client.is_parent_account
     assert _client_student_ids(client) == (str(client.info.id),)

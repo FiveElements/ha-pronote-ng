@@ -50,7 +50,7 @@ from pronotepy.exceptions import (
 )
 import pytest
 
-from custom_components.pronote_ng.config_flow import (
+from custom_components.carnet_scolaire.config_flow import (
     ProbeBootstrapFailed,
     ProbeEntUnknown,
     ProbeError,
@@ -59,7 +59,7 @@ from custom_components.pronote_ng.config_flow import (
     ProbeQrInvalid,
     ProbeQrRefused,
 )
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     CONF_ACCOUNT_PIN,
     CONF_CLIENT_IDENTIFIER,
     CONF_DEVICE_NAME,
@@ -73,8 +73,8 @@ from custom_components.pronote_ng.const import (
     DEFAULT_READ_TIMEOUT,
     LoginMode,
 )
-from custom_components.pronote_ng.flow_login import probe_account
-from custom_components.pronote_ng.hardened_client import BootstrapUnavailable
+from custom_components.carnet_scolaire.flow_login import probe_account
+from custom_components.carnet_scolaire.hardened_client import BootstrapUnavailable
 
 from .conftest import CHILDREN
 
@@ -129,7 +129,7 @@ def _qr_data(**extra: Any) -> dict[str, Any]:
 def build_fixture(client: FakeClient) -> Iterator[Any]:
     """Patch the one seam: the call that would log in for real."""
     with patch(
-        "custom_components.pronote_ng.hardened_client.build_client",
+        "custom_components.carnet_scolaire.hardened_client.build_client",
         return_value=client,
     ) as build:
         yield build
@@ -165,7 +165,7 @@ def test_a_parent_account_comes_back_with_one_pair_per_child(
     `CONF_CHILDREN` from the probe's result before merging).
     """
     with patch(
-        "custom_components.pronote_ng.hardened_client.build_client",
+        "custom_components.carnet_scolaire.hardened_client.build_client",
         return_value=parent_client,
     ):
         described = probe_account(_credentials_data())
@@ -471,7 +471,7 @@ def test_qr_enrolment_hands_over_the_payload_the_pin_and_the_uuid(
     parameters would not, and it would swap the PIN and the UUID silently.
     """
     with patch(
-        "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+        "custom_components.carnet_scolaire.hardened_client.HardenedClient.qrcode_login",
         return_value=client,
     ) as qr_login:
         described = probe_account(_qr_data(**{CONF_DEVICE_NAME: "Home Assistant"}))
@@ -496,7 +496,7 @@ def test_qr_enrolment_copies_the_payload_instead_of_handing_over_the_entry_s(
     data = _qr_data()
 
     with patch(
-        "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+        "custom_components.carnet_scolaire.hardened_client.HardenedClient.qrcode_login",
         return_value=client,
     ) as qr_login:
         probe_account(data)
@@ -517,7 +517,7 @@ def test_qr_enrolment_confines_the_periods_the_login_registered(
     `release_client` uses to take them back out again.
     """
     with patch(
-        "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+        "custom_components.carnet_scolaire.hardened_client.HardenedClient.qrcode_login",
         return_value=client,
     ):
         probe_account(_qr_data())
@@ -580,7 +580,7 @@ def test_a_qr_account_whose_payload_is_present_still_enrols(
     Python.
     """
     with patch(
-        "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+        "custom_components.carnet_scolaire.hardened_client.HardenedClient.qrcode_login",
         return_value=client,
     ) as qr_login:
         probe_account(_qr_data())
@@ -645,7 +645,7 @@ def test_a_login_that_never_produced_a_client_closes_nothing(
     """
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.build_client",
+            "custom_components.carnet_scolaire.hardened_client.build_client",
             side_effect=CryptoError("challenge did not decrypt"),
         ),
         pytest.raises(ProbeInvalidCredentials),
@@ -711,7 +711,7 @@ def test_every_upstream_failure_maps_to_a_reason_the_form_can_show(
     """
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.build_client",
+            "custom_components.carnet_scolaire.hardened_client.build_client",
             side_effect=raised,
         ),
         pytest.raises(expected) as caught,
@@ -765,7 +765,7 @@ def test_a_qr_code_that_will_not_decrypt_does_not_blame_the_password(
     """
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+            "custom_components.carnet_scolaire.hardened_client.HardenedClient.qrcode_login",
             side_effect=QRCodeDecryptError("wrong pin"),
         ),
         pytest.raises(ProbeQrInvalid),
@@ -803,7 +803,7 @@ def test_a_challenge_refused_while_enrolling_blames_the_qr_code_not_the_password
 
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.HardenedClient.qrcode_login",
+            "custom_components.carnet_scolaire.hardened_client.HardenedClient.qrcode_login",
             side_effect=raised,
         ),
         pytest.raises(ProbeQrRefused) as caught,
@@ -831,7 +831,7 @@ def test_a_qr_entry_without_its_payload_is_not_enrolling_and_blames_the_password
     """
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.build_client",
+            "custom_components.carnet_scolaire.hardened_client.build_client",
             side_effect=CryptoError("the server refused the challenge"),
         ),
         pytest.raises(ProbeInvalidCredentials),
@@ -858,7 +858,7 @@ def test_a_school_whose_server_is_down_does_not_blame_the_password_either(
     """
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.build_client",
+            "custom_components.carnet_scolaire.hardened_client.build_client",
             side_effect=BootstrapUnavailable("no session page"),
         ),
         pytest.raises(ProbeBootstrapFailed),
@@ -877,7 +877,7 @@ def test_nothing_is_retried_inside_the_probe(
     """
     with (
         patch(
-            "custom_components.pronote_ng.hardened_client.build_client",
+            "custom_components.carnet_scolaire.hardened_client.build_client",
             side_effect=CryptoError("nope"),
         ) as build,
         pytest.raises(ProbeInvalidCredentials),

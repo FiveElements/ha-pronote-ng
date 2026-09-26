@@ -3,15 +3,15 @@ hide:
   - navigation
 ---
 
-# Pronote NG
+# Carnet scolaire
 
 **Intégration Home Assistant pour PRONOTE — seconde génération.**
 
-[![Validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&label=validate&logo=github)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml)
-[![Hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml)
-[![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&label=HACS)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml)
+[![Validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/validate.yml?branch=main&label=validate&logo=github)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/validate.yml)
+[![Hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/hassfest.yml)
+[![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/hacs.yml?branch=main&label=HACS)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/hacs.yml)
 ![Home Assistant 2026.9.0 minimum](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?logo=homeassistant&logoColor=white)
-[![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](https://github.com/FiveElements/ha-pronote-ng/blob/main/LICENSE)
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](https://github.com/FiveElements/ha-carnet-scolaire/blob/main/LICENSE)
 
 Ce qui la caractérise, en quatre points :
 
@@ -94,22 +94,22 @@ sont des réponses de service, et rien ne les stocke.
 
 ## Installation
 
-L'intégration s'appelle **Pronote NG** et son domaine Home Assistant est
-**`pronote_ng`** : c'est le nom du dossier sous `custom_components/`, et le
+L'intégration s'appelle **Carnet scolaire** et son domaine Home Assistant est
+**`carnet_scolaire`** : c'est le nom du dossier sous `custom_components/`, et le
 préfixe de toutes ses entités et de tous ses services.
 
 === "HACS (dépôt personnalisé)"
 
     1. HACS → Intégrations → menu ⋮ → *Dépôts personnalisés*.
-    2. Ajouter `https://github.com/FiveElements/ha-pronote-ng`, catégorie
+    2. Ajouter `https://github.com/FiveElements/ha-carnet-scolaire`, catégorie
        *Intégration*.
-    3. Installer **Pronote NG**, puis redémarrer Home Assistant.
+    3. Installer **Carnet scolaire**, puis redémarrer Home Assistant.
     4. *Paramètres → Appareils et services → Ajouter une intégration →
        PRONOTE*.
 
 === "Manuellement"
 
-    Copier `custom_components/pronote_ng/` dans le dossier
+    Copier `custom_components/carnet_scolaire/` dans le dossier
     `custom_components/` de votre configuration, puis redémarrer.
 
 Home Assistant **2026.9.0** minimum.

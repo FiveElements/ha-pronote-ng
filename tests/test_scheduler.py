@@ -16,14 +16,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     DEFAULT_TIER_INTERVALS,
     PRIORITY_RANK,
     TIER_PRIORITY,
     Priority,
     Tier,
 )
-from custom_components.pronote_ng.scheduler import (
+from custom_components.carnet_scolaire.scheduler import (
     SECONDS_PER_MINUTE,
     FetchScheduler,
     TierPlan,

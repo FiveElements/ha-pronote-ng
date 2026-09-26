@@ -6,7 +6,7 @@ when any module of the package drops below 95 %, when the global line+branch
 coverage drops below 80 %, or when any of the seven modules where a mistake is
 invisible at runtime drops below 100 %.
 
-Keys are path *suffixes* (``pronote_ng/ratelimit.py``), never basenames.
+Keys are path *suffixes* (``carnet_scolaire/ratelimit.py``), never basenames.
 Indexing by ``Path(filename).name`` would let a second ``ratelimit.py``
 (an Ecoledirecte limiter, say) overwrite the Pronote row and disarm the
 gate while CI stayed green.
@@ -35,13 +35,13 @@ MODULE_MINIMUM = 95.0
 #
 # Suffixes under the package, not basenames: see the module docstring.
 CRITICAL_MODULES = {
-    "pronote_ng/connectors/ecoledirecte/ed_client.py": 100.0,
-    "pronote_ng/connectors/ecoledirecte/ed_limiter.py": 100.0,
-    "pronote_ng/connectors/ecoledirecte/ed_mapping.py": 100.0,
-    "pronote_ng/ratelimit.py": 100.0,
-    "pronote_ng/scheduler.py": 100.0,
-    "pronote_ng/gateway.py": 100.0,
-    "pronote_ng/delta.py": 100.0,
+    "carnet_scolaire/connectors/ecoledirecte/ed_client.py": 100.0,
+    "carnet_scolaire/connectors/ecoledirecte/ed_limiter.py": 100.0,
+    "carnet_scolaire/connectors/ecoledirecte/ed_mapping.py": 100.0,
+    "carnet_scolaire/ratelimit.py": 100.0,
+    "carnet_scolaire/scheduler.py": 100.0,
+    "carnet_scolaire/gateway.py": 100.0,
+    "carnet_scolaire/delta.py": 100.0,
 }
 
 
@@ -53,11 +53,11 @@ def _posix(filename: str) -> str:
 def _report_paths(root: ET.Element, filename: str) -> tuple[str, ...]:
     """Filenames as written, plus each ``<source>`` joined in front.
 
-    ``pytest --cov=custom_components/pronote_ng`` writes Cobertura basenames
+    ``pytest --cov=custom_components/carnet_scolaire`` writes Cobertura basenames
     (``ratelimit.py``) and puts the package directory in ``<source>``. A
-    suffix lookup of ``pronote_ng/ratelimit.py`` only works after that join.
+    suffix lookup of ``carnet_scolaire/ratelimit.py`` only works after that join.
     A second ``ratelimit.py`` under ``connectors/ecoledirecte/`` stays a
-    different path: it does not end with ``/pronote_ng/ratelimit.py``.
+    different path: it does not end with ``/carnet_scolaire/ratelimit.py``.
     """
     filename = _posix(filename)
     paths = [filename]
@@ -101,14 +101,14 @@ def _module_coverage(root: ET.Element) -> dict[str, float]:
 
 
 def _package_modules(root: ET.Element) -> dict[str, float]:
-    """Every module of the package, keyed by its path under ``pronote_ng/``.
+    """Every module of the package, keyed by its path under ``carnet_scolaire/``.
 
     Built from the report rather than from a list in this file, so a module
     added tomorrow is held to the floor without anybody remembering to
     register it. A list would have been the quieter failure: the gate would
     stay green over a new module with no tests at all.
     """
-    marker = "pronote_ng/"
+    marker = "carnet_scolaire/"
     result: dict[str, float] = {}
     for class_element in root.iter("class"):
         filename = _posix(class_element.get("filename", ""))
@@ -126,8 +126,9 @@ def coverage_match(
     """Look up ``required`` as an exact key or unique posix suffix.
 
     Two paths that share a basename do not match a short suffix such as
-    ``pronote_ng/ratelimit.py``: ``pronote_ng/connectors/ecoledirecte/ratelimit.py``
-    does not end with that string.
+    ``carnet_scolaire/ratelimit.py``:
+    ``carnet_scolaire/connectors/ecoledirecte/ratelimit.py`` does not end with
+    that string.
 
     Returns ``(value, "found")``, ``(None, "absent")``, or
     ``(None, "ambiguous")``. Ambiguous is fail-closed, but it is not the

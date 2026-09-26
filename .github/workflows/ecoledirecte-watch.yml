@@ -119,7 +119,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git switch -c "$BRANCH"
-            git add custom_components/pronote_ng/connectors/ecoledirecte/ed_client.py
+            git add custom_components/carnet_scolaire/connectors/ecoledirecte/ed_client.py
             git commit --file "$COMMIT_MESSAGE"
             git push origin "HEAD:refs/heads/$BRANCH"
           fi

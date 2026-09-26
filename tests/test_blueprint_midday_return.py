@@ -38,7 +38,7 @@ pytestmark = REQUIRES_HASS
 
 BLUEPRINTS = pathlib.Path(__file__).parent.parent / "blueprints" / "automation"
 SENSOR = "sensor.enfant_un_end_of_morning"
-EVENT = "pronote_ng_test_midday"
+EVENT = "carnet_scolaire_test_midday"
 
 #: The frozen day, in Home Assistant's own timezone.
 PARIS = dt_util.get_time_zone("Europe/Paris")
@@ -53,7 +53,7 @@ def _install(language: str, target: pathlib.Path) -> None:
     """Copy one language's blueprint where Home Assistant looks for it."""
     target.mkdir(parents=True, exist_ok=True)
     shutil.copy(
-        BLUEPRINTS / "pronote_ng" / language / "midday_return.yaml",
+        BLUEPRINTS / "carnet_scolaire" / language / "midday_return.yaml",
         target / "midday_return.yaml",
     )
 
@@ -73,7 +73,7 @@ async def _run(
     await hass.async_add_executor_job(
         _install,
         language,
-        pathlib.Path(hass.config.path("blueprints", "automation", "pronote_ng")),
+        pathlib.Path(hass.config.path("blueprints", "automation", "carnet_scolaire")),
     )
     hass.states.async_set(
         SENSOR,
@@ -95,7 +95,7 @@ async def _run(
         {
             "automation": {
                 "use_blueprint": {
-                    "path": "pronote_ng/midday_return.yaml",
+                    "path": "carnet_scolaire/midday_return.yaml",
                     "input": {
                         "morning_end_sensor": SENSOR,
                         "include_cancellations": include_cancellations,

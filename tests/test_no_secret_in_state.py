@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.diagnostics import REDACTED
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     CONF_ACCOUNT_PIN,
     CONF_CLIENT_IDENTIFIER,
     CONF_PRONOTE_URL,
@@ -41,7 +41,7 @@ from custom_components.pronote_ng.const import (
     SERVICE_GET_ICAL_URL,
     SERVICE_GET_RATE_LIMIT_STATUS,
 )
-from custom_components.pronote_ng.diagnostics import (
+from custom_components.carnet_scolaire.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 pytestmark = REQUIRES_HASS
 

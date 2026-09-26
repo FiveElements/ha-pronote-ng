@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.pronote_ng.urls import public_url, url_host
+from custom_components.carnet_scolaire.urls import public_url, url_host
 
 #: A pasted deep link of the shape an ENT hands back: a page URL plus a
 #: single-sign-on ticket. Synthetic, and saying so in the value itself.
