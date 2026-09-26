@@ -66,12 +66,15 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
     """
     from .config_flow import (  # noqa: PLC0415 -- the flow owns these categories
         ProbeBootstrapFailed,
+        ProbeEntRequired,
+        ProbeError,
         ProbeInvalidCredentials,
         ProbeMfaRequired,
         ProbeQrInvalid,
         ProbeQrRefused,
     )
     from .hardened_client import (  # noqa: PLC0415 -- keeps pronotepy out of the flow
+        BootstrapDelegated,
         BootstrapUnavailable,
         build_client,
         release_client,
@@ -162,7 +165,18 @@ def probe_account(data: Mapping[str, Any]) -> dict[str, Any]:
     except ENTLoginError as error:
         raise ProbeInvalidCredentials(str(error)) from error
     except BootstrapUnavailable as error:
-        raise ProbeBootstrapFailed(str(error)) from error
+        # A portal's login form instead of PRONOTE's page is the one bootstrap
+        # failure with a known remedy, and only for a *direct* login: in ENT
+        # mode the same page means the portal's cookies did not open PRONOTE,
+        # and sending that parent to the mode they are already in would be a
+        # loop. One arm rather than two, `BootstrapDelegated` being a subclass.
+        delegated = (
+            isinstance(error, BootstrapDelegated) and mode is LoginMode.CREDENTIALS
+        )
+        verdict: type[ProbeError] = (
+            ProbeEntRequired if delegated else ProbeBootstrapFailed
+        )
+        raise verdict(str(error)) from error
     except PronoteAPIError as error:
         raise ProbeBootstrapFailed(str(error)) from error
     finally:

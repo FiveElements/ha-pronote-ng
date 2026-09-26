@@ -370,6 +370,14 @@ CONFIG_EN: dict[str, Any] = {
             "The address answered, but did not return a PRONOTE session page. "
             "Check the address, and that the space is open right now."
         ),
+        "ent_required": (
+            "This establishment does not allow direct login to PRONOTE: the "
+            "address leads to its ENT portal's own login page. Nothing was "
+            "sent and your password was not refused. Go back to the login "
+            "methods and choose “Federated login (ENT)”, with the "
+            "portal's username and password -- or the app's QR code, if the "
+            "establishment has enabled it."
+        ),
         "invalid_qr": (
             "The QR code or its four-digit code was refused. A QR code can "
             "only be used once, so generate a new one in the app."
@@ -628,6 +636,14 @@ CONFIG_FR: dict[str, Any] = {
         "bootstrap_failed": (
             "L'adresse a répondu, mais sans page de session PRONOTE. Vérifiez "
             "l'adresse, et que l'espace est bien ouvert en ce moment."
+        ),
+        "ent_required": (
+            "Cet établissement n'autorise pas la connexion directe à PRONOTE : "
+            "l'adresse mène à la page de connexion de son ENT. Rien n'a été "
+            "envoyé et votre mot de passe n'a pas été refusé. Revenez au choix "
+            "du mode de connexion et prenez « Connexion par l'ENT », avec "
+            "l'identifiant et le mot de passe du portail — ou le QR code de "
+            "l'application, si l'établissement l'a activé."
         ),
         "invalid_qr": (
             "Le QR code ou son code à quatre chiffres a été refusé. Un QR code "

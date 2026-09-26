@@ -52,6 +52,7 @@ import pytest
 
 from custom_components.carnet_scolaire.config_flow import (
     ProbeBootstrapFailed,
+    ProbeEntRequired,
     ProbeEntUnknown,
     ProbeError,
     ProbeInvalidCredentials,
@@ -74,7 +75,10 @@ from custom_components.carnet_scolaire.const import (
     LoginMode,
 )
 from custom_components.carnet_scolaire.flow_login import probe_account
-from custom_components.carnet_scolaire.hardened_client import BootstrapUnavailable
+from custom_components.carnet_scolaire.hardened_client import (
+    BootstrapDelegated,
+    BootstrapUnavailable,
+)
 
 from .conftest import CHILDREN
 
@@ -687,6 +691,7 @@ CLASSIFICATION: tuple[tuple[BaseException, type[ProbeError]], ...] = (
     (QRCodeDecryptError("the payload did not decrypt"), ProbeQrInvalid),
     (CryptoError("the challenge did not decrypt"), ProbeInvalidCredentials),
     (ENTLoginError("the identity provider refused"), ProbeInvalidCredentials),
+    (BootstrapDelegated("the portal's login form was served"), ProbeEntRequired),
     (BootstrapUnavailable("the session page was not served"), ProbeBootstrapFailed),
     (PronoteAPIError("the server answered something else"), ProbeBootstrapFailed),
 )
@@ -729,6 +734,7 @@ def test_every_upstream_failure_maps_to_a_reason_the_form_can_show(
         (MFAError, PronoteAPIError),
         (ENTLoginError, PronoteAPIError),
         (BootstrapUnavailable, PronoteAPIError),
+        (BootstrapDelegated, BootstrapUnavailable),
         (CryptoError, PronoteAPIError),
         (QRCodeDecryptError, CryptoError),
     ],
@@ -750,6 +756,31 @@ def test_the_order_of_the_arms_is_load_bearing(
     to delete this test.
     """
     assert issubclass(subclass, parent)
+
+
+def test_the_portal_login_form_in_ent_mode_does_not_send_the_parent_to_ent_mode(
+    client: FakeClient,
+) -> None:
+    """ "Choose the ENT login" is advice for a direct login only.
+
+    In ENT mode the same page means the portal's cookies did not open PRONOTE.
+    Telling that parent to pick the mode they are already in would be a loop,
+    so it stays the generic bootstrap failure.
+    """
+    with (
+        patch(
+            "custom_components.carnet_scolaire.hardened_client.build_client",
+            side_effect=BootstrapDelegated("the portal's login form was served"),
+        ),
+        pytest.raises(ProbeBootstrapFailed) as caught,
+    ):
+        probe_account(
+            _credentials_data(
+                **{CONF_LOGIN_MODE: LoginMode.ENT.value, CONF_ENT: "ac_reunion"}
+            )
+        )
+
+    assert not isinstance(caught.value, ProbeEntRequired)
 
 
 def test_a_qr_code_that_will_not_decrypt_does_not_blame_the_password(

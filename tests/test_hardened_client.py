@@ -56,6 +56,7 @@ import requests
 from custom_components.carnet_scolaire import hardened_client
 from custom_components.carnet_scolaire.const import LoginMode
 from custom_components.carnet_scolaire.hardened_client import (
+    BootstrapDelegated,
     BootstrapUnavailable,
     HardenedClient,
     _ConfinedRegistry,
@@ -563,6 +564,53 @@ def test_a_page_without_a_start_block_is_a_bootstrap_condition(
         "the flow's except chain catches PronoteAPIError; a condition outside "
         "that hierarchy would reach the user as a raw traceback"
     )
+
+
+PORTAL_LOGIN_PAGE = """<html><body>
+<form id="kc-form-login" action="/auth/realms/demo/login-actions/authenticate"
+      method="post">
+  <input id="username" name="username" type="text">
+  <input id="password" name="password" type='PASSWORD'>
+</form></body></html>"""
+
+
+def test_another_services_login_form_is_named_as_such() -> None:
+    """A space that delegates login redirects to its portal's form.
+
+    Reported as the generic "no session page", a parent with the right
+    address and an open space was told to check both, and never learnt that
+    the ENT login was the one that works. Still a `BootstrapUnavailable`, so
+    every caller unaware of the finer verdict handles it as before.
+    """
+    with (
+        _bootstrap_transport() as communication,
+        pytest.raises(BootstrapDelegated) as error,
+    ):
+        communication._parse_html(PORTAL_LOGIN_PAGE)
+
+    assert isinstance(error.value, BootstrapUnavailable)
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        pytest.param("<html><body>Maintenance</body></html>", id="no-form"),
+        pytest.param('<input name="password-hint" type="text">', id="named-only"),
+    ],
+)
+def test_a_page_without_a_password_field_stays_the_generic_verdict(page: str) -> None:
+    """Only a real password input earns the "use the ENT" advice.
+
+    A maintenance page sent to the ENT login would send a parent the wrong way
+    on the one day the address simply was not answering.
+    """
+    with (
+        _bootstrap_transport() as communication,
+        pytest.raises(BootstrapUnavailable) as error,
+    ):
+        communication._parse_html(page)
+
+    assert not isinstance(error.value, BootstrapDelegated)
 
 
 def test_the_two_capitals_upstream_reads_as_a_ban_are_ignored() -> None:
