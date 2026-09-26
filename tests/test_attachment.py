@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import pytest
 
-from custom_components.pronote_ng.attachment import (
+from custom_components.carnet_scolaire.attachment import (
     _SAFE_CONTENT_TYPES,
     FINGERPRINT_PATTERN,
     SIGNATURE_LIFETIME,
@@ -34,8 +34,8 @@ from custom_components.pronote_ng.attachment import (
     _locate,
     fingerprint,
 )
-from custom_components.pronote_ng.const import AttachmentKind, Tier
-from custom_components.pronote_ng.gateway import AttachmentUnavailable
+from custom_components.carnet_scolaire.const import AttachmentKind, Tier
+from custom_components.carnet_scolaire.gateway import AttachmentUnavailable
 
 from .conftest import CHILDREN, REQUIRES_HASS
 from .fixtures import protocol
@@ -43,8 +43,8 @@ from .fixtures import protocol
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from custom_components.pronote_ng.account import PronoteAccount
-    from custom_components.pronote_ng.gateway import PronoteGateway
+    from custom_components.carnet_scolaire.account import PronoteAccount
+    from custom_components.carnet_scolaire.gateway import PronoteGateway
 
     from .fixtures.client import FakeClient
 
@@ -351,7 +351,7 @@ class TestWhatTheViewWillServe:
         regression §11.1's contract exists to catch.
         """
         del hass
-        from custom_components.pronote_ng.attachment import _fetch
+        from custom_components.carnet_scolaire.attachment import _fetch
 
         snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
         assert snapshot is not None
@@ -523,7 +523,7 @@ async def test_the_route_is_registered_once_for_the_whole_instance(
     every reload -- at best redundantly, at worst replacing a handler while a
     request is in flight.
     """
-    from custom_components.pronote_ng import async_setup
+    from custom_components.carnet_scolaire import async_setup
 
     with patch.object(hass, "http", create=True) as http:
         assert await async_setup(hass, {})
@@ -608,8 +608,8 @@ def test_no_entity_class_shadows_the_shared_exclusion() -> None:
 
     from homeassistant.helpers.entity import Entity
 
-    from custom_components.pronote_ng import DOMAIN, PLATFORMS
-    from custom_components.pronote_ng.const import UNRECORDED_LIST_ATTRIBUTES
+    from custom_components.carnet_scolaire import DOMAIN, PLATFORMS
+    from custom_components.carnet_scolaire.const import UNRECORDED_LIST_ATTRIBUTES
 
     # Derived from `PLATFORMS`, not listed here, so a platform added later is
     # covered without anybody remembering to extend this test. `entity.py` is
@@ -674,8 +674,8 @@ class TestHowARefusalIsAnswered:
         collected.
         """
         del hass
-        from custom_components.pronote_ng.attachment import _fetch
-        from custom_components.pronote_ng.const import Priority
+        from custom_components.carnet_scolaire.attachment import _fetch
+        from custom_components.carnet_scolaire.const import Priority
 
         _print, document = self._document(account)
         seen: list[Priority] = []
@@ -701,9 +701,9 @@ class TestHowARefusalIsAnswered:
         window really is closed and the click is what crosses it.
         """
         del hass
-        from custom_components.pronote_ng.attachment import _fetch
-        from custom_components.pronote_ng.const import Priority
-        from custom_components.pronote_ng.ratelimit import DeferReason
+        from custom_components.carnet_scolaire.attachment import _fetch
+        from custom_components.carnet_scolaire.const import Priority
+        from custom_components.carnet_scolaire.ratelimit import DeferReason
 
         _print, document = self._document(account)
 
@@ -724,14 +724,17 @@ class TestHowARefusalIsAnswered:
         the limiter's own figure is what keeps an automatic retry from
         hammering a school server that has already been asked enough today.
         """
-        from custom_components.pronote_ng.attachment import PronoteAttachmentView
-        from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
+        from custom_components.carnet_scolaire.attachment import PronoteAttachmentView
+        from custom_components.carnet_scolaire.ratelimit import (
+            DeferReason,
+            TierDeferred,
+        )
 
         print_, _document = self._document(account)
         request = _FakeRequest(hass)
 
         with patch(
-            "custom_components.pronote_ng.attachment._fetch",
+            "custom_components.carnet_scolaire.attachment._fetch",
             side_effect=TierDeferred(DeferReason.DAILY_CAP, 7200.0),
         ):
             response = await PronoteAttachmentView().get(
@@ -754,7 +757,7 @@ class TestHowARefusalIsAnswered:
         loaded".
         """
         del account
-        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+        from custom_components.carnet_scolaire.attachment import PronoteAttachmentView
 
         response = await PronoteAttachmentView().get(
             _FakeRequest(hass),  # type: ignore[arg-type]
@@ -774,8 +777,8 @@ class TestHowARefusalIsAnswered:
         integration's business, and would make Home Assistant an open proxy for
         anything a teacher pastes.
         """
-        from custom_components.pronote_ng.attachment import PronoteAttachmentView
-        from custom_components.pronote_ng.models import HomeworkAttachment
+        from custom_components.carnet_scolaire.attachment import PronoteAttachmentView
+        from custom_components.carnet_scolaire.models import HomeworkAttachment
 
         link = HomeworkAttachment(
             name="Le sujet",
@@ -784,7 +787,7 @@ class TestHowARefusalIsAnswered:
             kind=AttachmentKind.LINK,
         )
         with patch(
-            "custom_components.pronote_ng.attachment._locate",
+            "custom_components.carnet_scolaire.attachment._locate",
             return_value=(CHILDREN[0][0], link),
         ):
             response = await PronoteAttachmentView().get(
@@ -842,7 +845,7 @@ def test_the_download_filename_is_reduced_to_something_a_header_can_carry(
     produce a header naming no file at all, which browsers answer by saving
     the page instead of the document.
     """
-    from custom_components.pronote_ng.attachment import _ascii
+    from custom_components.carnet_scolaire.attachment import _ascii
 
     assert _ascii(name) == expected
 
@@ -869,7 +872,7 @@ def test_an_attachment_with_no_identifier_is_skipped_rather_than_matched(
     would share it. Two homework items with such a document would then be
     indistinguishable, and the view would serve whichever came first.
     """
-    from custom_components.pronote_ng.attachment import fingerprint
+    from custom_components.carnet_scolaire.attachment import fingerprint
 
     # The fingerprint an empty identifier would produce, if one were minted.
     collision = fingerprint("HOMEWORK-1", "")
@@ -917,7 +920,7 @@ class TestWhatTheBrowserGetsBack:
         status and without a request -- the snapshot is the authority, so a
         fingerprint it cannot match is refused before the wire.
         """
-        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+        from custom_components.carnet_scolaire.attachment import PronoteAttachmentView
 
         before = len(parent_client.communication.session.gets)
 
@@ -943,7 +946,7 @@ class TestWhatTheBrowserGetsBack:
         opened it, which is how a daily budget disappears into a screen nobody
         is even looking at.
         """
-        from custom_components.pronote_ng.attachment import PronoteAttachmentView
+        from custom_components.carnet_scolaire.attachment import PronoteAttachmentView
 
         print_ = self._print(account)
         view = PronoteAttachmentView()
@@ -985,7 +988,7 @@ class TestWhatTheBrowserGetsBack:
         document would stay broken until a reload, long after the server
         recovered.
         """
-        from custom_components.pronote_ng.attachment import (
+        from custom_components.carnet_scolaire.attachment import (
             PronoteAttachmentView,
             cache_for,
         )
@@ -993,7 +996,7 @@ class TestWhatTheBrowserGetsBack:
         print_ = self._print(account)
 
         with patch(
-            "custom_components.pronote_ng.attachment._fetch",
+            "custom_components.carnet_scolaire.attachment._fetch",
             side_effect=AttachmentUnavailable("enonce.pdf", 403),
         ):
             response = await PronoteAttachmentView().get(
@@ -1017,7 +1020,7 @@ class TestWhatTheBrowserGetsBack:
         offer the feature.
         """
         del hass
-        from custom_components.pronote_ng.attachment import _fetch
+        from custom_components.carnet_scolaire.attachment import _fetch
 
         snapshot = account.snapshot(Tier.HOMEWORK, CHILDREN[0][0])
         assert snapshot is not None
@@ -1025,7 +1028,7 @@ class TestWhatTheBrowserGetsBack:
 
         with (
             patch(
-                "custom_components.pronote_ng.account.has_pronote_extras",
+                "custom_components.carnet_scolaire.account.has_pronote_extras",
                 return_value=False,
             ),
             pytest.raises(AttachmentUnavailable) as raised,

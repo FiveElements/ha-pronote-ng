@@ -1,0 +1,185 @@
+# Home for lunch -- carnet_scolaire
+#
+# What it does: runs an action of your choice when the student's morning ends
+# before the midday break, and says when lessons resume.
+#
+# What it relies on: the "End of morning" timestamp sensor (key
+# `morning_end`, `sensor.py:_morning_end`) is passed straight to the `at:` of
+# a core `time` trigger. The sensor drops cancelled lessons and exemptions,
+# and recognises a lunch break brought forward by a cancellation: on a day the
+# last morning lesson is called off because the teacher is absent, its state
+# is when the morning really ends.
+#
+# The "Take cancelled lessons into account" option answers the one question
+# the sensor cannot: does the student leave when a teacher is absent, or stay
+# in study hall until the scheduled time? Turned off, the automation waits for
+# the `scheduled_end` attribute (`sensor.py:_morning_end_attributes`), the
+# morning end on the timetable, cancellations ignored. That attribute is
+# `None` when the timetable planned no break and only cancellations opened
+# one: on that day a student who stays in study hall has no lunch homecoming,
+# and nothing happens.
+#
+# On days without a midday break (continuous day, day ending at noon,
+# weekend, holidays) the sensor is `unknown` and the trigger never arms. A day
+# ending at noon belongs to "Home from school".
+#
+# Home Assistant has no way to translate a blueprint: the French version of
+# this same blueprint is ../fr/midday_return.yaml. The duplication is
+# deliberate (docs/SPECIFICATION.md §10.9).
+
+blueprint:
+  name: PRONOTE - Home for lunch
+  description: >-
+    Runs an action when the student's morning ends before the midday break:
+    a notification, a spoken announcement, opening the gate. The time comes
+    from the "End of morning" sensor, which already accounts for cancelled
+    lessons and exemptions. One option says whether a cancelled lesson
+    (teacher absent) brings the homecoming forward, or whether the student
+    stays at school until the scheduled time. The automation does nothing on
+    days without a midday break.
+  domain: automation
+  author: FiveElements
+  homeassistant:
+    min_version: 2026.9.0
+  source_url: https://github.com/FiveElements/ha-carnet-scolaire/blob/main/blueprints/automation/carnet_scolaire/en/midday_return.yaml
+  input:
+    student:
+      name: Student
+      icon: mdi:account-school
+      input:
+        morning_end_sensor:
+          name: End of morning sensor
+          description: >-
+            The student's `morning_end` entity. Its entity id depends on the
+            language Home Assistant was installed in (`..._end_of_morning` in
+            English, `..._fin_de_matinee` in French), which is why this
+            blueprint asks for it. Pick "End of morning", not "End of lessons"
+            or "Next lesson".
+          selector:
+            entity:
+              filter:
+                integration: carnet_scolaire
+                domain: sensor
+                device_class: timestamp
+    settings:
+      name: Settings
+      icon: mdi:tune
+      collapsed: true
+      input:
+        include_cancellations:
+          name: Take cancelled lessons into account (teacher absent)
+          description: >-
+            On: the action runs when the morning really ends, earlier if the
+            last morning lessons are cancelled. Off: the action runs at the
+            time on the timetable, for a student who stays in study hall when
+            a teacher is absent; if the timetable planned no midday break that
+            day, nothing happens.
+          default: true
+          selector:
+            boolean:
+        offset:
+          name: Offset
+          description: >-
+            Added to the end of the morning. Negative to leave before the
+            bell, positive to allow for the journey.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+              allow_negative: true
+        earliest_time:
+          name: Not before
+          description: >-
+            Safety net: a garbled timetable must not run the action in the
+            middle of the night.
+          default: "09:00:00"
+          selector:
+            time:
+        latest_time:
+          name: Not after
+          description: >-
+            The symmetric safety net: past this time, a lunch homecoming is no
+            longer plausible.
+          default: "15:00:00"
+          selector:
+            time:
+    homecoming:
+      name: Homecoming
+      icon: mdi:home-import-outline
+      input:
+        midday_action:
+          name: Action at the end of the morning
+          description: >-
+            What to do. The `title` and `message` variables are available;
+            `message` gives the time out, the time lessons resume and, if any,
+            how many lessons were cancelled.
+          selector:
+            action:
+
+# `single`: the morning ends once a day. Waiting for the scheduled time is
+# part of the same run.
+mode: single
+
+triggers:
+  - alias: At the end of morning published by the integration
+    trigger: time
+    at:
+      entity_id: !input morning_end_sensor
+      offset: !input offset
+
+conditions:
+  - alias: Within the allowed time range
+    condition: time
+    after: !input earliest_time
+    before: !input latest_time
+  # When cancellations do not count, a scheduled morning end is required:
+  # without one, the timetable planned no lunch homecoming that day.
+  - alias: A scheduled morning end exists, if cancellations do not count
+    condition: template
+    value_template: "{{ include_cancellations or has_scheduled_end }}"
+
+variables:
+  include_cancellations: !input include_cancellations
+  end_sensor: !input morning_end_sensor
+  # The file's only templates: they compose text and measure the wait,
+  # because no native trigger can aim at an attribute.
+  # Each variable reads the sensor itself: Home Assistant renders a variable
+  # to text, so an instant cannot be handed from one variable to the next.
+  has_scheduled_end: "{{ state_attr(end_sensor, 'scheduled_end') is not none }}"
+  wait_seconds: >-
+    {% set actual = states(end_sensor) | as_datetime(none) %}
+    {% set scheduled = state_attr(end_sensor, 'scheduled_end') | as_datetime(none) %}
+    {{ 0 if include_cancellations or actual is none or scheduled is none
+       else [0, (scheduled - actual).total_seconds()] | max | int }}
+  canceled: "{{ state_attr(end_sensor, 'canceled_before_break') | int(0) }}"
+  end_at: >-
+    {% set raw = states(end_sensor) if include_cancellations
+       else state_attr(end_sensor, 'scheduled_end') %}
+    {% set t = raw | as_datetime(none) %}
+    {{ (t | as_local).strftime('%H:%M') if t is not none else '?' }}
+  resumes_at: >-
+    {% set t = state_attr(end_sensor, 'resumes_at') | as_datetime(none) %}
+    {{ (t | as_local).strftime('%H:%M') if t is not none else '' }}
+  title: Home for lunch
+  message: >-
+    Morning ends at {{ end_at }}.
+    {%- if include_cancellations and canceled | int > 0 %}
+    {{ canceled }} lesson{{ 's' if canceled | int > 1 }} cancelled at the end
+    of the morning.
+    {%- endif %}
+    {%- if resumes_at %}
+    Lessons resume at {{ resumes_at }}.
+    {%- endif %}
+
+actions:
+  - alias: Wait for the scheduled time, if cancellations do not count
+    if:
+      - condition: template
+        value_template: "{{ wait_seconds | int > 0 }}"
+    then:
+      - delay:
+          seconds: "{{ wait_seconds | int }}"
+  - alias: Run the chosen action
+    sequence: !input midday_action

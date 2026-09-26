@@ -290,7 +290,7 @@ produisait des milliers de tentatives par jour — exactement le geste qui fait
 suspendre une adresse.
 
 **Comment on en sort** : une **reconnexion manuelle** (*Paramètres → Appareils et
-services → Pronote NG → Reconfigurer*). C'est le seul moyen de lever la pause
+services → Carnet scolaire → Reconfigurer*). C'est le seul moyen de lever la pause
 MFA, et c'est correct : cette pause existe précisément parce qu'une personne doit
 agir. Un geste humain délibéré, avec des identifiants possiblement corrigés,
 n'est pas une reprise automatique et mérite une ardoise propre — il efface donc
@@ -461,14 +461,14 @@ Quand quelque chose ne se met plus à jour, regardez dans cet ordre :
    `on` pendant que la tuile d'état affiche autre chose
    (§ [3.2](#32-throttled--bridé)).
 
-Pour tout obtenir d'un coup, le service **`pronote_ng.get_rate_limit_status`**
+Pour tout obtenir d'un coup, le service **`carnet_scolaire.get_rate_limit_status`**
 rend l'ensemble des compteurs. Il lit la mémoire et **ne coûte aucune
 requête** : on peut l'appeler autant qu'on veut, y compris depuis une
 automatisation.
 
 ```yaml
 actions:
-  - action: pronote_ng.get_rate_limit_status
+  - action: carnet_scolaire.get_rate_limit_status
     target:
       device_id: <appareil du compte>
     response_variable: limiteur

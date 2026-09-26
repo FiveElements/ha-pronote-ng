@@ -57,7 +57,9 @@ _GITHUB_CONST = (
     "src/ecoledirecte_api/const.py"
 )
 
-ED_CLIENT = Path("custom_components/pronote_ng/connectors/ecoledirecte/ed_client.py")
+ED_CLIENT = Path(
+    "custom_components/carnet_scolaire/connectors/ecoledirecte/ed_client.py"
+)
 ED_CLIENT_NAME = ED_CLIENT.as_posix()
 
 MARKER = "ecoledirecte-upstream"
@@ -66,7 +68,7 @@ ISSUE_TITLE_PREFIX = f"[{MARKER}]"
 
 _PYPI_URL = "https://pypi.org/pypi/{package}/json"
 _TIMEOUT = 20.0
-_USER_AGENT = "ha-pronote-ng-ed-watch"
+_USER_AGENT = "ha-carnet-scolaire-ed-watch"
 
 #: The constant this repository ships, whatever version it names.
 _OURS = re.compile(
@@ -418,7 +420,7 @@ def pull_request_body(release: Release, pinned: str) -> str:
         "",
         (
             "- [ ] relire le handshake dans "
-            "`custom_components/pronote_ng/connectors/ecoledirecte/ed_client.py` "
+            "`custom_components/carnet_scolaire/connectors/ecoledirecte/ed_client.py` "
             ": une nouvelle `APIVERSION` peut accompagner un changement de "
             "GTK, de corps de login ou de codes (250 / 520 / 525 / 517)"
         ),

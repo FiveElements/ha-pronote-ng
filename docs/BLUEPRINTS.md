@@ -1,7 +1,7 @@
 # Les huit blueprints, en détail
 
 Un blueprint est un modèle d'automatisation : vous choisissez l'élève et ce
-qu'il faut faire, le modèle fournit le reste. Les huit livrés avec Pronote NG
+qu'il faut faire, le modèle fournit le reste. Les huit livrés avec Carnet scolaire
 existent parce que huit automatisations scolaires reviennent tout le temps, et
 que chacune contient un piège qu'on ne voit qu'après s'être fait prendre.
 
@@ -363,7 +363,7 @@ d'un palier, réglable dans les options de l'intégration :
 | Menu de la cantine | `menus` | « Menu du jour » |
 | Retour de l'école | `timetable` | « Fin des cours » |
 
-**3. Les collectes sont arrêtées, et rien n'en a l'air.** Pronote NG applique
+**3. Les collectes sont arrêtées, et rien n'en a l'air.** Carnet scolaire applique
 « périmé plutôt qu'indisponible » : quand une collecte échoue, les entités
 **gardent leur dernière valeur**. Vos automatisations se taisent alors sans que
 rien ne paraisse cassé — l'emploi du temps a juste l'air un peu vieux.

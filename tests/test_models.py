@@ -20,9 +20,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng import models
-from custom_components.pronote_ng.const import GradeStatus
-from custom_components.pronote_ng.models import (
+from custom_components.carnet_scolaire import models
+from custom_components.carnet_scolaire.const import GradeStatus
+from custom_components.carnet_scolaire.models import (
     Absence,
     Delay,
     Grade,

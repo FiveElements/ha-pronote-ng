@@ -20,8 +20,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.const import LimiterState, Priority
-from custom_components.pronote_ng.ratelimit import (
+from custom_components.carnet_scolaire.const import LimiterState, Priority
+from custom_components.carnet_scolaire.ratelimit import (
     BATCH_GRACE_SECONDS,
     CAP_WARNING_FRACTION,
     LOGIN_COST_KEY,

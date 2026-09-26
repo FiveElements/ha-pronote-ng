@@ -4,14 +4,14 @@ Ce document est pour vous si vous arrivez de l'intégration personnalisée qui
 occupe le domaine `pronote` et que vous avez déjà des automatisations écrites
 contre ses entités.
 
-Pronote NG utilise délibérément le domaine **`pronote_ng`** et non `pronote`,
+Carnet scolaire utilise délibérément le domaine **`carnet_scolaire`** et non `pronote`,
 pour que les deux intégrations puissent être installées **en même temps**. C'est
-ce qui rend une migration progressive possible : vous ajoutez Pronote NG, vous
+ce qui rend une migration progressive possible : vous ajoutez Carnet scolaire, vous
 réécrivez vos automatisations une par une en les vérifiant, et vous ne retirez
 l'ancienne intégration qu'à la fin.
 
 **Le piège de calendrier.** Vos anciennes automatisations ne cassent pas quand
-vous installez Pronote NG — elles cassent quand vous **retirez** l'ancienne
+vous installez Carnet scolaire — elles cassent quand vous **retirez** l'ancienne
 intégration, parce que ses capteurs disparaissent alors du registre. Une
 automatisation dont le déclencheur pointe une entité qui n'existe plus reste
 affichée comme active : elle ne signale rien et ne se déclenche jamais. Si vous
@@ -40,7 +40,7 @@ comment en écrire.
 ## 1. Ce qui change, en une phrase
 
 L'ancienne intégration publie des **listes** que votre automatisation parcourt ;
-Pronote NG publie le **fait** que vous cherchiez, dans l'état d'une entité.
+Carnet scolaire publie le **fait** que vous cherchiez, dans l'état d'une entité.
 
 C'est tout l'objet du projet, et c'est ce qui rend la migration payante plutôt
 que pénible. Une automatisation qui commençait par
@@ -80,7 +80,7 @@ seul moyen de savoir que vous avez fini.
 
 **Le cas des chaînes d'aides.** Si une de vos automatisations se déclenche sur un
 capteur template que vous avez écrit vous-même — « fin des cours », « prochain
-contrôle », « nombre de devoirs pour demain » —, regardez d'abord si Pronote NG
+contrôle », « nombre de devoirs pour demain » —, regardez d'abord si Carnet scolaire
 ne publie pas déjà ce capteur. Souvent oui, et l'aide disparaît complètement au
 lieu d'être réécrite.
 
@@ -93,7 +93,7 @@ prétend pas décrire exhaustivement l'ancienne intégration, dont le catalogue 
 changé au fil de ses versions : prenez-le comme un point de départ, et vérifiez
 chez vous.
 
-| Ce que vous lisiez | Chez Pronote NG |
+| Ce que vous lisiez | Chez Carnet scolaire |
 | --- | --- |
 | L'attribut `lessons` de l'emploi du temps du jour | `sensor.enfant_un_cours_du_jour` — l'**état** est le nombre de cours, l'attribut `lessons` reste disponible pour les cartes |
 | L'attribut `lessons` de l'emploi du temps du lendemain | `sensor.enfant_un_emploi_du_temps_de_demain` |
@@ -119,7 +119,7 @@ plutôt que de recopier un identifiant de ce tableau.
 Si vous gardez un template qui parcourt `lessons` — c'est parfois inévitable
 pour **composer un texte** —, les clés de chaque élément ne sont plus les mêmes.
 
-| Ancienne clé | Chez Pronote NG | Remarque |
+| Ancienne clé | Chez Carnet scolaire | Remarque |
 | --- | --- | --- |
 | `lesson` | `subject` | |
 | `start_time` (`"08:30"`) | `start` (ISO complet) | `{{ c.start \| as_datetime \| as_local }}` pour en faire une date |
@@ -149,7 +149,7 @@ comparable directement à `now()` sans conversion.
 
 ### 5.1 `is_morning` et `is_afternoon`
 
-Pronote NG ne marque pas les cours « matin » ou « après-midi ». La raison est
+Carnet scolaire ne marque pas les cours « matin » ou « après-midi ». La raison est
 qu'il n'existe pas de définition juste à heure fixe : un collège qui finit la
 matinée à 13 h et un lycée qui la finit à 12 h ne se découpent pas au même
 endroit, et une heure codée en dur se trompe la moitié du temps.
@@ -189,7 +189,7 @@ comparant l'état précédent et le nouvel état d'un attribut, puis
 dédoublonnaient par numéro de créneau pour ne pas annoncer deux fois la même
 annulation.
 
-**Tout cela disparaît.** Pronote NG fait la détection lui-même et émet un
+**Tout cela disparaît.** Carnet scolaire fait la détection lui-même et émet un
 évènement par changement, avec son contexte. Vous n'écrivez plus la comparaison,
 et il n'y a plus rien à dédoublonner. Six changements sont distingués :
 annulation, annulation levée, déplacement, changement de salle, de professeur, de

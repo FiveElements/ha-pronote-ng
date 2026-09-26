@@ -30,11 +30,11 @@ import pytest
 import voluptuous as vol
 import yaml
 
-from custom_components.pronote_ng import const
-from custom_components.pronote_ng.device_action import ACTION_TYPES
-from custom_components.pronote_ng.device_condition import CONDITION_MAP
-from custom_components.pronote_ng.device_trigger import TRIGGER_TYPES
-from custom_components.pronote_ng.services import _SERVICES
+from custom_components.carnet_scolaire import const
+from custom_components.carnet_scolaire.device_action import ACTION_TYPES
+from custom_components.carnet_scolaire.device_condition import CONDITION_MAP
+from custom_components.carnet_scolaire.device_trigger import TRIGGER_TYPES
+from custom_components.carnet_scolaire.services import _SERVICES
 
 from .conftest import REQUIRES_HASS
 
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 COMPONENT = Path(const.__file__).parent
 ROOT = COMPONENT.parents[1]

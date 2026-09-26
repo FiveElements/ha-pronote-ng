@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import Event
 
-from custom_components.pronote_ng.account import SIGNAL_DELTA
-from custom_components.pronote_ng.const import EVENT_GRADE_ADDED, Tier
-from custom_components.pronote_ng.event import EVENTS, PronoteEventEntity
+from custom_components.carnet_scolaire.account import SIGNAL_DELTA
+from custom_components.carnet_scolaire.const import EVENT_GRADE_ADDED, Tier
+from custom_components.carnet_scolaire.event import EVENTS, PronoteEventEntity
 
 from .conftest import REQUIRES_HASS
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
+    from custom_components.carnet_scolaire.account import PronoteAccount
 
 pytestmark = REQUIRES_HASS
 

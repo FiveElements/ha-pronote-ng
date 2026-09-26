@@ -36,7 +36,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-BLUEPRINTS = ROOT / "blueprints" / "automation" / "pronote_ng"
+BLUEPRINTS = ROOT / "blueprints" / "automation" / "carnet_scolaire"
 
 #: The pin line in ``requirements_test.txt``, whatever version it names.
 _PIN = re.compile(

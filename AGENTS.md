@@ -2,10 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Home Assistant custom integration for PRONOTE (French school platform). Domain
-`pronote_ng` — deliberately **not** `pronote`, so it can cohabit with another
-custom integration that already owns that domain. Repo `ha-pronote-ng`,
-displayed name "Pronote NG".
+Home Assistant custom integration for French school platforms — PRONOTE and
+EcoleDirecte. Domain `carnet_scolaire`, repo `ha-carnet-scolaire`, displayed
+name "Carnet scolaire". It was `pronote_ng` / `ha-pronote-ng` / "Pronote NG"
+until 0.0.32; the neutral name also means it can never collide with a custom
+integration owning `pronote` or `ecoledirecte`. Home Assistant has no domain
+migration, so an entry from before the rename is removed and re-added.
 
 `CONTRIBUTING.md` is the human-facing version of much of this and is worth
 reading in full before a substantial change. `docs/SPECIFICATION.md` and
@@ -41,7 +43,7 @@ a collection is failing. `pronotepy.dataClasses` is a different logger from
 declares no `loggers` key in `manifest.json` (`scripts/check_manifest.py`
 enforces this) and
 `tests/test_no_secret_in_state.py` checks a full cycle logs no secret. To debug,
-enable `custom_components.pronote_ng: debug` only, and never suggest `pronotepy`
+enable `custom_components.carnet_scolaire: debug` only, and never suggest `pronotepy`
 to a user in an issue.
 
 **Never commit or push to `main`.** One branch per subject, then a pull request.
@@ -82,9 +84,9 @@ The gates, which are exactly what `.github/workflows/validate.yml` runs:
 ```bash
 ruff check .
 ruff format --check .
-mypy --strict custom_components/pronote_ng
+mypy --strict custom_components/carnet_scolaire
 python scripts/check_manifest.py
-pytest tests --cov=custom_components/pronote_ng --cov-branch --cov-report=xml:coverage.xml
+pytest tests --cov=custom_components/carnet_scolaire --cov-branch --cov-report=xml:coverage.xml
 python scripts/check_coverage.py coverage.xml
 python scripts/check_doc_citations.py --since=<base-ref>
 mkdocs build --strict          # needs requirements_docs.txt
@@ -433,4 +435,4 @@ publication time and `release.yml` refuses a tag whose manifest diverges (a HACS
 integration whose manifest disagrees with its tag installs once and never
 updates again). Then: merge to `main` with the four workflows green (`Validate`,
 `Hassfest`, `HACS`, `Docs`), and `git tag -a vX.Y.Z && git push origin vX.Y.Z`.
-`release.yml` builds `pronote_ng.zip` and publishes the release.
+`release.yml` builds `carnet_scolaire.zip` and publishes the release.

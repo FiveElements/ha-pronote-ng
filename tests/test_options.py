@@ -17,7 +17,7 @@ from datetime import time
 
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     DEFAULT_MAX_LOGINS_PER_DAY,
     DEFAULT_TIER_INTERVALS,
     OPT_MAX_LOGINS_PER_DAY,
@@ -35,7 +35,7 @@ from custom_components.pronote_ng.const import (
     SessionStrategy,
     Tier,
 )
-from custom_components.pronote_ng.options import (
+from custom_components.carnet_scolaire.options import (
     REQUESTS_PER_BATCH,
     bounded_option,
     build_rate_limit_config,
@@ -43,7 +43,7 @@ from custom_components.pronote_ng.options import (
     tier_enabled,
     tier_intervals,
 )
-from custom_components.pronote_ng.ratelimit import REQUESTS_PER_LOGIN_WORST_CASE
+from custom_components.carnet_scolaire.ratelimit import REQUESTS_PER_LOGIN_WORST_CASE
 
 
 def interval(tier: Tier) -> str:

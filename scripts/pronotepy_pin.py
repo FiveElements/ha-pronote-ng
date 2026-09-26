@@ -68,10 +68,10 @@ PACKAGE = "pronotepy"
 UPSTREAM_REPO = "bain3/pronotepy"
 
 REQUIREMENTS = Path("requirements_test.txt")
-MANIFEST = Path("custom_components/pronote_ng/manifest.json")
+MANIFEST = Path("custom_components/carnet_scolaire/manifest.json")
 #: The same two paths as text, for messages. A ``Path`` formats with the
 #: separator of the machine it runs on, and an issue body that says
-#: ``custom_components\pronote_ng`` because the report happened to be produced
+#: ``custom_components\carnet_scolaire`` because the report happened to be produced
 #: on Windows names a file nobody can click on.
 REQUIREMENTS_NAME = REQUIREMENTS.as_posix()
 MANIFEST_NAME = MANIFEST.as_posix()
@@ -91,7 +91,7 @@ ISSUE_TITLE_PREFIX = f"[{MARKER}]"
 _PYPI_URL = "https://pypi.org/pypi/{package}/json"
 _COMPARE_URL = "https://api.github.com/repos/{repo}/compare/v{old}...v{new}"
 _TIMEOUT = 20.0
-_USER_AGENT = "ha-pronote-ng-pin-watch"
+_USER_AGENT = "ha-carnet-scolaire-pin-watch"
 
 #: ``pronotepy==X.Y.Z`` in a requirements file, whatever version it names.
 _REQUIREMENT = re.compile(
@@ -478,7 +478,7 @@ def pull_request_body(
         "",
         (
             "- [ ] relire **chaque** divergence documentée dans "
-            "`custom_components/pronote_ng/hardened_client.py` : laquelle cette "
+            "`custom_components/carnet_scolaire/hardened_client.py` : laquelle cette "
             "version rend inutile, laquelle elle rend fausse (`CONTRIBUTING.md` §5)"
         ),
         (

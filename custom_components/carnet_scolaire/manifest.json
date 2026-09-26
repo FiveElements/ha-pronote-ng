@@ -1,0 +1,19 @@
+{
+  "domain": "carnet_scolaire",
+  "name": "Carnet scolaire",
+  "codeowners": [
+    "@jmorille"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http"
+  ],
+  "documentation": "https://github.com/FiveElements/ha-carnet-scolaire",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/FiveElements/ha-carnet-scolaire/issues",
+  "requirements": [
+    "pronotepy==2.15.7"
+  ],
+  "version": "0.0.32"
+}

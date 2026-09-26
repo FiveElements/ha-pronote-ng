@@ -21,7 +21,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-SCALE = ROOT / "custom_components" / "pronote_ng" / "quality_scale.yaml"
+SCALE = ROOT / "custom_components" / "carnet_scolaire" / "quality_scale.yaml"
 
 #: Every rule hassfest knows about, in declaration order. A rule added
 #: upstream and missing here fails this test on the next review, not months
@@ -140,7 +140,7 @@ def test_the_integration_package_declares_itself_fully_typed() -> None:
     """Platinum ``strict-typing``: a PEP-561 marker, or mypy treats us as untyped.
 
     ``mypy --strict`` on our own files is necessary and not sufficient. Without
-    ``py.typed``, another checker that imports ``custom_components.pronote_ng``
+    ``py.typed``, another checker that imports ``custom_components.carnet_scolaire``
     ignores every annotation we wrote. That is the gap the quality-scale rule
     names, and it is why Core hassfest looks for this file on requirements.
     """

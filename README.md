@@ -1,29 +1,31 @@
-# Pronote NG — PRONOTE pour Home Assistant
-[![Version](https://img.shields.io/github/v/release/FiveElements/ha-pronote-ng?style=flat-square&label=version)](https://github.com/FiveElements/ha-pronote-ng/releases)
+<p align="center"><img src="docs/assets/banner.jpg" alt="Carnet scolaire" width="100%"></p>
+
+# Carnet scolaire — PRONOTE et EcoleDirecte pour Home Assistant
+[![Version](https://img.shields.io/github/v/release/FiveElements/ha-carnet-scolaire?style=flat-square&label=version)](https://github.com/FiveElements/ha-carnet-scolaire/releases)
 ![Home Assistant 2026.9.0 minimum](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-41BDF5?style=flat-square&logo=homeassistant&logoColor=white)
-[![validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/validate.yml?branch=main&style=flat-square&label=validate)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/validate.yml)
-[![CodeQL](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/codeql.yml?branch=main&style=flat-square&label=CodeQL)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/codeql.yml)
+[![validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/validate.yml?branch=main&style=flat-square&label=validate)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/validate.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/codeql.yml?branch=main&style=flat-square&label=CodeQL)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/codeql.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hacs.yml?branch=main&style=flat-square&label=HACS)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hacs.yml)
-[![hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-pronote-ng/hassfest.yml?branch=main&style=flat-square&label=hassfest)](https://github.com/FiveElements/ha-pronote-ng/actions/workflows/hassfest.yml)
+[![HACS](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/hacs.yml?branch=main&style=flat-square&label=HACS)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/hacs.yml)
+[![hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/hassfest.yml?branch=main&style=flat-square&label=hassfest)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/hassfest.yml)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square)](https://hacs.xyz/docs/faq/custom_repositories/)
-[![Téléchargements](https://img.shields.io/github/downloads/FiveElements/ha-pronote-ng/total?style=flat-square&label=t%C3%A9l%C3%A9chargements)](https://github.com/FiveElements/ha-pronote-ng/releases)
+[![Téléchargements](https://img.shields.io/github/downloads/FiveElements/ha-carnet-scolaire/total?style=flat-square&label=t%C3%A9l%C3%A9chargements)](https://github.com/FiveElements/ha-carnet-scolaire/releases)
 [![Dependabot](https://img.shields.io/badge/Dependabot-activ%C3%A9-025E8C?style=flat-square&logo=dependabot&logoColor=white)](.github/dependabot.yml)
 
- **Pronote NG** est une intégration [Home Assistant](<https://www.home-assistant.io/>) permettant d'intégrer **PRONOTE** directement dans votre installation domotique.
+ **Carnet scolaire** est une intégration [Home Assistant](<https://www.home-assistant.io/>) permettant d'intégrer **PRONOTE** et **EcoleDirecte** directement dans votre installation domotique.
 
  Retrouvez dans Home Assistant les informations scolaires de vos enfants : **emploi du temps, devoirs, notes, moyennes, absences, retards, évaluations, actualités, discussions, menus et bien plus encore.**
 
  L'intégration est conçue pour les élèves comme pour les parents utilisant un compte PRONOTE ou un ENT.
- > 🚀 **Pronote NG est la nouvelle génération de l'intégration PRONOTE pour Home Assistant.**
+ > 🚀 **Carnet scolaire s'appelait auparavant *Pronote NG*** (domaine `pronote_ng`). Une entrée créée sous l'ancien nom doit être supprimée puis ajoutée à nouveau : Home Assistant ne sait pas migrer un domaine.
 
 
 <p align="center">
-  <a href="https://fiveelements.github.io/ha-pronote-ng/">📖 Documentation</a>
+  <a href="https://fiveelements.github.io/ha-carnet-scolaire/">📖 Documentation</a>
   ·
-  <a href="https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
+  <a href="https://fiveelements.github.io/ha-carnet-scolaire/GUIDE-UTILISATEUR/">📚 Guide de l'utilisateur</a>
   ·
-  <a href="https://github.com/FiveElements/ha-pronote-ng/issues/new/choose">🐛 Signaler un problème</a>
+  <a href="https://github.com/FiveElements/ha-carnet-scolaire/issues/new/choose">🐛 Signaler un problème</a>
 
 </p>
  
@@ -48,7 +50,7 @@
 
  ### 🤖 Automatisations Home Assistant
 
- Pronote NG s'intègre nativement dans le moteur d'automatisation de Home Assistant.
+ Carnet scolaire s'intègre nativement dans le moteur d'automatisation de Home Assistant.
 
  Vous pouvez notamment créer des automatisations lorsqu'une nouvelle note apparaît, lorsqu'un devoir est ajouté ou lorsqu'un événement scolaire change.
 
@@ -57,7 +59,7 @@
  - 14 déclencheurs d'appareil
 - 10 conditions
 - 4 actions
-- [8 blueprints prêts à l'emploi](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/)
+- [8 blueprints prêts à l'emploi](https://fiveelements.github.io/ha-carnet-scolaire/BLUEPRINTS/)
 - des blueprints disponibles en français et en anglais
 
  Aucune programmation en YAML n'est nécessaire pour les automatisations courantes.
@@ -83,7 +85,7 @@
 
  PRONOTE peut limiter les requêtes provenant d'une même adresse IP.
 
- Pronote NG intègre donc un limiteur de requêtes à plusieurs niveaux afin d'éviter les sollicitations excessives :
+ Carnet scolaire intègre donc un limiteur de requêtes à plusieurs niveaux afin d'éviter les sollicitations excessives :
 
  - espacement minimal entre les requêtes
 - seau à jetons horaire
@@ -101,21 +103,21 @@
 
  ### Avec HACS
 
- Pronote NG s'installe avec [HACS](https://www.hacs.xyz/) comme dépôt personnalisé.
+ Carnet scolaire s'installe avec [HACS](https://www.hacs.xyz/) comme dépôt personnalisé.
 
 **1. Ajouter le dépôt à HACS et télécharger l'intégration**
 
-[![Ouvrir ce dépôt dans HACS sur votre Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=FiveElements&repository=ha-pronote-ng&category=integration)
+[![Ouvrir ce dépôt dans HACS sur votre Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=FiveElements&repository=ha-carnet-scolaire&category=integration)
 
  Ce bouton ouvre **votre** Home Assistant sur la fiche du dépôt dans HACS. Il ne
 reste qu'à **Télécharger**, puis à redémarrer Home Assistant.
 
 **2. Ajouter l'intégration**
 
-[![Ouvrir votre Home Assistant et commencer la configuration d'une nouvelle intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=pronote_ng)
+[![Ouvrir votre Home Assistant et commencer la configuration d'une nouvelle intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=carnet_scolaire)
 
  Le formulaire demande d'abord **comment** vous vous connectez — QR code,
-identifiants, ou ENT. Le [guide de l'utilisateur](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#2-se-connecter--les-trois-modes)
+identifiants, ou ENT. Le [guide de l'utilisateur](https://fiveelements.github.io/ha-carnet-scolaire/GUIDE-UTILISATEUR/#2-se-connecter--les-trois-modes)
 décrit les trois modes et dit lequel choisir.
 
 <details>
@@ -123,28 +125,28 @@ décrit les trois modes et dit lequel choisir.
 
 1. Ouvrez **HACS**
 2. Ouvrez le menu **⋮** puis **Dépôts personnalisés**
-3. Ajoutez `https://github.com/FiveElements/ha-pronote-ng`
+3. Ajoutez `https://github.com/FiveElements/ha-carnet-scolaire`
 4. Sélectionnez la catégorie **Intégration**, puis **Ajouter**
-5. Installez **Pronote NG**, puis redémarrez Home Assistant
+5. Installez **Carnet scolaire**, puis redémarrez Home Assistant
 6. **Paramètres → Appareils et services → Ajouter une intégration**, cherchez **PRONOTE**
 
 </details>
 
- > 💡 Une intégration HACS officielle pourra être utilisée lorsqu'elle sera disponible. En attendant, l'installation par dépôt personnalisé permet d'utiliser Pronote NG directement depuis HACS.
+ > 💡 Une intégration HACS officielle pourra être utilisée lorsqu'elle sera disponible. En attendant, l'installation par dépôt personnalisé permet d'utiliser Carnet scolaire directement depuis HACS.
 
  ### Installation manuelle
 
  Copiez le dossier :
 
 ```
-custom_components/pronote_ng/
+custom_components/carnet_scolaire/
 ```
 
  dans le dossier `custom_components/` de votre configuration Home Assistant, puis redémarrez Home Assistant.
 
  #### Version minimale
 
- Pronote NG nécessite actuellement :
+ Carnet scolaire nécessite actuellement :
 
 ```
 Home Assistant 2026.9.0 ou supérieur
@@ -154,7 +156,7 @@ Home Assistant 2026.9.0 ou supérieur
 
  ## 📊 Afficher les données PRONOTE
 
- Pronote NG fournit des entités Home Assistant natives :
+ Carnet scolaire fournit des entités Home Assistant natives :
 
  - `sensor`
 - `binary_sensor`
@@ -168,36 +170,36 @@ Home Assistant 2026.9.0 ou supérieur
 
  La documentation explique également comment créer un tableau de bord complet à partir des données PRONOTE.
 
- 👉 [Afficher les données PRONOTE dans Home Assistant](https://fiveelements.github.io/ha-pronote-ng/AFFICHER-LES-DONNEES/)
+ 👉 [Afficher les données PRONOTE dans Home Assistant](https://fiveelements.github.io/ha-carnet-scolaire/AFFICHER-LES-DONNEES/)
 
 ---
 
  ## 🎨 Cartes Lovelace
 
- Des cartes Lovelace spécialement conçues pour Pronote NG sont disponibles dans un dépôt séparé :
+ Des cartes Lovelace spécialement conçues pour Carnet scolaire sont disponibles dans un dépôt séparé :
 
- **[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)** — [documentation](https://fiveelements.github.io/ha-pronote-ng-cards/), une page par carte.
+ **[FiveElements/ha-carnet-scolaire-cards](https://github.com/FiveElements/ha-carnet-scolaire-cards)** — [documentation](https://fiveelements.github.io/ha-carnet-scolaire-cards/), une page par carte.
 
  Elles permettent notamment d'afficher :
 
- - 👨‍🎓 [Informations sur l'élève](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/eleve/)
-- 📅 [Prochain cours](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/prochain-cours/)
-- 🌅 [Vue journée](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/journee/)
-- 🗓️ [Emploi du temps](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/emploi-du-temps/)
-- 📝 [Devoirs](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/devoirs/)
-- 📊 [Notes](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/notes/)
-- 🎯 [Évaluations](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/evaluations/)
-- 🍽️ [Cantine](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/menu/)
-- 🏫 [Vie scolaire](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/vie-scolaire/)
-- 🚦 [État du limiteur](https://fiveelements.github.io/ha-pronote-ng-cards/cartes/limiteur/)
+ - 👨‍🎓 [Informations sur l'élève](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/eleve/)
+- 📅 [Prochain cours](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/prochain-cours/)
+- 🌅 [Vue journée](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/journee/)
+- 🗓️ [Emploi du temps](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/emploi-du-temps/)
+- 📝 [Devoirs](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/devoirs/)
+- 📊 [Notes](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/notes/)
+- 🎯 [Évaluations](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/evaluations/)
+- 🍽️ [Cantine](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/menu/)
+- 🏫 [Vie scolaire](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/vie-scolaire/)
+- 🚦 [État du limiteur](https://fiveelements.github.io/ha-carnet-scolaire-cards/cartes/limiteur/)
 
- Les cartes sont **optionnelles** : Pronote NG fonctionne avec les cartes natives de Home Assistant.
+ Les cartes sont **optionnelles** : Carnet scolaire fonctionne avec les cartes natives de Home Assistant.
 
 ---
 
  ## 🔧 Services et actions
 
- Pronote NG fournit plusieurs services Home Assistant.
+ Carnet scolaire fournit plusieurs services Home Assistant.
 
  Certains services permettent notamment d'accéder à :
 
@@ -206,7 +208,7 @@ Home Assistant 2026.9.0 ou supérieur
 - l'emploi du temps au format PDF
 - l'état du limiteur de requêtes
 
- Le [catalogue des entités et des services](https://fiveelements.github.io/ha-pronote-ng/annexe-a-entites/) donne, pour chaque champ publié, d'où il vient.
+ Le [catalogue des entités et des services](https://fiveelements.github.io/ha-carnet-scolaire/annexe-a-entites/) donne, pour chaque champ publié, d'où il vient.
 
  Des opérations d'écriture sont également disponibles, **activées à l'installation** et désactivables dans les options :
 
@@ -234,7 +236,7 @@ Home Assistant 2026.9.0 ou supérieur
  Le fichier de diagnostic ne contient pas le contenu des données scolaires. Les identifiants d'élèves y sont également protégés.
 
  Le détail de ce qui est conservé, de ce qui ne l'est pas et de ce que contient
-le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#11-vie-privée).
+le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/ha-carnet-scolaire/GUIDE-UTILISATEUR/#11-vie-privée).
 
  > ⚠️ **Ne configurez jamais le journaliseur `pronotepy` en niveau DEBUG.**
 >
@@ -242,9 +244,9 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 
 ---
 
- ## 🧠 Pourquoi Pronote NG ?
+ ## 🧠 Pourquoi Carnet scolaire ?
 
- Pronote NG a été conçu autour de quelques principes importants.
+ Carnet scolaire a été conçu autour de quelques principes importants.
 
  ### Ne jamais confondre une absence de données avec une donnée vide
 
@@ -252,7 +254,7 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 
  À l'inverse, la disparition inattendue d'une donnée obligatoire peut indiquer un changement du protocole PRONOTE.
 
- Pronote NG distingue donc ces deux situations afin d'éviter de publier silencieusement des données incorrectes dans Home Assistant.
+ Carnet scolaire distingue donc ces deux situations afin d'éviter de publier silencieusement des données incorrectes dans Home Assistant.
 
  ### Une session partagée pour plusieurs enfants
 
@@ -280,18 +282,18 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 
  La documentation complète est disponible ici :
 
- **[📖 Documentation Pronote NG](https://fiveelements.github.io/ha-pronote-ng/)**
+ **[📖 Documentation Carnet scolaire](https://fiveelements.github.io/ha-carnet-scolaire/)**
 
  Elle contient notamment :
 
- - [Guide utilisateur](https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/) — installation, entités, services, réglages, dépannage
-- [Architecture de l'intégration](https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/)
-- [Catalogue des entités et services](https://fiveelements.github.io/ha-pronote-ng/annexe-a-entites/) — l'origine de chaque champ publié
-- [Configuration du limiteur de requêtes](https://fiveelements.github.io/ha-pronote-ng/annexe-b-rate-limit/) — couches, options, arithmétique du budget
-- [Création de tableaux de bord](https://fiveelements.github.io/ha-pronote-ng/AFFICHER-LES-DONNEES/)
-- [Blueprints](https://fiveelements.github.io/ha-pronote-ng/BLUEPRINTS/) — chaque réglage des huit blueprints, et le piège que chacun évite
-- [Exemples d'utilisation](https://fiveelements.github.io/ha-pronote-ng/EXEMPLES-BLUEPRINTS/) — une automatisation complète et deux variantes d'action par blueprint
-- [Documentation technique pour les contributeurs](CONTRIBUTING.md) — et la [spécification](https://fiveelements.github.io/ha-pronote-ng/SPECIFICATION/)
+ - [Guide utilisateur](https://fiveelements.github.io/ha-carnet-scolaire/GUIDE-UTILISATEUR/) — installation, entités, services, réglages, dépannage
+- [Architecture de l'intégration](https://fiveelements.github.io/ha-carnet-scolaire/ARCHITECTURE/)
+- [Catalogue des entités et services](https://fiveelements.github.io/ha-carnet-scolaire/annexe-a-entites/) — l'origine de chaque champ publié
+- [Configuration du limiteur de requêtes](https://fiveelements.github.io/ha-carnet-scolaire/annexe-b-rate-limit/) — couches, options, arithmétique du budget
+- [Création de tableaux de bord](https://fiveelements.github.io/ha-carnet-scolaire/AFFICHER-LES-DONNEES/)
+- [Blueprints](https://fiveelements.github.io/ha-carnet-scolaire/BLUEPRINTS/) — chaque réglage des huit blueprints, et le piège que chacun évite
+- [Exemples d'utilisation](https://fiveelements.github.io/ha-carnet-scolaire/EXEMPLES-BLUEPRINTS/) — une automatisation complète et deux variantes d'action par blueprint
+- [Documentation technique pour les contributeurs](CONTRIBUTING.md) — et la [spécification](https://fiveelements.github.io/ha-carnet-scolaire/SPECIFICATION/)
 
 ---
 
@@ -301,14 +303,14 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 
  Avant d'ouvrir une issue :
 
- - vérifiez [la documentation](https://fiveelements.github.io/ha-pronote-ng/)
-- utilisez les [formulaires d'issue](https://github.com/FiveElements/ha-pronote-ng/issues/new/choose) : ils demandent ce qu'il faut, et rappellent ce qu'il ne faut **pas** coller dans une issue publique
+ - vérifiez [la documentation](https://fiveelements.github.io/ha-carnet-scolaire/)
+- utilisez les [formulaires d'issue](https://github.com/FiveElements/ha-carnet-scolaire/issues/new/choose) : ils demandent ce qu'il faut, et rappellent ce qu'il ne faut **pas** coller dans une issue publique
 - lisez [`CONTRIBUTING.md`](CONTRIBUTING.md) avant une *pull request*
 - ne partagez jamais d'identifiants PRONOTE réels
 - ne joignez jamais de données scolaires personnelles
 - ne joignez jamais de logs `pronotepy` en mode DEBUG
 
- 👉 [Créer une issue](https://github.com/FiveElements/ha-pronote-ng/issues/new/choose)
+ 👉 [Créer une issue](https://github.com/FiveElements/ha-carnet-scolaire/issues/new/choose)
 
 ---
 
@@ -316,14 +318,14 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 
  PRONOTE est un service tiers.
 
- **Pronote NG n'est pas développé, maintenu ou officiellement supporté par Index Éducation / PRONOTE.**
+ **Carnet scolaire n'est pas développé, maintenu ou officiellement supporté par Index Éducation / PRONOTE.**
 
  Le fonctionnement de l'intégration dépend de l'API et du comportement de PRONOTE. Une évolution de PRONOTE ou de l'ENT utilisé par votre établissement peut nécessiter une adaptation de l'intégration.
 
 ---
 
 
- ## ⭐ Vous utilisez Pronote NG ?
+ ## ⭐ Vous utilisez Carnet scolaire ?
 
  Si cette intégration vous est utile :
 
@@ -338,7 +340,7 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 
  ## 📄 Licence
 
- Pronote NG est distribué sous licence [MIT](LICENSE).
+ Carnet scolaire est distribué sous licence [MIT](LICENSE).
 
 ---
 

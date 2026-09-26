@@ -1,12 +1,14 @@
-# Contribuer à Pronote NG
+# Contribuer à Carnet scolaire
 
 Merci de l'intérêt. Ce document dit comment travailler sur ce dépôt, et
 surtout **pourquoi** certaines règles sont plus strictes qu'ailleurs : cette
 intégration manipule les identifiants scolaires d'enfants et parle à un serveur
 qui sanctionne une adresse IP. Deux contraintes qui façonnent tout le reste.
 
-Le dépôt s'appelle `ha-pronote-ng`, l'intégration s'appelle **Pronote NG**, et
-son domaine Home Assistant est `pronote_ng`.
+Le dépôt s'appelle `ha-carnet-scolaire`, l'intégration s'appelle **Carnet
+scolaire**, et son domaine Home Assistant est `carnet_scolaire`. Elle collecte
+auprès de PRONOTE et d'EcoleDirecte ; elle s'appelait *Pronote NG* (domaine
+`pronote_ng`) jusqu'à la 0.0.32.
 
 ---
 
@@ -52,7 +54,7 @@ Pour déboguer, activez le journaliseur de l'intégration seulement :
 ```yaml
 logger:
   logs:
-    custom_components.pronote_ng: debug
+    custom_components.carnet_scolaire: debug
 ```
 
 N'ajoutez jamais `pronotepy` à cette liste, et ne le suggérez à personne dans
@@ -113,7 +115,7 @@ Sous Git Bash pour Windows, préfixez par `MSYS_NO_PATHCONV=1` et donnez le
 chemin en absolu, sinon MSYS réécrit `/work` :
 
 ```bash
-MSYS_NO_PATHCONV=1 docker run --rm -v "C:/chemin/vers/ha-pronote-ng:/work" -w /work \
+MSYS_NO_PATHCONV=1 docker run --rm -v "C:/chemin/vers/ha-carnet-scolaire:/work" -w /work \
   python:3.14 bash -c "pip install -q -r requirements_test.txt && python -m pytest tests"
 ```
 
@@ -180,9 +182,9 @@ ils échouent plus vite chez vous que dans un *runner*.
 ```bash
 ruff check .
 ruff format --check .
-mypy --strict custom_components/pronote_ng
+mypy --strict custom_components/carnet_scolaire
 python scripts/check_manifest.py
-pytest tests --cov=custom_components/pronote_ng --cov-branch --cov-report=xml:coverage.xml
+pytest tests --cov=custom_components/carnet_scolaire --cov-branch --cov-report=xml:coverage.xml
 python scripts/check_coverage.py coverage.xml
 ```
 
@@ -215,7 +217,7 @@ Pour chacun, la métrique retenue est le **minimum de la couverture de lignes et
 de branches** : 100 % de lignes avec une branche manquante ne passe pas.
 
 L'inventaire des règles [Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/)
-vit dans `custom_components/pronote_ng/quality_scale.yaml`. Une intégration
+vit dans `custom_components/carnet_scolaire/quality_scale.yaml`. Une intégration
 HACS n'affiche pas de palier bronze/argent/or/platine ; le fichier sert à
 suivre ce qui est fait, exempté, ou encore ouvert. Ne marquez pas une règle
 `done` sans que le code (ou une exemption commentée) le tienne.
@@ -257,10 +259,10 @@ test qui compare le fichier à ce que le générateur produit.
 
 | Fichier | Source |
 | --- | --- |
-| `custom_components/pronote_ng/strings.json` | `scripts/build_translations.py` |
-| `custom_components/pronote_ng/translations/en.json` | idem |
-| `custom_components/pronote_ng/translations/fr.json` | idem |
-| `custom_components/pronote_ng/services.yaml` | idem |
+| `custom_components/carnet_scolaire/strings.json` | `scripts/build_translations.py` |
+| `custom_components/carnet_scolaire/translations/en.json` | idem |
+| `custom_components/carnet_scolaire/translations/fr.json` | idem |
+| `custom_components/carnet_scolaire/services.yaml` | idem |
 
 Modifiez la table dans le script, puis :
 
@@ -447,7 +449,7 @@ Réservé aux mainteneurs.
 
 `release.yml` vérifie que le manifeste et le tag concordent — une intégration
 HACS dont le manifeste diverge du tag s'installe une fois et ne se met plus
-jamais à jour — puis construit `pronote_ng.zip` et publie la *release*.
+jamais à jour — puis construit `carnet_scolaire.zip` et publie la *release*.
 
 ---
 
@@ -456,7 +458,7 @@ jamais à jour — puis construit `pronote_ng.zip` et publie la *release*.
 Utilisez les formulaires d'issue : ils demandent exactement ce qu'il faut et,
 surtout, ils rappellent ce qu'il ne faut **pas** coller.
 
-Le fichier de diagnostic (*Paramètres → Appareils et services → Pronote NG →
+Le fichier de diagnostic (*Paramètres → Appareils et services → Carnet scolaire →
 ⋯ → Télécharger les diagnostics*) est conçu pour être joint à une issue
 publique : les identifiants y sont rédigés, l'adresse retaillée, et les
 identifiants d'élève remplacés par une empreinte tronquée. C'est presque
@@ -477,6 +479,6 @@ message d'erreur brut ou une capture d'écran ne passent par aucune rédaction.
 | [`docs/annexe-b-rate-limit.md`](docs/annexe-b-rate-limit.md) | l'arithmétique du budget de requêtes |
 | [`docs/revue-contradictoire-v1.md`](docs/revue-contradictoire-v1.md) | la revue qui a produit la v2, conservée parce que ses raisons valent mieux que ses conclusions |
 
-Le tout est publié sur <https://fiveelements.github.io/ha-pronote-ng/>.
+Le tout est publié sur <https://fiveelements.github.io/ha-carnet-scolaire/>.
 
 Sous licence [MIT](LICENSE).

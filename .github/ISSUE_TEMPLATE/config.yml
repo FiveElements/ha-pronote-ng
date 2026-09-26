@@ -7,25 +7,25 @@ blank_issues_enabled: false
 
 contact_links:
   - name: 📖 Guide de l'utilisateur
-    url: https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/
+    url: https://fiveelements.github.io/ha-carnet-scolaire/GUIDE-UTILISATEUR/
     about: >-
       Installation, catalogue des entités, services, réglages et un tableau de
       dépannage symptôme → cause → remède. La réponse y est souvent déjà.
 
   - name: ⚙️ Réglages et cadence
-    url: https://fiveelements.github.io/ha-pronote-ng/GUIDE-UTILISATEUR/#8-r%C3%A9glages-et-cadence
+    url: https://fiveelements.github.io/ha-carnet-scolaire/GUIDE-UTILISATEUR/#8-r%C3%A9glages-et-cadence
     about: >-
       « Les données sont figées », « les collectes sont bridées », « le budget
       est épuisé » -- commencez ici, c'est presque toujours la cadence.
 
   - name: 🏗️ Architecture
-    url: https://fiveelements.github.io/ha-pronote-ng/ARCHITECTURE/
+    url: https://fiveelements.github.io/ha-carnet-scolaire/ARCHITECTURE/
     about: >-
       Pour comprendre le limiteur, l'ordonnanceur, la session et la frontière
       pronotepy avant de proposer un changement.
 
   - name: 🤝 Guide de contribution
-    url: https://github.com/FiveElements/ha-pronote-ng/blob/main/CONTRIBUTING.md
+    url: https://github.com/FiveElements/ha-carnet-scolaire/blob/main/CONTRIBUTING.md
     about: >-
       Comment monter l'environnement, faire tourner la suite de tests, et les
       deux règles non négociables sur les identifiants.

@@ -77,13 +77,13 @@ def _repository(tmp_path: Path, requirement: str, manifest_pin: str) -> Path:
         f"ruff==0.14.4\n",
         encoding="utf-8",
     )
-    component = tmp_path / "custom_components" / "pronote_ng"
+    component = tmp_path / "custom_components" / "carnet_scolaire"
     component.mkdir(parents=True)
     (component / "manifest.json").write_text(
         json.dumps(
             {
-                "domain": "pronote_ng",
-                "name": "Pronote NG",
+                "domain": "carnet_scolaire",
+                "name": "Carnet scolaire",
                 "requirements": [manifest_pin],
                 "version": "0.0.0",
             },
@@ -171,7 +171,7 @@ def test_the_pin_is_read_from_the_repository_and_never_restated() -> None:
         (ROOT / "requirements_test.txt").read_text(encoding="utf-8")
     )
     manifest = json.loads(
-        (ROOT / "custom_components" / "pronote_ng" / "manifest.json").read_text(
+        (ROOT / "custom_components" / "carnet_scolaire" / "manifest.json").read_text(
             encoding="utf-8"
         )
     )
@@ -279,7 +279,7 @@ def test_a_bump_moves_both_declarations_together(tmp_path: Path) -> None:
 
     assert changed == [
         "requirements_test.txt",
-        "custom_components/pronote_ng/manifest.json",
+        "custom_components/carnet_scolaire/manifest.json",
     ]
     assert pin.pinned_version(root) == "2.15.7"
 
@@ -293,16 +293,16 @@ def test_a_bump_leaves_prose_and_json_formatting_alone(tmp_path: Path) -> None:
     documentation, not a declaration. Only the two pinned requirements move.
     """
     root = _repository(tmp_path, "pronotepy==2.15.6", "pronotepy==2.15.6")
-    before = (root / "custom_components" / "pronote_ng" / "manifest.json").read_text(
-        encoding="utf-8"
-    )
+    before = (
+        root / "custom_components" / "carnet_scolaire" / "manifest.json"
+    ).read_text(encoding="utf-8")
 
     pin.bump(root, "2.15.7")
 
     requirements = (root / "requirements_test.txt").read_text(encoding="utf-8")
-    after = (root / "custom_components" / "pronote_ng" / "manifest.json").read_text(
-        encoding="utf-8"
-    )
+    after = (
+        root / "custom_components" / "carnet_scolaire" / "manifest.json"
+    ).read_text(encoding="utf-8")
     assert "# prose naming pronotepy 2.15.6, not a declaration" in requirements
     assert "pytest-homeassistant-custom-component==0.13.363" in requirements
     assert after == before.replace("2.15.6", "2.15.7")
@@ -439,7 +439,7 @@ def test_the_pull_request_body_carries_what_a_maintainer_needs_to_decide(
     assert "compare/v2.15.6...v2.15.7" in body
     # Both declarations are named, because moving one is the failure mode.
     assert "requirements_test.txt" in body
-    assert "custom_components/pronote_ng/manifest.json" in body
+    assert "custom_components/carnet_scolaire/manifest.json" in body
 
 
 def test_the_pull_request_body_says_that_nothing_merges_by_itself(

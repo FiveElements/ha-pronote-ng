@@ -36,7 +36,7 @@ import sys
 # dictating the repository layout.
 from pronotepy_pin import PinError, pinned_version
 
-MANIFEST = Path("custom_components/pronote_ng/manifest.json")
+MANIFEST = Path("custom_components/carnet_scolaire/manifest.json")
 
 
 def main() -> int:

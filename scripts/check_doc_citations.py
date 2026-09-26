@@ -85,7 +85,7 @@ ROOT = Path(__file__).resolve().parents[1]
 #: name it shares with a test -- ``__init__.py`` is the only such collision
 #: today, and all its citations mean the integration's module.
 SEARCH_ROOTS = (
-    ROOT / "custom_components" / "pronote_ng",
+    ROOT / "custom_components" / "carnet_scolaire",
     ROOT / "scripts",
     ROOT / "tests",
     ROOT / "tests" / "fixtures",

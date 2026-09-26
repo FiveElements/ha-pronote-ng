@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.connectors.ecoledirecte import ed_mapping
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_mapping import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte import ed_mapping
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_mapping import (
     attendance_facts,
     grades_from_notes,
     homework_facts,
@@ -22,7 +22,9 @@ from custom_components.pronote_ng.connectors.ecoledirecte.ed_mapping import (
     marks_facts,
     timetable_facts,
 )
-from custom_components.pronote_ng.connectors.errors import ConnectorUndecodableError
+from custom_components.carnet_scolaire.connectors.errors import (
+    ConnectorUndecodableError,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ecoledirecte"
 ZONE = ZoneInfo("Europe/Paris")
@@ -103,8 +105,8 @@ def test_an_ed_absence_does_not_invent_a_period_unique_id() -> None:
 
 
 def test_an_ed_lesson_serializes_to_the_card_contract_not_the_aplim_keys() -> None:
-    """ha-pronote-ng-cards read subject/canceled; a matiere/is_annule payload would render empty."""
-    from custom_components.pronote_ng.sensor import _lesson_dict
+    """ha-carnet-scolaire-cards read subject/canceled; a matiere/is_annule payload would render empty."""
+    from custom_components.carnet_scolaire.sensor import _lesson_dict
 
     facts = timetable_facts(load_json("emploi_du_temps.json"), zone=ZONE)
     payload = _lesson_dict(facts.lessons[0])

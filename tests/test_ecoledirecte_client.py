@@ -16,11 +16,11 @@ from urllib.parse import parse_qs
 from aiohttp import ClientPayloadError
 import pytest
 
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_client import (
     ECOLEDIRECTE_API_VERSION,
     EcoleDirecteClient,
 )
-from custom_components.pronote_ng.connectors.errors import (
+from custom_components.carnet_scolaire.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
     ConnectorError,
@@ -28,7 +28,7 @@ from custom_components.pronote_ng.connectors.errors import (
     ConnectorTransportError,
     ConnectorUndecodableError,
 )
-from custom_components.pronote_ng.connectors.protocol import ChallengeKind
+from custom_components.carnet_scolaire.connectors.protocol import ChallengeKind
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ecoledirecte"
 

@@ -52,30 +52,34 @@ def _report(*files: tuple[str, str], source: str | None = None) -> Element:
 def test_a_second_ratelimit_py_does_not_replace_the_pronote_row() -> None:
     """The Pronote limiter stays the gated file when an ED limiter shares the name."""
     root = _report(
-        ("custom_components/pronote_ng/ratelimit.py", "1"),
-        ("custom_components/pronote_ng/connectors/ecoledirecte/ratelimit.py", "0"),
+        ("custom_components/carnet_scolaire/ratelimit.py", "1"),
+        ("custom_components/carnet_scolaire/connectors/ecoledirecte/ratelimit.py", "0"),
     )
     per_module = check_coverage._module_coverage(root)
-    assert check_coverage.coverage_for(per_module, "pronote_ng/ratelimit.py") == 100.0
+    assert (
+        check_coverage.coverage_for(per_module, "carnet_scolaire/ratelimit.py") == 100.0
+    )
     ed = check_coverage.coverage_for(
-        per_module, "pronote_ng/connectors/ecoledirecte/ratelimit.py"
+        per_module, "carnet_scolaire/connectors/ecoledirecte/ratelimit.py"
     )
     assert ed == 0.0
 
 
 def test_the_gate_finds_pronote_modules_under_the_package_prefix() -> None:
     """coverage.xml stores a prefix; the required key is the package suffix."""
-    root = _report(("custom_components/pronote_ng/gateway.py", "1"))
+    root = _report(("custom_components/carnet_scolaire/gateway.py", "1"))
     per_module = check_coverage._module_coverage(root)
-    assert check_coverage.coverage_for(per_module, "pronote_ng/gateway.py") == 100.0
+    assert (
+        check_coverage.coverage_for(per_module, "carnet_scolaire/gateway.py") == 100.0
+    )
 
 
 def test_the_three_ecoledirecte_protocol_modules_are_critical() -> None:
     """An invisible ED admission or decode defect must fail the coverage gate."""
     required = check_coverage.CRITICAL_MODULES
-    assert required["pronote_ng/connectors/ecoledirecte/ed_limiter.py"] == 100.0
-    assert required["pronote_ng/connectors/ecoledirecte/ed_client.py"] == 100.0
-    assert required["pronote_ng/connectors/ecoledirecte/ed_mapping.py"] == 100.0
+    assert required["carnet_scolaire/connectors/ecoledirecte/ed_limiter.py"] == 100.0
+    assert required["carnet_scolaire/connectors/ecoledirecte/ed_client.py"] == 100.0
+    assert required["carnet_scolaire/connectors/ecoledirecte/ed_mapping.py"] == 100.0
 
 
 def test_a_package_relative_cobertura_report_joins_source_to_find_pronote() -> None:
@@ -83,12 +87,14 @@ def test_a_package_relative_cobertura_report_joins_source_to_find_pronote() -> N
     root = _report(
         ("ratelimit.py", "1"),
         ("connectors/ecoledirecte/ratelimit.py", "0"),
-        source="/home/runner/work/ha-pronote-ng/ha-pronote-ng/custom_components/pronote_ng",
+        source="/home/runner/work/ha-carnet-scolaire/ha-carnet-scolaire/custom_components/carnet_scolaire",
     )
     per_module = check_coverage._module_coverage(root)
-    assert check_coverage.coverage_for(per_module, "pronote_ng/ratelimit.py") == 100.0
+    assert (
+        check_coverage.coverage_for(per_module, "carnet_scolaire/ratelimit.py") == 100.0
+    )
     ed = check_coverage.coverage_for(
-        per_module, "pronote_ng/connectors/ecoledirecte/ratelimit.py"
+        per_module, "carnet_scolaire/connectors/ecoledirecte/ratelimit.py"
     )
     assert ed == 0.0
 
@@ -96,16 +102,16 @@ def test_a_package_relative_cobertura_report_joins_source_to_find_pronote() -> N
 def test_an_ambiguous_suffix_is_missing_so_the_gate_fails_closed() -> None:
     """Two files ending with the same required path must not pick a winner."""
     root = _report(
-        ("a/pronote_ng/delta.py", "1"),
-        ("b/pronote_ng/delta.py", "0"),
+        ("a/carnet_scolaire/delta.py", "1"),
+        ("b/carnet_scolaire/delta.py", "0"),
     )
     per_module = check_coverage._module_coverage(root)
-    assert check_coverage.coverage_for(per_module, "pronote_ng/delta.py") is None
+    assert check_coverage.coverage_for(per_module, "carnet_scolaire/delta.py") is None
 
 
 def test_tostring_keeps_the_fixture_well_formed() -> None:
     """Guard the helper: a broken fixture would make the lookups pass vacuously."""
-    xml = tostring(_report(("pronote_ng/scheduler.py", "1")), encoding="unicode")
+    xml = tostring(_report(("carnet_scolaire/scheduler.py", "1")), encoding="unicode")
     assert "scheduler.py" in xml
 
 
@@ -127,20 +133,24 @@ def test_main_names_an_ambiguous_suffix_instead_of_calling_it_absent(
     _write_report(
         report,
         _report(
-            ("a/pronote_ng/delta.py", "1"),
-            ("b/pronote_ng/delta.py", "0"),
-            ("custom_components/pronote_ng/ratelimit.py", "1"),
-            ("custom_components/pronote_ng/scheduler.py", "1"),
-            ("custom_components/pronote_ng/gateway.py", "1"),
+            ("a/carnet_scolaire/delta.py", "1"),
+            ("b/carnet_scolaire/delta.py", "0"),
+            ("custom_components/carnet_scolaire/ratelimit.py", "1"),
+            ("custom_components/carnet_scolaire/scheduler.py", "1"),
+            ("custom_components/carnet_scolaire/gateway.py", "1"),
         ),
     )
     code = check_coverage.main(["check_coverage.py", str(report)])
     captured = capsys.readouterr()
     assert code == 1
-    assert "pronote_ng/delta.py matches more than one file in the coverage report" in (
-        captured.err
+    assert (
+        "carnet_scolaire/delta.py matches more than one file in the coverage report"
+        in (captured.err)
     )
-    assert "pronote_ng/delta.py is absent from the coverage report" not in captured.err
+    assert (
+        "carnet_scolaire/delta.py is absent from the coverage report"
+        not in captured.err
+    )
 
 
 def test_main_says_absent_when_a_critical_module_is_missing(
@@ -151,15 +161,15 @@ def test_main_says_absent_when_a_critical_module_is_missing(
     _write_report(
         report,
         _report(
-            ("custom_components/pronote_ng/ratelimit.py", "1"),
-            ("custom_components/pronote_ng/scheduler.py", "1"),
-            ("custom_components/pronote_ng/gateway.py", "1"),
+            ("custom_components/carnet_scolaire/ratelimit.py", "1"),
+            ("custom_components/carnet_scolaire/scheduler.py", "1"),
+            ("custom_components/carnet_scolaire/gateway.py", "1"),
         ),
     )
     code = check_coverage.main(["check_coverage.py", str(report)])
     captured = capsys.readouterr()
     assert code == 1
-    assert "pronote_ng/delta.py is absent from the coverage report" in captured.err
+    assert "carnet_scolaire/delta.py is absent from the coverage report" in captured.err
     assert "more than one file" not in captured.err
 
 
@@ -186,7 +196,7 @@ def test_a_module_below_the_per_module_floor_fails_the_gate(
         report,
         _report(
             *_all_critical_at_100(),
-            ("custom_components/pronote_ng/image.py", "0"),
+            ("custom_components/carnet_scolaire/image.py", "0"),
         ),
     )
 
@@ -195,7 +205,8 @@ def test_a_module_below_the_per_module_floor_fails_the_gate(
 
     assert code == 1
     assert (
-        "pronote_ng/image.py coverage 0.00% is below the required 95%" in captured.err
+        "carnet_scolaire/image.py coverage 0.00% is below the required 95%"
+        in captured.err
     )
 
 
@@ -213,7 +224,10 @@ def test_a_module_nobody_registered_is_still_held_to_the_floor(
         report,
         _report(
             *_all_critical_at_100(),
-            ("custom_components/pronote_ng/a_module_invented_for_this_test.py", "0"),
+            (
+                "custom_components/carnet_scolaire/a_module_invented_for_this_test.py",
+                "0",
+            ),
         ),
     )
 
@@ -248,7 +262,7 @@ def test_a_critical_module_is_reported_once_and_not_twice(
     errors = [
         line
         for line in capsys.readouterr().err.splitlines()
-        if "pronote_ng/delta.py" in line
+        if "carnet_scolaire/delta.py" in line
     ]
 
     assert code == 1

@@ -6,7 +6,7 @@ version: 2
 # Two pins are deliberately left out, for two different reasons:
 #
 # - `pronotepy` is pinned twice: in requirements_test.txt, which Dependabot
-#   reads, AND in custom_components/pronote_ng/manifest.json, which it does
+#   reads, AND in custom_components/carnet_scolaire/manifest.json, which it does
 #   not. `pronotepy-watch.yml` raises both together. A Dependabot bump would
 #   move only the first, and the tests would run against a version the
 #   integration does not install.

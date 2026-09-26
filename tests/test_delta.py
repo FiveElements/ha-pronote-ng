@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     EVENT_ABSENCE_ADDED,
     EVENT_DELAY_ADDED,
     EVENT_EVALUATION_ADDED,
@@ -36,8 +36,8 @@ from custom_components.pronote_ng.const import (
     LESSON_EVENT_TYPES,
     GradeStatus,
 )
-from custom_components.pronote_ng.delta import _NEW_THREAD_CAP, DeltaDetector
-from custom_components.pronote_ng.models import (
+from custom_components.carnet_scolaire.delta import _NEW_THREAD_CAP, DeltaDetector
+from custom_components.carnet_scolaire.models import (
     Absence,
     Acquisition,
     AttendanceFacts,
@@ -549,7 +549,7 @@ def test_a_punishment_event_lists_its_scheduled_slots() -> None:
     detector = DeltaDetector()
     detector.attendance(STUDENT, attendance())
 
-    from custom_components.pronote_ng.models import PunishmentSlot
+    from custom_components.carnet_scolaire.models import PunishmentSlot
 
     punished = Punishment(
         id="PUNISHMENT-2",

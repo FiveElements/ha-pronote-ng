@@ -36,13 +36,13 @@ from homeassistant.components.todo import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 import pytest
 
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.const import (
     OPT_WRITE_OPERATIONS_ENABLED,
     Priority,
     Tier,
 )
-from custom_components.pronote_ng.ratelimit import DeferReason, TierDeferred
-from custom_components.pronote_ng.todo import PARALLEL_UPDATES, async_setup_entry
+from custom_components.carnet_scolaire.ratelimit import DeferReason, TierDeferred
+from custom_components.carnet_scolaire.todo import PARALLEL_UPDATES, async_setup_entry
 
 from .conftest import CHILDREN, HAS_HASS_HARNESS, REQUIRES_HASS
 from .fixtures import protocol
@@ -54,8 +54,8 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.pronote_ng.account import PronoteAccount
-    from custom_components.pronote_ng.todo import PronoteHomeworkTodoList
+    from custom_components.carnet_scolaire.account import PronoteAccount
+    from custom_components.carnet_scolaire.todo import PronoteHomeworkTodoList
 
 pytestmark = REQUIRES_HASS
 

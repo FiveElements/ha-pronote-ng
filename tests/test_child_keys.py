@@ -22,8 +22,8 @@ from unittest.mock import patch
 
 import pytest
 
-from custom_components.pronote_ng.child_keys import pair
-from custom_components.pronote_ng.const import (
+from custom_components.carnet_scolaire.child_keys import pair
+from custom_components.carnet_scolaire.const import (
     CHILD_KEY,
     CHILD_NAME,
     CHILD_RESOURCE_ID,
@@ -254,7 +254,7 @@ class TestAdoptingEntitiesCreatedBeforeTheKeys:
         entities.async_update_entity(before, name="Mon libelle")
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -375,7 +375,7 @@ class TestWhenTheIdentifierHasRotated:
         before = row.entity_id
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -454,7 +454,7 @@ class TestWhenTheIdentifierHasRotated:
             school_day.tick(timedelta(hours=2))
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -499,7 +499,7 @@ class TestWhenTheIdentifierHasRotated:
             )
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -539,7 +539,7 @@ class TestWhenTheRepairCannotBeSound:
         )
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -602,7 +602,7 @@ class TestWhenTheRepairCannotBeSound:
         assert legacy.id != minted.id
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)
@@ -662,7 +662,7 @@ class TestWhenTheRepairCannotBeSound:
         )
 
         with patch(
-            "custom_components.pronote_ng.session.build_client",
+            "custom_components.carnet_scolaire.session.build_client",
             return_value=parent_client,
         ):
             assert await hass.config_entries.async_setup(mock_entry.entry_id)

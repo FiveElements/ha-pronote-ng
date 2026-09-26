@@ -11,7 +11,7 @@ Il y a deux chemins, et ils ne s'excluent pas.
 ## Sommaire
 
 - [Deux chemins](#deux-chemins)
-- [La bibliothèque de cartes Pronote NG](#la-bibliothèque-de-cartes-pronote-ng)
+- [La bibliothèque de cartes Carnet scolaire](#la-bibliothèque-de-cartes-carnet-scolaire)
 - [Avec les cartes intégrées de Home Assistant](#avec-les-cartes-intégrées-de-home-assistant)
 - [Une valeur périmée a l'air actuelle](#une-valeur-périmée-a-lair-actuelle)
 - [Ce qu'aucune carte ne montrera](#ce-quaucune-carte-ne-montrera)
@@ -35,11 +35,11 @@ les cartes intégrées suffisent.
 
 ---
 
-## La bibliothèque de cartes Pronote NG
+## La bibliothèque de cartes Carnet scolaire
 
 Dix cartes Lovelace faites pour cette intégration, dans un dépôt séparé :
-**[FiveElements/ha-pronote-ng-cards](https://github.com/FiveElements/ha-pronote-ng-cards)**
-— [documentation](https://fiveelements.github.io/ha-pronote-ng-cards/), une
+**[FiveElements/ha-carnet-scolaire-cards](https://github.com/FiveElements/ha-carnet-scolaire-cards)**
+— [documentation](https://fiveelements.github.io/ha-carnet-scolaire-cards/), une
 page par carte.
 
 Élève · Prochain cours · Vue journée · Emploi du temps · Devoirs · Notes ·
@@ -99,7 +99,7 @@ entities:
 C'est le moyen le plus court d'obtenir une semaine lisible sans aucune carte
 tierce. Le détail de cette carte — chaque option, ce que contient chacun des
 trois agendas, et **jusqu'où il sait** — est sur
-[la page qui lui est consacrée](https://fiveelements.github.io/ha-pronote-ng-cards/ha-calendar/). Un cours **annulé** y reste, avec son statut en description et le mot
+[la page qui lui est consacrée](https://fiveelements.github.io/ha-carnet-scolaire-cards/ha-calendar/). Un cours **annulé** y reste, avec son statut en description et le mot
 « annulé » dans le résumé : le retirer donnerait l'illusion qu'il n'a jamais
 existé.
 
@@ -417,7 +417,7 @@ normalement.
 
 | Document | Pour qui |
 | --- | --- |
-| [Documentation des cartes](https://fiveelements.github.io/ha-pronote-ng-cards/) | Les neuf cartes, réglage par réglage |
+| [Documentation des cartes](https://fiveelements.github.io/ha-carnet-scolaire-cards/) | Les neuf cartes, réglage par réglage |
 | [§ 4 du guide](GUIDE-UTILISATEUR.md#4-catalogue-des-entités) | Le catalogue des entités et de leurs attributs |
 | [§ 5.1 du guide](GUIDE-UTILISATEUR.md#51-les-services-qui-renvoient-une-réponse) | Les services à réponse, pour l'iCal et le PDF |
 | [Les huit blueprints](BLUEPRINTS.md) | Automatiser, plutôt qu'afficher |

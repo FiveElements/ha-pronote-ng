@@ -15,26 +15,26 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.pronote_ng.connectors.ecoledirecte.connector import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.connector import (
     EcoledirecteConnector,
 )
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_client import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_client import (
     EcoleDirecteClient,
 )
-from custom_components.pronote_ng.connectors.ecoledirecte.ed_limiter import (
+from custom_components.carnet_scolaire.connectors.ecoledirecte.ed_limiter import (
     EdRateLimiter,
     _sleep,
 )
-from custom_components.pronote_ng.connectors.errors import (
+from custom_components.carnet_scolaire.connectors.errors import (
     ConnectorChallengeRequired,
     ConnectorCredentialsError,
     ConnectorError,
     ConnectorTransportError,
     ConnectorUnsupportedError,
 )
-from custom_components.pronote_ng.connectors.protocol import Source
-from custom_components.pronote_ng.const import LimiterState, Priority, Tier
-from custom_components.pronote_ng.ratelimit import (
+from custom_components.carnet_scolaire.connectors.protocol import Source
+from custom_components.carnet_scolaire.const import LimiterState, Priority, Tier
+from custom_components.carnet_scolaire.ratelimit import (
     DeferReason,
     LoginRefusedByLimiter,
     RateLimitConfig,
@@ -885,7 +885,7 @@ def test_quiet_duration_counts_only_the_exact_overlap() -> None:
 
 def test_the_ed_estimator_is_login_plus_one_post_per_capable_tier_per_child() -> None:
     """The annexe B Pronote estimator would quote ~180 requests for an ED run."""
-    from custom_components.pronote_ng.options import (
+    from custom_components.carnet_scolaire.options import (
         estimate_ecoledirecte_daily_requests,
     )
 
