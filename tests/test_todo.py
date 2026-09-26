@@ -543,6 +543,38 @@ async def test_an_edit_to_what_the_teacher_wrote_is_refused_and_not_lost(
 
 
 @writes_on
+async def test_a_tick_after_the_child_was_renamed_reaches_the_right_child(
+    hass: HomeAssistant, account: PronoteAccount, parent_client: FakeClient
+) -> None:
+    """The live failure: "no child with id", on the first tick after a re-login.
+
+    The entity kept the identifier of the session it was created in. PRONOTE
+    had renamed the child since, so the write selected a child the client no
+    longer had. The rename here is not followed by a batch: the tick itself
+    is the first call to meet it, which is what a re-login inside the write
+    produces.
+    """
+    parent_client.rotate_identifiers()
+    renamed = {str(child.id) for child in parent_client.children}
+
+    await hass.services.async_call(
+        "todo",
+        "update_item",
+        {
+            "entity_id": _list_id("Enfant Un"),
+            "item": "HOMEWORK-1",
+            "status": "completed",
+        },
+        blocking=True,
+    )
+
+    assert parent_client.body_for("SaisieTAFFaitEleve") == {
+        "listeTAF": [{"N": "HOMEWORK-1", "TAFFait": True}]
+    }
+    assert parent_client.child_selections[-1] in renamed
+
+
+@writes_on
 async def test_unticking_an_item_sends_the_negative_and_not_nothing(
     hass: HomeAssistant, account: PronoteAccount, parent_client: FakeClient
 ) -> None:

@@ -326,6 +326,36 @@ def test_forgetting_a_student_resets_every_collection() -> None:
     assert detector.discussions(STUDENT, discussions(a_thread(unread=5))) == []
 
 
+def test_a_renamed_student_keeps_everything_the_detector_remembers() -> None:
+    """PRONOTE renames a child at every login; its history must follow.
+
+    Without the rename, the first snapshot under the new identifier primed
+    the detector instead of comparing, so a grade published across a
+    re-login, a cancellation and a new message were all swallowed.
+    """
+    detector = DeltaDetector()
+    detector.marks("OLD", marks(a_grade()))
+    detector.timetable("OLD", timetable(a_lesson()))
+    detector.discussions("OLD", discussions(a_thread(unread=1)))
+
+    detector.rename("OLD", "NEW")
+
+    assert len(detector.marks("NEW", marks(a_grade(), a_grade("GRADE-2")))) == 1
+    assert detector.timetable("NEW", timetable(a_lesson(canceled=True))) != []
+    assert detector.discussions("NEW", discussions(a_thread(unread=3))) != []
+    # And nothing is left under the old identifier to diff against.
+    assert detector.marks("OLD", marks(a_grade("GRADE-3"))) == []
+
+
+def test_renaming_a_student_nothing_remembers_is_harmless() -> None:
+    """A child renamed before its first snapshot has nothing to carry."""
+    detector = DeltaDetector()
+
+    detector.rename("OLD", "NEW")
+
+    assert detector.marks("NEW", marks(a_grade())) == []
+
+
 def test_forgetting_one_student_leaves_the_other_alone() -> None:
     """Two children on one parent account are independent."""
     detector = DeltaDetector()
