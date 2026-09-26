@@ -61,6 +61,13 @@ _LOGGER: Final = logging.getLogger(__name__)
 #: bootstrap test this integration accepts (§6.3).
 _START_BLOCK: Final = re.compile(r"Start ?\({(?P<param>[^}]*)}\)")
 
+#: A password field. PRONOTE's bootstrap page has none -- its login form is
+#: built by script -- so a page that carries one and no ``Start`` block is
+#: somebody else's login form: the portal the establishment delegates to.
+_PASSWORD_FIELD: Final = re.compile(
+    r"<input\b[^>]*\btype\s*=\s*[\"']?password\b", re.IGNORECASE
+)
+
 #: ``pronotepy.dataClasses.Period.instances`` is a mutable class attribute,
 #: global to the process, and it is never cleared. Two config entries therefore
 #: share a channel one can write while the other reads. Confining it needs a
@@ -101,6 +108,22 @@ class BootstrapUnavailable(PronoteAPIError):  # noqa: N818 -- a condition, not a
     A state the integration cannot establish reliably must not exist in its
     vocabulary. The repair opened for this exception enumerates the possible
     causes and picks none (§6.3).
+    """
+
+
+class BootstrapDelegated(BootstrapUnavailable):
+    """The address answered with a login form that is not PRONOTE's.
+
+    An establishment that delegates authentication to its ENT has PRONOTE
+    redirect every visit, direct login included, to the portal's own login
+    page. That page has a password field and no ``Start`` block, and until
+    this class existed it was reported as the generic "no session page" --
+    true, and useless to a parent whose address was right, whose space was
+    open, and who needed only to pick the ENT login instead.
+
+    Still a :class:`BootstrapUnavailable`, so every caller that does not know
+    this finer verdict keeps handling it exactly as before. It names what the
+    page *is*, which is observable, and nothing about the account.
     """
 
 
@@ -175,6 +198,10 @@ class _HardenedCommunication(pronoteAPI._Communication):
           Skipping it saves a parse on every login.
         """
         match = _START_BLOCK.search(html)
+        if not match and _PASSWORD_FIELD.search(html):
+            raise BootstrapDelegated(
+                "The PRONOTE address answered with another service's login form"
+            )
         if not match:
             raise BootstrapUnavailable(
                 "The PRONOTE bootstrap page did not contain a Start({...}) block"

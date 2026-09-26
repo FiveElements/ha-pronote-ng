@@ -979,6 +979,14 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
             _log_refusal(error)
             guard.note_login(LoginOutcome.MFA_REQUIRED, requests_used=cost)
             errors["base"] = "mfa_required"
+        except ProbeEntRequired as error:
+            # A bootstrap failure to the limiter, which is what it is: the
+            # password was never submitted, so it must not reach the credentials
+            # guard. Only the message differs from the arm below -- it names
+            # the one field that fixes it, the login mode.
+            _log_refusal(error)
+            guard.note_login(LoginOutcome.BOOTSTRAP, requests_used=cost)
+            errors["base"] = "ent_required"
         except ProbeBootstrapFailed as error:
             _log_refusal(error)
             # Says the bootstrap failed and stops there. pronotepy infers an IP
@@ -1549,6 +1557,16 @@ class ProbeMfaRequired(ProbeError):  # noqa: N818 -- a flow outcome, not an erro
 
 class ProbeBootstrapFailed(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
     """The bootstrap page carried no session block. Cause deliberately unnamed."""
+
+
+class ProbeEntRequired(ProbeError):  # noqa: N818 -- a flow outcome, not an error class
+    """Direct login was tried on a space that delegates it to the ENT portal.
+
+    The address is right and nothing was refused: the establishment has not
+    enabled PRONOTE's own login, so every visit is sent to the portal's form.
+    The credentials never left the house -- `pronotepy` stops at the bootstrap,
+    before the challenge -- which is why this is not an invalid password.
+    """
 
 
 class ProbeQrInvalid(ProbeError):  # noqa: N818 -- a flow outcome, not an error class

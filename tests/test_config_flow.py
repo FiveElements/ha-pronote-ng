@@ -40,6 +40,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.carnet_scolaire.account import PronoteAccount
 from custom_components.carnet_scolaire.config_flow import (
     ProbeBootstrapFailed,
+    ProbeEntRequired,
     ProbeEntUnknown,
     ProbeInvalidCredentials,
     ProbeMfaRequired,
@@ -710,6 +711,7 @@ def test_the_host_is_extracted_for_the_places_that_only_need_it() -> None:
         pytest.param(ProbeInvalidCredentials(), "invalid_auth", id="wrong-password"),
         pytest.param(ProbeMfaRequired(), "mfa_required", id="pin-demanded"),
         pytest.param(ProbeBootstrapFailed(), "bootstrap_failed", id="no-session-page"),
+        pytest.param(ProbeEntRequired(), "ent_required", id="delegated-to-ent"),
         pytest.param(OSError("refused"), "cannot_connect", id="unreachable"),
         pytest.param(RuntimeError("surprise"), "unknown", id="unexpected"),
     ],
