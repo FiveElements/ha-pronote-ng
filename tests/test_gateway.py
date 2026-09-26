@@ -2211,7 +2211,7 @@ def test_ticking_homework_posts_directly(
 
     assert calls == 1
     assert client.body_for("SaisieTAFFaitEleve") == {
-        "listeTAF": [{"N": "HOMEWORK-1", "TAFFait": True}]
+        "listeTAF": [{"N": "HOMEWORK-1", "E": 2, "TAFFait": True}]
     }
 
 
