@@ -145,13 +145,13 @@ async def _start(hass: HomeAssistant) -> str:
         DOMAIN, context={"source": SOURCE_USER}
     )
     assert result["type"] is FlowResultType.MENU
-    assert set(result["menu_options"]) == {
-        "qr_code",
-        "credentials",
-        "ent",
-        "ecoledirecte",
-    }
+    assert set(result["menu_options"]) == {"pronote", "ecoledirecte"}
 
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pronote"}
+    )
+    assert result["type"] is FlowResultType.MENU
+    assert set(result["menu_options"]) == {"qr_code", "credentials", "ent"}
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "credentials"}
     )
@@ -600,6 +600,9 @@ async def test_an_ent_account_records_its_provider(
         DOMAIN, context={"source": SOURCE_USER}
     )
     result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pronote"}
+    )
+    result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "ent"}
     )
     assert result["type"] is FlowResultType.FORM
@@ -789,6 +792,9 @@ async def test_the_guard_counts_the_requests_a_flow_login_really_spends(
 async def _start_qr(hass: HomeAssistant) -> str:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pronote"}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "qr_code"}
@@ -1008,6 +1014,39 @@ async def test_a_qr_payload_that_is_json_but_not_an_object_is_refused(
     assert probe.call_count == 0, "nothing may reach the school for a bad payload"
 
 
+async def test_the_first_screen_asks_the_platform_before_any_login_method(
+    hass: HomeAssistant,
+) -> None:
+    """The platform is chosen first, and PRONOTE's methods stay under PRONOTE.
+
+    With both sources on one screen, "username and password" sat next to
+    "EcoleDirecte" and a parent could not tell whose credentials it asked for.
+    The first menu therefore names platforms only; the three PRONOTE methods
+    appear once PRONOTE is chosen, and EcoleDirecte leads straight to its form.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["pronote", "ecoledirecte"]
+
+    pronote = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pronote"}
+    )
+    assert pronote["type"] is FlowResultType.MENU
+    assert pronote["step_id"] == "pronote"
+    assert pronote["menu_options"] == ["qr_code", "credentials", "ent"]
+
+    other = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    ecoledirecte = await hass.config_entries.flow.async_configure(
+        other["flow_id"], {"next_step_id": "ecoledirecte"}
+    )
+    assert ecoledirecte["type"] is FlowResultType.FORM
+    assert ecoledirecte["step_id"] == "ecoledirecte"
+
+
 async def test_the_first_screen_supplies_every_placeholder_its_text_uses(
     hass: HomeAssistant,
 ) -> None:
@@ -1019,7 +1058,7 @@ async def test_the_first_screen_supplies_every_placeholder_its_text_uses(
     this as the mechanism to use instead. The cost of that indirection is that
     the string and the code that feeds it can drift apart, and the failure is
     cosmetic-but-glaring: the very first screen of the flow greets a parent
-    with `![Pronote Next Generation]({logo})`.
+    with `![Carnet scolaire]({logo})`.
 
     So this reads the placeholders the catalogue actually asks for and checks
     the flow supplies each one, rather than asserting a hard-coded name.
@@ -1090,6 +1129,9 @@ async def test_a_failed_ent_login_comes_back_to_the_ent_form(
     """
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pronote"}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "ent"}
@@ -1975,6 +2017,9 @@ async def test_an_unknown_ent_provider_is_reported_on_the_provider_field(
     """
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pronote"}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "ent"}
