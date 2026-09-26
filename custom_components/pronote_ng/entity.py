@@ -59,7 +59,7 @@ class PronoteEntity(CoordinatorEntity["PronoteTierCoordinator"]):
     ) -> None:
         super().__init__(coordinator)
         self.account = account
-        self.student = student
+        self._student = student
         self._key = key
 
         # Config entry, then the child's minted key, then a stable functional
@@ -82,11 +82,27 @@ class PronoteEntity(CoordinatorEntity["PronoteTierCoordinator"]):
         # a second device, a second full set of entities, and the previous set
         # orphaned in the registry for ever, with every dashboard and
         # automation still pointing at the dead one. See `child_keys.py`.
-        self._attr_unique_id = (
-            f"{account.entry.entry_id}_{account.stable_key(student.id)}_{key}"
-        )
+        self._child_key = account.stable_key(student.id)
+        self._attr_unique_id = f"{account.entry.entry_id}_{self._child_key}_{key}"
         self._attr_translation_key = key
         self._attr_device_info = _student_device(account, student)
+
+    @property
+    def student(self) -> Student:
+        """The child as the account knows it *now*, found by its minted key.
+
+        Not the object the entity was built with: PRONOTE renames a child at
+        every login, and an entity that kept the identifier it was created
+        under read its snapshots from a key nothing published to any more --
+        its data froze at the last collection before the re-login -- and
+        every write it placed asked for a child the session no longer had.
+        On a live instance that was the first homework tick after the list
+        became writable: "no child with id".
+        """
+        current = self.account.student_for_key(self._child_key)
+        if current is not None:
+            self._student = current
+        return self._student
 
     @property
     def tier(self) -> Tier:

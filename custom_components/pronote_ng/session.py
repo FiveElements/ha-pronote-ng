@@ -85,7 +85,7 @@ from .ratelimit import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping, Sequence
     from datetime import datetime
 
     from .hardened_client import HardenedClient
@@ -366,6 +366,12 @@ class SessionManager:
         self._read_timeout = read_timeout
         self._on_rotated = on_credentials_rotated
         self._on_children_announced = on_children_announced
+        #: Maps an identifier a caller still holds to the one this client
+        #: announces for the same child, or ``None``. Set by the account, which
+        #: owns the child keys; see :meth:`_bind`.
+        self.resolve_child: (
+            Callable[[str, Sequence[tuple[str, str]]], str | None] | None
+        ) = None
 
         self._client: HardenedClient | None = None
         self._opened_at: float | None = None
@@ -573,10 +579,31 @@ class SessionManager:
 
         def work() -> Any:
             if student_id is not None and client.is_parent_account:
-                client.set_child(student_id)
+                client.set_child(self._live_child_id(client, student_id))
             return fn(client)
 
         return work
+
+    def _live_child_id(self, client: HardenedClient, student_id: str) -> str:
+        """The identifier this client announces for the child a caller named.
+
+        PRONOTE renames a child at every login, and a login can happen inside
+        any call -- the session expired, so this very call opened a new one.
+        The caller still holds the identifier of the session before: the
+        account learns the new roster only after its batch. Without this,
+        every call after a re-login raised ``ChildNotFound`` -- the whole
+        batch's collections, and on a live instance the first tick of a
+        homework item, which Home Assistant reported as "no child with id".
+        The account resolves it through the child's minted key; an identifier
+        it cannot place is passed on unchanged, and ``set_child`` refuses it as
+        before.
+        """
+        announced = [(child.id, child.name) for child in client.children]
+        if self.resolve_child is None or any(
+            child_id == student_id for child_id, _ in announced
+        ):
+            return student_id
+        return self.resolve_child(student_id, announced) or student_id
 
     def _reconcile(self, tier: str, result: Any, charged: int) -> None:
         """Charge the difference when the gateway spent more than declared.

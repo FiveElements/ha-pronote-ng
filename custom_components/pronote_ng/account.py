@@ -251,6 +251,9 @@ class PronoteAccount:
             connector_deps["password"] = str(entry.data.get("password", ""))
             connector_deps["qcm_json"] = entry.data.get("qcm_json") or {}
         self.connector = build_connector(hass, entry, **connector_deps)
+        extras = self.extras
+        if extras is not None:
+            extras.session.resolve_child = self._live_child_id
         enabled = tier_enabled(options)
         supported = scheduled_tiers(self.connector.capabilities, enabled)
         self.scheduler = FetchScheduler(
@@ -307,6 +310,10 @@ class PronoteAccount:
         #: every `unique_id`. Empty until then, and deliberately not defaulted
         #: to the resource identifier: see `stable_key`.
         self._child_keys: dict[str, str] = {}
+        #: Every resource identifier ever paired, with its key -- the current
+        #: ones and those a login has since replaced. What a caller still
+        #: holding a replaced identifier is resolved through.
+        self._keys_ever: dict[str, str] = {}
         self._unsub_tick: Any | None = None
         self._tick_lock = asyncio.Lock()
         #: Batches that have run to completion, empty ones included. It exists
@@ -599,6 +606,7 @@ class PronoteAccount:
             stored, [(student.id, student.name) for student in students]
         )
         self._child_keys = keys
+        self._keys_ever.update(keys)
         for note in notes:
             # Keys only, never a name: this lands in the log users attach to
             # public issues (§8.2). It is logged at all because the silence
@@ -885,6 +893,32 @@ class PronoteAccount:
                 return student_id
         return None
 
+    def student_for_key(self, key: str) -> Student | None:
+        """The child currently paired with a minted key, or ``None``."""
+        student_id = self.student_id_for_key(key)
+        return next(
+            (student for student in self.state.students if student.id == student_id),
+            None,
+        )
+
+    def _live_child_id(
+        self, stale: str, announced: Sequence[tuple[str, str]]
+    ) -> str | None:
+        """Which of ``announced`` is the child once known as ``stale``.
+
+        Run by the session in its worker thread, right before ``set_child``,
+        when the identifier it was handed is not on the client it holds --
+        because the call it is about to place has just logged in again and
+        PRONOTE renamed the child. Pure: it pairs the new roster against the
+        stored table without storing anything, which the account does itself
+        after the batch.
+        """
+        key = self._keys_ever.get(stale)
+        if key is None:
+            return None
+        keys, _, _ = pair(list(self.entry.data.get(CONF_CHILD_KEYS) or ()), announced)
+        return next((child for child, found in keys.items() if found == key), None)
+
     def stable_key(self, student_id: str) -> str:
         """The minted key for a child, for use in a `unique_id`.
 
@@ -1069,7 +1103,52 @@ class PronoteAccount:
             "before; following them from this batch on",
             len(newcomers),
         )
+        before = {
+            student.id: self._child_keys.get(student.id)
+            for student in self.state.students
+        }
         await self._async_load_session_facts()
+        self._async_follow_renamed_children(before)
+
+    @callback
+    def _async_follow_renamed_children(self, before: Mapping[str, str | None]) -> None:
+        """Move what is held under a child's old identifier to its new one.
+
+        A "newcomer" above is, far more often than a child enrolled mid-year, a
+        child PRONOTE renamed at the last login. Re-reading the session facts
+        gives the account the new identifier; the snapshots, the change
+        detector's memory and the per-student dispensation all stayed under
+        the old one. Left there, every entity read a snapshot nothing would
+        refresh again, and each tier counted as never collected for the new
+        identifier -- so it ran as a first collection, through quiet hours, to
+        publish where no entity looked.
+        """
+        current = {key: student_id for student_id, key in self._child_keys.items()}
+        renamed = {
+            old: current[key]
+            for old, key in before.items()
+            if key is not None and key in current and current[key] != old
+        }
+        if not renamed:
+            return
+        for coordinator in self.coordinators.values():
+            if not coordinator.data:
+                continue
+            moved = False
+            for old, new in renamed.items():
+                snapshot = coordinator.data.pop(old, None)
+                if snapshot is not None and new not in coordinator.data:
+                    coordinator.data[new] = replace(snapshot, student_id=new)
+                    moved = True
+            if moved:
+                coordinator.async_update_listeners()
+        for old, new in renamed.items():
+            self.delta.rename(old, new)
+        _LOGGER.info(
+            "%d child(ren) renamed by PRONOTE at the last login; their data "
+            "follows them",
+            len(renamed),
+        )
 
     async def async_request_tick(self) -> None:
         """Serve what is due now, without waiting for the next heartbeat.

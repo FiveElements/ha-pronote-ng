@@ -161,6 +161,21 @@ class DeltaDetector:
             return None
         return [item for item in incoming if item not in previous]
 
+    def rename(self, old: str, new: str) -> None:
+        """Carry what is remembered about one student to a new identifier.
+
+        PRONOTE renames a child at every login. Without this, the first
+        snapshot under the new identifier was a "first pass" and primed the
+        detector instead of comparing: a grade published in between was
+        never announced.
+        """
+        for key in [k for k in self._seen_ids if k[0] == old]:
+            self._seen_ids[(new, key[1])] = self._seen_ids.pop(key)
+        if old in self._lesson_signatures:
+            self._lesson_signatures[new] = self._lesson_signatures.pop(old)
+        if old in self._unread:
+            self._unread[new] = self._unread.pop(old)
+
     def forget(self, student_id: str) -> None:
         """Drop everything remembered about one student."""
         for key in [k for k in self._seen_ids if k[0] == student_id]:

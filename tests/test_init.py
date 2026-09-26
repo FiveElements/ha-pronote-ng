@@ -374,6 +374,76 @@ async def test_a_rotated_identifier_is_not_read_as_a_new_child(
     } == keys_before
 
 
+async def test_a_login_that_renames_the_children_leaves_no_data_behind(
+    hass: HomeAssistant,
+    account: PronoteAccount,
+    parent_client: FakeClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The batch after a re-login collects, and the data follows the child.
+
+    Measured on a live instance: a re-login inside a batch renamed the child,
+    every tier of that batch then asked for the old identifier and failed
+    with "not on this account any more", and the next batches published
+    under the new identifier while every entity kept reading the old one --
+    a dashboard frozen on the evening before, a first homework tick refused
+    with "no child with id".
+    """
+    ids_before = {student.id for student in account.students}
+    keys_before = {account.stable_key(sid) for sid in ids_before}
+    posted = len(parent_client.posted_names)
+
+    # Dropping the held client makes the next call log in again, and the
+    # login announces the renamed roster -- what an expired session does.
+    parent_client.rotate_identifiers()
+    assert account.extras is not None
+    await account.extras.session._reopen()
+    account.scheduler.request([Tier.TIMETABLE])
+    await account.async_request_tick()
+    await hass.async_block_till_done()
+
+    assert "not on this account any more" not in caplog.text
+    assert FUNC_TIMETABLE[0] in parent_client.posted_names[posted:]
+    ids_after = {student.id for student in account.students}
+    assert ids_after.isdisjoint(ids_before)
+    assert {account.stable_key(sid) for sid in ids_after} == keys_before
+    for coordinator in account.coordinators.values():
+        assert not set(coordinator.data or {}) & ids_before
+    for student_id in ids_after:
+        snapshot = account.snapshot(Tier.TIMETABLE, student_id)
+        assert snapshot is not None
+        assert snapshot.student_id == student_id
+    state = hass.states.get("sensor.enfant_un_timetable_this_week")
+    assert state is not None
+    assert state.state not in ("unavailable", "unknown")
+
+
+async def test_an_identifier_the_account_never_paired_is_left_to_fail(
+    account: PronoteAccount,
+) -> None:
+    """Resolution goes through a known key, never through a guess.
+
+    An identifier no pairing ever produced has no key, so no child it could
+    safely be mapped to; ``set_child`` then refuses it as it always did,
+    rather than a call landing on whichever child happened to be first.
+    """
+    assert account._live_child_id("NEVER-PAIRED", [("NEW-1", "Enfant Un")]) is None
+
+
+async def test_a_rename_skips_a_tier_that_holds_nothing(
+    account: PronoteAccount,
+) -> None:
+    """A tier with no data yet has nothing to carry, and must not raise."""
+    student = account.students[0]
+    key = account.stable_key(student.id)
+    account.coordinators[Tier.HISTORY].data = {}
+
+    account._async_follow_renamed_children({"GONE-1": key})
+
+    assert account.coordinators[Tier.HISTORY].data == {}
+    assert account.snapshot(Tier.TIMETABLE, student.id) is not None
+
+
 async def test_setup_uses_the_pronote_connector(account: PronoteAccount) -> None:
     """The account source must stay explicit when another school backend is added."""
     assert account.connector.capabilities.source is Source.PRONOTE
