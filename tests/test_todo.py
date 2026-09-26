@@ -497,7 +497,7 @@ async def test_ticking_an_item_sends_the_status_and_never_the_wording(
     )
 
     assert parent_client.body_for("SaisieTAFFaitEleve") == {
-        "listeTAF": [{"N": "HOMEWORK-1", "TAFFait": True}]
+        "listeTAF": [{"N": "HOMEWORK-1", "E": 2, "TAFFait": True}]
     }
 
 
@@ -569,7 +569,7 @@ async def test_a_tick_after_the_child_was_renamed_reaches_the_right_child(
     )
 
     assert parent_client.body_for("SaisieTAFFaitEleve") == {
-        "listeTAF": [{"N": "HOMEWORK-1", "TAFFait": True}]
+        "listeTAF": [{"N": "HOMEWORK-1", "E": 2, "TAFFait": True}]
     }
     assert parent_client.child_selections[-1] in renamed
 
@@ -596,7 +596,7 @@ async def test_unticking_an_item_sends_the_negative_and_not_nothing(
     )
 
     assert parent_client.body_for("SaisieTAFFaitEleve") == {
-        "listeTAF": [{"N": "HOMEWORK-2", "TAFFait": False}]
+        "listeTAF": [{"N": "HOMEWORK-2", "E": 2, "TAFFait": False}]
     }
 
 

@@ -627,7 +627,7 @@ async def test_ticking_a_homework_item_posts_it_and_asks_for_a_re_read(
     )
 
     assert parent_client.body_for("SaisieTAFFaitEleve") == {
-        "listeTAF": [{"N": "HOMEWORK-1", "TAFFait": True}]
+        "listeTAF": [{"N": "HOMEWORK-1", "E": 2, "TAFFait": True}]
     }
     assert writes_on.scheduler.diagnostics()[str(Tier.HOMEWORK)]["boosted"] is True
 

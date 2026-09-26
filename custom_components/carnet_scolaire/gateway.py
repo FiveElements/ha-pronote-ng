@@ -313,6 +313,10 @@ _PRONOTE_FILE_SEGMENT: Final = "fichiersexternes"
 #: there would be unreadable.
 _ATTACHMENT_FILE: Final = 1
 
+#: ``E`` on a line of a ``Saisie*`` list: the entity state, ``2`` meaning
+#: "modified" (``1`` created, ``3`` deleted). A line without it is not applied.
+_ENTITY_MODIFIED: Final = 2
+
 #: The only schemes an attachment address is published under. A consumer puts
 #: this value in an `href`, so the list is a whitelist and not a filter.
 _PUBLISHABLE_SCHEMES: Final = frozenset({"http", "https"})
@@ -1884,11 +1888,18 @@ class PronoteGateway:
         ``pronotepy.Homework`` has to be kept alive across the DTO boundary --
         an object read after its session closed raises ``Erreur.G = 22``
         (§3.1).
+
+        The line carries ``E`` (the entity state, ``2`` for a modification),
+        which ``Homework.set_done`` omits. Without it the server answers
+        normally and records nothing: measured on a live instance, two ticks
+        were accepted, billed, and read back unticked by the next collection,
+        with no error anywhere. Maintained clients of the same protocol send
+        ``E: 2`` on this request; ``pronotepy`` 2.15.7 predates that.
         """
         client.post(
             "SaisieTAFFaitEleve",
             88,
-            {"listeTAF": [{"N": homework_id, "TAFFait": done}]},
+            {"listeTAF": [{"N": homework_id, "E": _ENTITY_MODIFIED, "TAFFait": done}]},
         )
         return 1
 
