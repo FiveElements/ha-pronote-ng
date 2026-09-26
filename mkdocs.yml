@@ -1,6 +1,6 @@
 site_name: Carnet scolaire
 site_description: >-
-  Intégration Home Assistant pour PRONOTE — seconde génération.
+  Intégration Home Assistant pour PRONOTE et EcoleDirecte.
   Ordonnanceur multi-cadence, limiteur de débit débité à l'admission,
   et aucun secret dans un état d'entité.
 site_url: https://fiveelements.github.io/ha-carnet-scolaire/
@@ -30,22 +30,23 @@ theme:
   icon:
     repo: fontawesome/brands/github
   palette:
-    # The gold and green of the logo, in both directions. `media` picks the
-    # reader's system preference first; the toggles then override it.
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: green
-      accent: amber
-      toggle:
-        icon: material/weather-sunny
-        name: Passer au thème sombre
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: green
-      accent: amber
+    # The visual identity is dark first -- deep black lit by neon gold and
+    # emerald -- so the dark scheme is the default whatever the system says,
+    # and the light one is a toggle away. Both are `custom`: the actual colours
+    # live in assets/extra.css, as the identity's tokens, not as Material's
+    # named hues, none of which is the brand's gold or emerald.
+    - scheme: slate
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Passer au thème clair
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Passer au thème sombre
   features:
     - navigation.instant
     - navigation.tracking
