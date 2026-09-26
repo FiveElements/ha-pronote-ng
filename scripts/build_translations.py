@@ -225,6 +225,12 @@ CONFIG_EN: dict[str, Any] = {
                 "account_pin": "Two-factor PIN (if your account uses one)",
             },
             "data_description": {
+                "device_name": (
+                    "The name PRONOTE shows for this Home Assistant in the "
+                    "list of devices connected to the account -- only there. "
+                    "It does not name the device in Home Assistant, which "
+                    "takes the pupil's name from PRONOTE."
+                ),
                 "qr_pin": (
                     "The one you chose in the app while generating the QR "
                     "code. Not the account PIN below -- both are four digits, "
@@ -331,6 +337,12 @@ CONFIG_EN: dict[str, Any] = {
                 "account_pin": "Two-factor PIN (if your account uses one)",
             },
             "data_description": {
+                "device_name": (
+                    "The name PRONOTE shows for this Home Assistant in the "
+                    "list of devices connected to the account -- only there. "
+                    "It does not name the device in Home Assistant, which "
+                    "takes the pupil's name from PRONOTE."
+                ),
                 "qr_pin": (
                     "The one you chose in the app while generating the QR "
                     "code. Not the account PIN below -- both are four digits, "
@@ -467,6 +479,12 @@ CONFIG_FR: dict[str, Any] = {
                 "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
             },
             "data_description": {
+                "device_name": (
+                    "Le nom sous lequel PRONOTE affiche ce Home Assistant dans "
+                    "la liste des appareils connectés au compte, et seulement "
+                    "là. Il ne nomme pas l'appareil dans Home Assistant, qui "
+                    "prend le nom de l'élève fourni par PRONOTE."
+                ),
                 "qr_pin": (
                     "Celui que vous avez choisi dans l'application en générant "
                     "le QR code. Pas le code PIN du compte ci-dessous : les "
@@ -575,6 +593,12 @@ CONFIG_FR: dict[str, Any] = {
                 "account_pin": "Code PIN à deux facteurs (si votre compte en a un)",
             },
             "data_description": {
+                "device_name": (
+                    "Le nom sous lequel PRONOTE affiche ce Home Assistant dans "
+                    "la liste des appareils connectés au compte, et seulement "
+                    "là. Il ne nomme pas l'appareil dans Home Assistant, qui "
+                    "prend le nom de l'élève fourni par PRONOTE."
+                ),
                 "qr_pin": (
                     "Celui que vous avez choisi dans l'application en générant "
                     "le QR code. Pas le code PIN du compte ci-dessous : les "
