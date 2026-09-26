@@ -69,6 +69,7 @@ from .const import (
     Priority,
     SessionStrategy,
 )
+from .ent_providers import resolve_ent_provider
 from .hardened_client import (
     BootstrapUnavailable,
     build_client,
@@ -1074,10 +1075,8 @@ def _resolve_ent(credentials: SessionCredentials) -> Callable[..., Any] | None:
     if credentials.login_mode is not LoginMode.ENT or not credentials.ent_provider:
         return None
 
-    from pronotepy import ent as ent_module  # noqa: PLC0415 -- optional import
-
-    provider = getattr(ent_module, credentials.ent_provider, None)
-    if provider is None or not callable(provider):
+    provider = resolve_ent_provider(credentials.ent_provider)
+    if provider is None:
         _LOGGER.error("unknown ENT provider %r", credentials.ent_provider)
         return None
-    return provider  # type: ignore[no-any-return]
+    return provider

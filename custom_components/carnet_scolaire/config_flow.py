@@ -118,6 +118,7 @@ from .const import (
     LoginMode,
     SessionStrategy,
 )
+from .ent_providers import ent_provider_names
 from .login_guard import clear_login_penalties, limiter_state_store, login_guard
 from .options import (
     build_rate_limit_config,
@@ -149,20 +150,16 @@ STEP_REAUTH_QR: Final = "reauth_qr"
 
 
 def _ent_options() -> list[SelectOptionDict]:
-    """The ENT providers ``pronotepy`` actually ships.
+    """The ENT providers a login can actually use.
 
     Read from the installed library rather than hard-coded: a list copied into
     this file would silently rot at the next upstream release, and the failure
-    mode is a user picking a provider that no longer exists.
+    mode is a user picking a provider that no longer exists. The list comes
+    from :mod:`.ent_providers`, which also binds the portals ``pronotepy``
+    writes but leaves disabled, so what the form offers and what a login
+    resolves cannot drift apart.
     """
-    from pronotepy import ent as ent_module  # noqa: PLC0415 -- optional dependency
-
-    names = sorted(
-        name
-        for name in dir(ent_module)
-        if not name.startswith("_") and callable(getattr(ent_module, name))
-    )
-    return [SelectOptionDict(value=name, label=name) for name in names]
+    return [SelectOptionDict(value=name, label=name) for name in ent_provider_names()]
 
 
 _URL_SELECTOR: Final = TextSelector(TextSelectorConfig(type=TextSelectorType.URL))

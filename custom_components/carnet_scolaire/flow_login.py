@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_READ_TIMEOUT,
     LoginMode,
 )
+from .ent_providers import resolve_ent_provider
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -227,18 +228,16 @@ def _ent_provider(data: Mapping[str, Any]) -> Callable[..., Any] | None:
     if not name:
         return None
 
-    from pronotepy import ent as ent_module  # noqa: PLC0415 -- optional dependency
-
     from .config_flow import ProbeEntUnknown  # noqa: PLC0415 -- the flow owns it
 
-    provider = getattr(ent_module, str(name), None)
-    if provider is None or not callable(provider):
+    provider = resolve_ent_provider(str(name))
+    if provider is None:
         # The name is the user's own input, not a secret: it names a public
         # regional portal and is what has to appear in the log for the message
         # on the screen to be actionable.
         _LOGGER.error("unknown ENT provider %r", name)
         raise ProbeEntUnknown(str(name))
-    return provider  # type: ignore[no-any-return]
+    return provider
 
 
 def _describe(client: HardenedClient, data: Mapping[str, Any]) -> dict[str, Any]:
