@@ -16,8 +16,8 @@
 
  Retrouvez dans Home Assistant les informations scolaires de vos enfants : **emploi du temps, devoirs, notes, moyennes, absences, retards, évaluations, actualités, discussions, menus et bien plus encore.**
 
- L'intégration est conçue pour les élèves comme pour les parents utilisant un compte PRONOTE ou un ENT.
- > 🚀 **Carnet scolaire s'appelait auparavant *Pronote NG*** (domaine `pronote_ng`). Une entrée créée sous l'ancien nom doit être supprimée puis ajoutée à nouveau : Home Assistant ne sait pas migrer un domaine.
+ L'intégration est conçue pour les élèves comme pour les parents utilisant un compte PRONOTE, EcoleDirecte ou un ENT.
+ > 🏫 **Votre établissement utilise une autre plateforme ?** Carnet scolaire est conçu pour accueillir plusieurs sources : PRONOTE et EcoleDirecte sont les deux premières. Si l'ENT ou le logiciel de vie scolaire de vos enfants n'est pas encore pris en charge, [ouvrez un ticket](https://github.com/FiveElements/ha-carnet-scolaire/issues/new?template=feature_request.yml&title=%5Bnouvelle%20source%5D%20) en indiquant la plateforme, le type de compte (parent ou élève) et les données qui vous seraient utiles. Chaque demande aide à choisir la prochaine source à intégrer.
 
 
 <p align="center">
