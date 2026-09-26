@@ -28,6 +28,7 @@
           "account_pin": "Two-factor PIN (if your account uses one)"
         },
         "data_description": {
+          "device_name": "The name PRONOTE shows for this Home Assistant in the list of devices connected to the account -- only there. It does not name the device in Home Assistant, which takes the pupil's name from PRONOTE.",
           "qr_pin": "The one you chose in the app while generating the QR code. Not the account PIN below -- both are four digits, and they are different codes.",
           "account_pin": "The two-factor PIN set on the PRONOTE account itself, if it has one. Also four digits, and not the code above. Used for this login only and never stored. You will be asked for it again if PRONOTE requires it."
         }
@@ -95,6 +96,7 @@
           "account_pin": "Two-factor PIN (if your account uses one)"
         },
         "data_description": {
+          "device_name": "The name PRONOTE shows for this Home Assistant in the list of devices connected to the account -- only there. It does not name the device in Home Assistant, which takes the pupil's name from PRONOTE.",
           "qr_pin": "The one you chose in the app while generating the QR code. Not the account PIN below -- both are four digits, and they are different codes.",
           "account_pin": "The two-factor PIN set on the PRONOTE account itself, if it has one. Also four digits, and not the code above. Used for this login only and never stored. You will be asked for it again if PRONOTE requires it."
         }
