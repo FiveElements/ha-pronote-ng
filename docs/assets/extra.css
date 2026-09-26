@@ -1,8 +1,129 @@
-/* Feuille de style complémentaire du thème Material.
-   Une seule chose ici : la taille du logo dans la barre de titre. */
+/* Feuille de style complémentaire du thème Material : l'identité visuelle
+   « Carnet scolaire », puis la taille du logo dans la barre de titre.
+
+   L'univers est sombre d'abord -- un noir profond éclairé par deux accents
+   néon, l'or et l'émeraude, et tenu par une couleur de structure, le bronze.
+   Les cinq teintes de la charte sont déclarées une fois, ici, et tout le reste
+   en dérive. */
+
+:root {
+  --carnet-noir: #080c10;    /* arrière-plan */
+  --carnet-or: #ffc83b;      /* accent chaud */
+  --carnet-emeraude: #00e5a3; /* accent froid */
+  --carnet-bronze: #8a7039;  /* structure : bords, séparateurs */
+  --carnet-blanc: #f1f5f9;   /* texte courant sur fond sombre */
+
+  /* Sur fond clair, l'or et l'émeraude néon n'ont pas le contraste d'un texte
+     lisible (moins de 2:1 sur blanc). Le thème clair emploie donc les mêmes
+     teintes assombries, qui gardent la famille de couleur et passent 4.5:1. */
+  --carnet-or-sombre: #8a5a00;
+  --carnet-emeraude-sombre: #00704f;
+}
+
+/* ---------------------------------------------------------------------------
+   Thème sombre (par défaut)
+   ------------------------------------------------------------------------ */
+[data-md-color-scheme="slate"] {
+  --md-hue: 210;
+  --md-default-bg-color: var(--carnet-noir);
+  --md-default-fg-color: rgb(241 245 249 / 87%);
+  --md-default-fg-color--light: rgb(241 245 249 / 62%);
+  --md-default-fg-color--lighter: rgb(241 245 249 / 32%);
+  --md-default-fg-color--lightest: rgb(241 245 249 / 12%);
+  --md-typeset-color: var(--carnet-blanc);
+
+  --md-primary-fg-color: var(--carnet-noir);
+  --md-primary-fg-color--light: #121820;
+  --md-primary-fg-color--dark: #04070a;
+  --md-primary-bg-color: var(--carnet-blanc);
+  --md-primary-bg-color--light: rgb(241 245 249 / 70%);
+
+  --md-accent-fg-color: var(--carnet-or);
+  --md-accent-fg-color--transparent: rgb(255 200 59 / 10%);
+  --md-accent-bg-color: var(--carnet-noir);
+
+  --md-typeset-a-color: var(--carnet-emeraude);
+  --md-code-bg-color: #0f151c;
+  --md-footer-bg-color: #04070a;
+  --md-footer-bg-color--dark: #020406;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  color: var(--carnet-or);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h2 {
+  color: var(--carnet-emeraude);
+}
+
+/* ---------------------------------------------------------------------------
+   Thème clair
+   ------------------------------------------------------------------------ */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--carnet-noir);
+  --md-primary-fg-color--light: #121820;
+  --md-primary-fg-color--dark: #04070a;
+  --md-primary-bg-color: var(--carnet-blanc);
+  --md-primary-bg-color--light: rgb(241 245 249 / 70%);
+
+  --md-accent-fg-color: var(--carnet-or-sombre);
+  --md-accent-fg-color--transparent: rgb(138 90 0 / 10%);
+  --md-accent-bg-color: #fff;
+
+  --md-typeset-a-color: var(--carnet-emeraude-sombre);
+}
+
+[data-md-color-scheme="default"] .md-typeset h1 {
+  color: var(--carnet-or-sombre);
+}
+
+[data-md-color-scheme="default"] .md-typeset h2 {
+  color: var(--carnet-emeraude-sombre);
+}
+
+/* ---------------------------------------------------------------------------
+   Structure : le bronze tient les bords, dans les deux thèmes
+   ------------------------------------------------------------------------ */
+
+/* L'en-tête est noir dans les deux thèmes, comme le fond de la bannière ; un
+   filet de bronze le sépare de la page. */
+.md-header {
+  border-bottom: 1px solid var(--carnet-bronze);
+}
+
+.md-tabs {
+  border-bottom: 1px solid rgb(138 112 57 / 50%);
+}
+
+.md-typeset hr {
+  border-bottom-color: var(--carnet-bronze);
+}
+
+.md-typeset table:not([class]) {
+  border-color: rgb(138 112 57 / 45%);
+}
+
+.md-typeset table:not([class]) th {
+  border-bottom: 1px solid var(--carnet-bronze);
+}
+
+/* La bannière de la page d'accueil : pleine largeur, coins adoucis, et un
+   filet de bronze qui la raccroche aux autres bords. */
+.carnet-banniere {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid rgb(138 112 57 / 60%);
+  border-radius: 0.4rem;
+  margin: 0 0 1.2rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Logo de la barre de titre
+   ------------------------------------------------------------------------ */
 
 /* Material contraint le logo d'en-tête à 1.2rem (24 px), ce qui écrase les
-   détails du papillon. On l'agrandit à 1.8rem (36 px) en reprenant le
+   détails du carnet. On l'agrandit à 1.8rem (36 px) en reprenant le
    rembourrage du bouton, parce que la hauteur de l'en-tête est dictée par
    `.md-header__title` (2.4rem, soit 48 px) : sans cette compensation,
    l'en-tête grandit et le titre se décale d'autant.

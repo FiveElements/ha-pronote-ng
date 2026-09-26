@@ -5,7 +5,9 @@ hide:
 
 # Carnet scolaire
 
-**Intégration Home Assistant pour PRONOTE — seconde génération.**
+![Carnet scolaire](assets/banner.jpg){ .carnet-banniere }
+
+**Intégration Home Assistant pour PRONOTE et EcoleDirecte.**
 
 [![Validate](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/validate.yml?branch=main&label=validate&logo=github)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/validate.yml)
 [![Hassfest](https://img.shields.io/github/actions/workflow/status/FiveElements/ha-carnet-scolaire/hassfest.yml?branch=main&label=hassfest&logo=homeassistant&logoColor=white)](https://github.com/FiveElements/ha-carnet-scolaire/actions/workflows/hassfest.yml)

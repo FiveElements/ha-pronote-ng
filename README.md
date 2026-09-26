@@ -335,7 +335,7 @@ le fichier de diagnostic est au [§ 11 du guide](https://fiveelements.github.io/
 - 📖 contribuez à la documentation
 - 📣 partagez le projet avec d'autres utilisateurs de Home Assistant
 
- Chaque étoile et chaque contribution aide le projet à être découvert par les utilisateurs qui recherchent une intégration **PRONOTE pour Home Assistant**.
+ Chaque étoile et chaque contribution aide le projet à être découvert par les utilisateurs qui recherchent une intégration **PRONOTE ou EcoleDirecte pour Home Assistant**.
 
 
  ## 📄 Licence
