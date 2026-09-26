@@ -2,13 +2,20 @@
   "config": {
     "step": {
       "user": {
-        "title": "Pronote Next Generation",
-        "description": "![Pronote Next Generation]({logo})\n\nChoose how to connect. The QR code from the PRONOTE mobile app is the most reliable method: it enrols this Home Assistant as a device and avoids storing your password.",
+        "title": "Carnet scolaire",
+        "description": "![Carnet scolaire]({logo})\n\nWhich platform does your child's school use? Choose the one you log in to for the timetable, homework and grades.",
+        "menu_options": {
+          "pronote": "PRONOTE",
+          "ecoledirecte": "EcoleDirecte"
+        }
+      },
+      "pronote": {
+        "title": "PRONOTE",
+        "description": "Choose how to connect. The QR code from the PRONOTE mobile app is the most reliable method: it enrols this Home Assistant as a device and avoids storing your password.",
         "menu_options": {
           "qr_code": "QR code from the mobile app (recommended)",
           "credentials": "Username and password",
-          "ent": "Federated login (ENT)",
-          "ecoledirecte": "EcoleDirecte"
+          "ent": "Federated login (ENT)"
         }
       },
       "qr_code": {

@@ -179,9 +179,20 @@ TIERS: list[tuple[str, str, str]] = [
 CONFIG_EN: dict[str, Any] = {
     "step": {
         "user": {
-            "title": "Pronote Next Generation",
+            "title": "Carnet scolaire",
             "description": (
-                "![Pronote Next Generation]({logo})\n\n"
+                "![Carnet scolaire]({logo})\n\n"
+                "Which platform does your child's school use? Choose the one "
+                "you log in to for the timetable, homework and grades."
+            ),
+            "menu_options": {
+                "pronote": "PRONOTE",
+                "ecoledirecte": "EcoleDirecte",
+            },
+        },
+        "pronote": {
+            "title": "PRONOTE",
+            "description": (
                 "Choose how to connect. The QR code from the PRONOTE mobile "
                 "app is the most reliable method: it enrols this Home "
                 "Assistant as a device and avoids storing your password."
@@ -190,7 +201,6 @@ CONFIG_EN: dict[str, Any] = {
                 "qr_code": "QR code from the mobile app (recommended)",
                 "credentials": "Username and password",
                 "ent": "Federated login (ENT)",
-                "ecoledirecte": "EcoleDirecte",
             },
         },
         "qr_code": {
@@ -405,9 +415,21 @@ CONFIG_EN: dict[str, Any] = {
 CONFIG_FR: dict[str, Any] = {
     "step": {
         "user": {
-            "title": "Pronote Next Generation",
+            "title": "Carnet scolaire",
             "description": (
-                "![Pronote Next Generation]({logo})\n\n"
+                "![Carnet scolaire]({logo})\n\n"
+                "Quelle plateforme l'établissement de votre enfant "
+                "utilise-t-il ? Choisissez celle sur laquelle vous consultez "
+                "l'emploi du temps, les devoirs et les notes."
+            ),
+            "menu_options": {
+                "pronote": "PRONOTE",
+                "ecoledirecte": "EcoleDirecte",
+            },
+        },
+        "pronote": {
+            "title": "PRONOTE",
+            "description": (
                 "Choisissez le mode de connexion. Le QR code de l'application "
                 "mobile PRONOTE est le plus fiable : il enrôle ce Home "
                 "Assistant comme appareil et évite de conserver votre mot de "
@@ -417,7 +439,6 @@ CONFIG_FR: dict[str, Any] = {
                 "qr_code": "QR code de l'application mobile (recommandé)",
                 "credentials": "Identifiant et mot de passe",
                 "ent": "Connexion par l'ENT",
-                "ecoledirecte": "EcoleDirecte",
             },
         },
         "qr_code": {

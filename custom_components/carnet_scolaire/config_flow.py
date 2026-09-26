@@ -137,6 +137,7 @@ if TYPE_CHECKING:
 _LOGGER: Final = logging.getLogger(__name__)
 
 STEP_USER: Final = "user"
+STEP_PRONOTE: Final = "pronote"
 STEP_QR_CODE: Final = "qr_code"
 STEP_CREDENTIALS: Final = "credentials"
 STEP_ENT: Final = "ent"
@@ -452,20 +453,32 @@ class PronoteConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,  # noqa: ARG002 -- a menu, not a form
     ) -> ConfigFlowResult:
-        """Ask which of the three login methods to use."""
+        """Ask which school platform the account lives on.
+
+        The platform comes first because it decides everything after it:
+        PRONOTE has three ways in, EcoleDirecte one, and a parent looking for
+        "username and password" among four options could not tell whose they
+        were. Asking the platform first keeps each later list about one
+        product.
+        """
         return self.async_show_menu(
             step_id=STEP_USER,
-            menu_options=[
-                STEP_QR_CODE,
-                STEP_CREDENTIALS,
-                STEP_ENT,
-                STEP_ECOLEDIRECTE,
-            ],
+            menu_options=[STEP_PRONOTE, STEP_ECOLEDIRECTE],
             # See BRAND_LOGO_URL for why this is a URL and for the version gate
             # that keeps it: the mark reaches this screen as a markdown image
             # because hassfest refuses a URL written into the translation
             # string itself, and names a placeholder as the way to pass one.
             description_placeholders={"logo": BRAND_LOGO_URL},
+        )
+
+    async def async_step_pronote(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 -- a menu, not a form
+    ) -> ConfigFlowResult:
+        """Ask which of PRONOTE's three login methods to use."""
+        return self.async_show_menu(
+            step_id=STEP_PRONOTE,
+            menu_options=[STEP_QR_CODE, STEP_CREDENTIALS, STEP_ENT],
         )
 
     # -- QR enrolment ------------------------------------------------------
